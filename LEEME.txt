@@ -1,0 +1,98 @@
+===============================================================================
+  BUSCADOR DE TRABAJO  -  Instrucciones
+===============================================================================
+
+  Esto busca ofertas de trabajo por vos, todos los dias, y te avisa
+  por Telegram cuando encuentra alguna que te sirve.
+
+  No hace falta que sepas nada de computacion.
+
+
+-------------------------------------------------------------------------------
+  QUE TENES QUE HACER (una sola vez)
+-------------------------------------------------------------------------------
+
+  1. Doble clic en:   instalar.bat
+
+  2. Esperar. Tarda entre 5 y 15 minutos la primera vez.
+     Va mostrando lo que hace. Podes seguir usando la computadora.
+
+  3. Cuando diga "LISTO", cerra la ventana.
+
+  Y ya esta. No hay paso 4.
+
+
+-------------------------------------------------------------------------------
+  QUE PASA DESPUES
+-------------------------------------------------------------------------------
+
+  El programa se ejecuta solo:
+
+    - Cada vez que prendas la computadora
+    - Todos los dias a las 12:00, a las 16:30 y a las 23:59
+
+  Si la computadora estaba apagada a esa hora, no se pierde nada:
+  la busqueda se hace apenas la prendas.
+
+  No vas a ver ninguna ventana abrirse. Trabaja en silencio.
+  Cuando encuentra algo, te llega un mensaje de Telegram.
+
+  Si no te llega nada en todo un dia, es normal: quiere decir que no
+  hubo ofertas nuevas que valgan la pena.
+
+
+-------------------------------------------------------------------------------
+  LOS OTROS ARCHIVOS (por si alguna vez los necesitas)
+-------------------------------------------------------------------------------
+
+  estado.bat        Te dice si esta funcionando, cuando busco por
+                    ultima vez y si hubo algun problema.
+                    Si tenes la duda de "estara andando?", abri este.
+
+  buscar_ahora.bat  Hace una busqueda en este momento, sin esperar al
+                    horario. Sirve si estas ansioso.
+
+  desinstalar.bat   Hace que deje de buscar solo.
+                    NO borra nada: si despues queres volver a activarlo,
+                    doble clic en instalar.bat y listo.
+
+
+-------------------------------------------------------------------------------
+  SI ALGO NO ANDA
+-------------------------------------------------------------------------------
+
+  1. Abri estado.bat y sacale una foto a la pantalla.
+  2. Mandasela a Isaias.
+
+  Con eso alcanza. No hace falta que toques nada mas.
+
+
+-------------------------------------------------------------------------------
+  DOS COSAS IMPORTANTES
+-------------------------------------------------------------------------------
+
+  * NO MUEVAS ESTA CARPETA de lugar despues de instalar.
+    Si la moves, el programa deja de encontrarse a si mismo y no
+    busca mas. Si necesitas moverla, movela primero y recien
+    despues corre instalar.bat de nuevo.
+
+  * NO BORRES ni edites los archivos de adentro.
+    Todo lo que necesitas hacer esta en los 4 archivos .bat de arriba.
+
+
+-------------------------------------------------------------------------------
+  SI WINDOWS TE MUESTRA UN CARTEL AZUL
+-------------------------------------------------------------------------------
+
+  Al abrir instalar.bat por primera vez, Windows puede mostrar un cartel
+  que dice "Windows protegio tu PC".
+
+  Es normal: pasa con cualquier programa que no venga de una tienda.
+
+    1. Hace clic en "Mas informacion"
+    2. Despues en "Ejecutar de todas formas"
+
+  Si en cambio te pide permiso de administrador, no hace falta darselo:
+  el programa esta hecho para funcionar sin permisos especiales.
+
+===============================================================================

@@ -21,14 +21,37 @@ logger = get_logger()
 _LLM_REQUEST_TIMEOUT = 120.0
 
 
+# Gemini expone un endpoint compatible con la API de OpenAI, así que se usa el
+# mismo cliente y la misma cadena de fallback que OpenRouter — no hace falta el
+# SDK de Google. https://ai.google.dev/gemini-api/docs/openai
+_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+def _key(config: dict, field: str, env_var: str) -> str:
+    """Credencial ya resuelta, o del entorno como red — filtrando moldes.
+
+    El `or os.getenv(...)` pelado dejaba pasar el molde sin completar que trae
+    .env.example, y entonces el motor creía tener credencial y fallaba recién
+    al llamar a la API en vez de avisar y caer a la heurística.
+    """
+    from vacantia.config import is_placeholder
+
+    value = (config.get(field) or "").strip()
+    if not value:
+        value = (os.getenv(env_var) or "").strip()
+    return "" if is_placeholder(value) else value
+
+
 def has_llm_credentials(config: dict) -> bool:
     """¿Hay con qué llamar a un LLM? Si no, el scoring cae a la heurística."""
     provider = config.get("llm_provider") or "openrouter"
     if provider == "claude_cli":
         return True  # usa el login local de Claude Code, no necesita API key
     if provider == "anthropic":
-        return bool(config.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY"))
-    return bool(config.get("openrouter_api_key") or os.getenv("OPENROUTER_API_KEY"))
+        return bool(_key(config, "anthropic_api_key", "ANTHROPIC_API_KEY"))
+    if provider == "gemini":
+        return bool(_key(config, "gemini_api_key", "GEMINI_API_KEY"))
+    return bool(_key(config, "openrouter_api_key", "OPENROUTER_API_KEY"))
 
 
 def _make_openrouter_client(config: dict):
@@ -37,6 +60,16 @@ def _make_openrouter_client(config: dict):
     return OpenAI(
         api_key=config.get("openrouter_api_key") or os.getenv("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
+        timeout=_LLM_REQUEST_TIMEOUT,
+    )
+
+
+def _make_gemini_client(config: dict):
+    from openai import OpenAI
+
+    return OpenAI(
+        api_key=config.get("gemini_api_key") or os.getenv("GEMINI_API_KEY"),
+        base_url=_GEMINI_BASE_URL,
         timeout=_LLM_REQUEST_TIMEOUT,
     )
 
@@ -140,21 +173,38 @@ def chat_with_llm(
         return _chat_with_anthropic(config, messages, temperature, max_tokens)
     if provider == "claude_cli":
         return _chat_with_claude_cli(config, messages, temperature, max_tokens)
-    return chat_with_fallback(_make_openrouter_client(config), config, messages, temperature, max_tokens)
+
+    if provider == "gemini":
+        client = _make_gemini_client(config)
+        primary = config.get("gemini_model") or "gemini-2.5-flash-lite"
+        fallbacks = config.get("gemini_fallback_models") or []
+    else:
+        client = _make_openrouter_client(config)
+        primary = config.get("openrouter_model") or "nvidia/nemotron-3-super-120b-a12b:free"
+        fallbacks = config.get("openrouter_fallback_models") or []
+
+    models = [primary] + [m for m in fallbacks if m != primary]
+    return chat_with_fallback(client, models, messages, temperature, max_tokens)
 
 
 def chat_with_fallback(
     llm,
-    config: dict,
+    models: list[str],
     messages: list[dict],
     temperature: float = 0.1,
     max_tokens: int = 4096,
 ) -> str:
+    """Prueba los modelos en orden hasta que uno responda.
+
+    Sirve igual para OpenRouter y para Gemini: los dos hablan el protocolo de
+    OpenAI. La cadena cubre dos casos distintos — que un modelo esté caído o
+    saturado, y que lo retiren (Gemini 2.5 Flash-Lite se retira el 16/10/2026 y
+    ahí el fallback entra solo, sin que haya que tocar nada).
+    """
     from openai import RateLimitError
 
-    primary = config.get("openrouter_model", "meta-llama/llama-3.3-70b-instruct:free")
-    fallbacks = config.get("openrouter_fallback_models", [])
-    models = [primary] + [m for m in fallbacks if m != primary]
+    if not models:
+        raise RuntimeError("No hay modelos configurados para el proveedor.")
 
     for model_idx, model in enumerate(models):
         label = f"[model {model_idx + 1}/{len(models)}] {model}"
@@ -169,6 +219,13 @@ def chat_with_fallback(
                     max_tokens=max_tokens,
                 )
                 elapsed = time.time() - t0
+                # Un error del proveedor puede volver con HTTP 200 y `choices`
+                # en null (visto con OpenRouter al agotarse la cuota diaria).
+                # Sin este guardia explota con "'NoneType' object is not
+                # subscriptable", que no dice nada de lo que realmente pasó.
+                if not getattr(resp, "choices", None):
+                    detalle = getattr(resp, "error", None) or "respuesta sin 'choices'"
+                    raise RuntimeError(f"{model} no devolvió resultado: {detalle}")
                 text = resp.choices[0].message.content or ""
                 usage = resp.usage
                 if usage:
@@ -190,4 +247,7 @@ def chat_with_fallback(
                 logger.error(f"Error de LLM ({model}): {e}")
                 break
 
-    raise RuntimeError("Fallaron todos los modelos. Revisá tu OPENROUTER_API_KEY y la cuota.")
+    raise RuntimeError(
+        f"Fallaron los {len(models)} modelos configurados ({', '.join(models)}). "
+        "Revisá la API key del proveedor y su cuota diaria."
+    )

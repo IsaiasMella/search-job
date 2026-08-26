@@ -158,9 +158,11 @@ vacantia/
 ├── filters.py        filtros de ubicación, modalidad e idioma
 ├── drafter.py        CV y carta a medida de una oferta
 ├── sources/
-│   ├── base.py       interfaz Source: fetch() -> list[Job]
-│   ├── careers.py    careers pages vía TinyFish
-│   └── dummy.py      ofertas de ejemplo, para probar el pipeline sin credenciales
+│   ├── base.py           interfaz Source: fetch() -> list[Job]
+│   ├── careers.py        careers pages vía TinyFish
+│   ├── google_posts.py   publicaciones de LinkedIn vía buscador (no toca LinkedIn)
+│   ├── linkedin_jobs.py  LinkedIn Jobs vía JobSpy (sí scrapea LinkedIn)
+│   └── dummy.py          ofertas de ejemplo, para probar el pipeline sin credenciales
 └── notifiers/
     ├── base.py       interfaz Notifier: send(jobs) -> bool
     ├── telegram.py   Telegram
@@ -182,8 +184,31 @@ así que dos perfiles no se pisan. Los borradores salen en `output/<perfil>/`.
 
 Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
-**Próximas fases** (los TODO ya están puestos en `sources/__init__.py`):
-`GooglePostsSource` (publicaciones vía Google) y `LinkedInJobsSource` (vía la librería JobSpy).
+---
+
+## Fuentes disponibles
+
+| `type` | Qué trae | Credenciales | Toca LinkedIn |
+|---|---|---|---|
+| `careers` | Careers pages de las empresas de `companies.json` | `TINYFISH_API_KEY` | no |
+| `google_posts` | Publicaciones de LinkedIn indexadas por un buscador | `TINYFISH_API_KEY` (o Google CSE) | **no** |
+| `linkedin` | LinkedIn Jobs vía JobSpy | ninguna | **sí** |
+| `dummy` | Ofertas de ejemplo para probar el pipeline | ninguna | no |
+
+**`google_posts`** le pega a una search API con `site:linkedin.com/posts`: no hay
+login ni scraping de LinkedIn, así que no hay riesgo para tu cuenta. Es la fuente
+de menor competencia (posts sueltos de RRHH que no llegan a ningún portal), a
+cambio de la latencia de indexación del buscador. Si el perfil tiene
+`allow_english: false`, busca sólo con términos en español — filtrar en la query
+evita traer decenas de posts que el filtro de idioma va a descartar igual.
+
+**`linkedin`** sí scrapea LinkedIn, sin login. Rate-limitea por IP y se corta
+cerca de la página 10, así que conviene `results_wanted` moderado y acotar con
+`hours_old`. A cambio es la única fuente con datos **estructurados**: `is_remote`
+y `location` vienen como campos propios, no como texto a interpretar, y
+`scoring.py` respeta lo que la fuente ya trajo en vez de pisarlo con la
+deducción del LLM. Si no está instalada (ver `requirements.txt`), el motor la
+saltea con un aviso.
 
 ---
 

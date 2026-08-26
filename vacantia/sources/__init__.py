@@ -9,18 +9,16 @@ from vacantia.log import get_logger
 from vacantia.sources.base import Source
 from vacantia.sources.careers import CareersPagesSource
 from vacantia.sources.dummy import DummySource
+from vacantia.sources.google_posts import GooglePostsSource
+from vacantia.sources.linkedin_jobs import LinkedInJobsSource
 
 logger = get_logger()
 
 SOURCE_REGISTRY: dict[str, type[Source]] = {
     CareersPagesSource.name: CareersPagesSource,
     DummySource.name: DummySource,
-    # TODO(fase 2): "google_posts" -> GooglePostsSource
-    #   Publicaciones de empleo vía búsqueda de Google (Google Jobs / posts).
-    #   Va en sources/google_posts.py, misma interfaz Source.fetch() -> list[Job].
-    # TODO(fase 3): "linkedin" -> LinkedInJobsSource
-    #   Ofertas de LinkedIn usando la librería JobSpy (pip install python-jobspy).
-    #   Va en sources/linkedin.py, misma interfaz Source.fetch() -> list[Job].
+    GooglePostsSource.name: GooglePostsSource,
+    LinkedInJobsSource.name: LinkedInJobsSource,
 }
 
 
@@ -39,4 +37,12 @@ def build_sources(profile: dict) -> list[Source]:
     return built
 
 
-__all__ = ["Source", "CareersPagesSource", "DummySource", "SOURCE_REGISTRY", "build_sources"]
+__all__ = [
+    "Source",
+    "CareersPagesSource",
+    "DummySource",
+    "GooglePostsSource",
+    "LinkedInJobsSource",
+    "SOURCE_REGISTRY",
+    "build_sources",
+]

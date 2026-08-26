@@ -52,6 +52,14 @@ def format_message(jobs: list[Job], header: str) -> str:
     return "\n".join(lines)
 
 
+def _format_notes(notes: list[str] | None) -> str:
+    """Bloque final del mensaje. Vacío si no hay nada que agregar."""
+    if not notes:
+        return ""
+    cuerpo = "\n".join(_escape(n) for n in notes)
+    return f"\n\n———\n<i>{cuerpo}</i>"
+
+
 def _split_chunks(text: str, limit: int = TELEGRAM_MAX_CHARS) -> list[str]:
     """Parte por bloques de oferta para no cortar una etiqueta HTML al medio."""
     if len(text) <= limit:
@@ -89,12 +97,17 @@ class TelegramNotifier(Notifier):
             return False, "falta el paquete 'requests' (pip install requests)"
         return True, ""
 
-    def send(self, jobs: list[Job]) -> bool:
+    def send(self, jobs: list[Job], notes: list[str] | None = None) -> bool:
         header = self.config.get("header") or f"Vacantia — {self.profile.get('name', '')}".strip()
-        if not jobs:
-            return send_telegram(self.token, self.chat_id, f"<b>{_escape(header)}</b>\nSin novedades hoy.")
+        footer = _format_notes(notes)
 
+        if not jobs:
+            cuerpo = f"<b>{_escape(header)}</b>\nSin novedades hoy."
+            return send_telegram(self.token, self.chat_id, cuerpo + footer)
+
+        chunks = _split_chunks(format_message(jobs, header))
+        chunks[-1] += footer  # las notas van al final del último mensaje
         ok = True
-        for chunk in _split_chunks(format_message(jobs, header)):
+        for chunk in chunks:
             ok = send_telegram(self.token, self.chat_id, chunk) and ok
         return ok

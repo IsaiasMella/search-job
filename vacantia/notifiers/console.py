@@ -10,9 +10,10 @@ logger = get_logger()
 class ConsoleNotifier(Notifier):
     name = "console"
 
-    def send(self, jobs: list[Job]) -> bool:
+    def send(self, jobs: list[Job], notes: list[str] | None = None) -> bool:
         if not jobs:
             print("\nSin coincidencias nuevas esta corrida.\n")
+            _print_notes(notes)
             return True
 
         width = 72
@@ -29,5 +30,15 @@ class ConsoleNotifier(Notifier):
                 print(f"    Por qué : {job.reason}")
             print(f"    Fuente  : {job.source}")
             print(f"    URL     : {job.url}")
-        print("\n" + "=" * width + "\n")
+        print("\n" + "=" * width)
+        _print_notes(notes)
+        print()
         return True
+
+
+def _print_notes(notes: list[str] | None) -> None:
+    if not notes:
+        return
+    print()
+    for line in notes:
+        print(f"  {line}")

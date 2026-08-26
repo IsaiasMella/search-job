@@ -204,9 +204,12 @@ def _score_batch_with_llm(jobs: list[Job], resume: str, profile: dict, min_score
         # Campos de filtrado. Se normalizan acá para que filters.py reciba
         # siempre "" cuando el aviso no dice nada (el LLM a veces manda null,
         # "N/A" o "unknown" en vez de la cadena vacía que le pedimos).
-        job.country = _clean(item.get("country"))
-        job.city = _clean(item.get("city"))
-        job.work_mode = _clean(item.get("work_mode")).lower()
+        # `or` y no asignación directa: si la fuente ya trajo el dato
+        # estructurado (LinkedIn devuelve is_remote y location como campos
+        # propios), ese vale más que lo que el LLM deduzca del texto.
+        job.country = job.country or _clean(item.get("country"))
+        job.city = job.city or _clean(item.get("city"))
+        job.work_mode = job.work_mode or _clean(item.get("work_mode")).lower()
         job.posting_language = _clean(item.get("posting_language")).lower()[:2]
         job.english_level = _clean(item.get("english_level")).upper()[:2]
         req = item.get("requires_english")
@@ -214,6 +217,55 @@ def _score_batch_with_llm(jobs: list[Job], resume: str, profile: dict, min_score
         logger.debug(f"    [{job.score:3d}] {job.display_title} — {job.reason[:80]}")
 
     return jobs
+
+
+def _heuristic_score(job: Job, keywords: list[str], resume_words: set[str]) -> tuple[int, list[str]]:
+    """Puntaje por solapamiento de keywords. Puro: no toca el Job.
+
+    Se usa en dos lugares: como scoring de respaldo cuando no hay LLM, y como
+    triaje gratuito para decidir a cuáles vale la pena gastarles una llamada.
+    """
+    haystack = f"{job.title} {job.description} {job.company}".lower()
+    hits = [k for k in keywords if k in haystack]
+
+    # Puntaje saturante, no proporcional: pedir que una oferta contenga *todas*
+    # las keywords del perfil condenaría a cero a cualquiera que liste muchas.
+    # Cada acierto suma y a partir del tercero satura.
+    kw_score = 35.0 + min(len(hits), 3) * 15.0
+    overlap = sum(1 for w in set(haystack.split()) if w in resume_words)
+    resume_score = min(overlap / 25, 1.0) * 20
+    return min(int(round(kw_score + resume_score)), 100), hits
+
+
+def triage(jobs: list[Job], resume: str, profile: dict) -> tuple[list[Job], list[Job]]:
+    """Reparte las ofertas nuevas entre "puntuar ahora" y "dejar para después".
+
+    Existe para el pico de backfill: cuando cargás 20 empresas nuevas o cambiás
+    los search_terms, entran cientos de ofertas de una y eso son decenas de
+    llamadas al LLM en una sola corrida. El dedupe no ayuda porque son
+    genuinamente nuevas.
+
+    El triaje es gratis (keywords en Python, cero API) y ordena por lo que más
+    pinta. Las diferidas NO se marcan como vistas, así que vuelven en la
+    próxima corrida y el backlog se drena de a tandas.
+    """
+    limit = profile.get("max_new_per_run")
+    if not limit or len(jobs) <= int(limit):
+        return jobs, []
+
+    limit = int(limit)
+    keywords = [k.lower() for k in (profile.get("keywords") or []) if k]
+    resume_words = {w for w in resume.lower().split() if len(w) > 3}
+
+    ranked = sorted(
+        jobs, key=lambda j: _heuristic_score(j, keywords, resume_words)[0], reverse=True
+    )
+    ahora, despues = ranked[:limit], ranked[limit:]
+    logger.info(
+        f"Triaje: {len(jobs)} nuevas supera el máximo de {limit} por corrida — "
+        f"puntúo las {len(ahora)} más prometedoras, dejo {len(despues)} para la próxima"
+    )
+    return ahora, despues
 
 
 def _score_batch_heuristic(jobs: list[Job], resume: str, profile: dict, min_score: int) -> list[Job]:
@@ -226,17 +278,7 @@ def _score_batch_heuristic(jobs: list[Job], resume: str, profile: dict, min_scor
     resume_words = {w for w in resume.lower().split() if len(w) > 3}
 
     for job in jobs:
-        haystack = f"{job.title} {job.description} {job.company}".lower()
-        hits = [k for k in keywords if k in haystack]
-
-        # Puntaje saturante, no proporcional: pedir que una oferta contenga
-        # *todas* las keywords del perfil condenaría a cero a cualquiera que
-        # liste muchas. Cada acierto suma y a partir del tercero satura.
-        kw_score = 35.0 + min(len(hits), 3) * 15.0
-        overlap = sum(1 for w in set(haystack.split()) if w in resume_words)
-        resume_score = min(overlap / 25, 1.0) * 20
-
-        job.score = min(int(round(kw_score + resume_score)), 100)
+        job.score, hits = _heuristic_score(job, keywords, resume_words)
         job.scored_title = job.title
         job.stack = ", ".join(hits[:6])
         job.location_remote = job.location

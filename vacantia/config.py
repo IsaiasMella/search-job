@@ -25,15 +25,29 @@ PROFILES_DIR = Path("profiles")
 _ENV_REF_RE = re.compile(r"^\$\{?([A-Z0-9_]+)\}?$")
 
 
+# Moldes que trae .env.example sin completar. Si no se reconocen, el motor cree
+# que hay credencial y falla recién al llamar a la API, en vez de avisar que
+# falta y seguir degradado. Van en inglés y en español porque el .env.example
+# del repo está en español ("tu_openrouter_api_key_aca").
+_PLACEHOLDER_MARKS = (
+    "your_",
+    "tu_",
+    "pegala",
+    "pegar",
+    "_here",
+    "_aca",
+    "_aquí",
+    "_aqui",
+    "xxx",
+    "<",
+)
+
+
 def is_placeholder(val: object) -> bool:
     if not isinstance(val, str) or not val.strip():
         return True
-    v = val.strip()
-    return (
-        v.upper().startswith("YOUR_")
-        or v.lower().endswith("_here")
-        or v.upper().endswith("_HERE")
-    )
+    v = val.strip().lower()
+    return any(mark in v for mark in _PLACEHOLDER_MARKS)
 
 
 def resolve_secret(value: object, env_var: str | None = None) -> str:
@@ -41,7 +55,11 @@ def resolve_secret(value: object, env_var: str | None = None) -> str:
     if isinstance(value, str):
         m = _ENV_REF_RE.match(value.strip())
         if m:
-            return (os.getenv(m.group(1)) or "").strip()
+            # El .env puede tener el molde sin completar: se filtra igual que un
+            # literal, si no el motor cree que hay credencial y falla recién al
+            # llamar a la API en vez de avisar que falta.
+            env_val = (os.getenv(m.group(1)) or "").strip()
+            return "" if is_placeholder(env_val) else env_val
         if not is_placeholder(value):
             return value.strip()
     if env_var:
@@ -122,6 +140,12 @@ def _build_llm_config(llm: dict) -> dict:
         "anthropic_api_key": resolve_secret(llm.get("anthropic_api_key"), "ANTHROPIC_API_KEY"),
         "anthropic_model": llm.get("anthropic_model") or "claude-haiku-4-5-20251001",
         "claude_cli_model": llm.get("claude_cli_model") or os.getenv("CLAUDE_CLI_MODEL") or "",
+        "gemini_api_key": resolve_secret(llm.get("gemini_api_key"), "GEMINI_API_KEY"),
+        # Con provider="gemini", el campo "model" del perfil es el modelo de
+        # Gemini. Se lee de ahí para que el perfil tenga una sola forma de
+        # nombrar el modelo, sea cual sea el proveedor.
+        "gemini_model": llm.get("model") or os.getenv("GEMINI_MODEL") or "gemini-2.5-flash-lite",
+        "gemini_fallback_models": llm.get("fallback_models") or [],
     }
 
 

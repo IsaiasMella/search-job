@@ -6,8 +6,28 @@ python-dotenv>=1.0.0
 # Fuente de careers pages (sources/careers.py)
 tinyfish>=0.2.5
 
+# Generación del CV en PDF (botón de descarga en la UI).
+# Python puro, se instala sin compilador. OJO: las fuentes que trae por defecto
+# son latin-1 y revientan con el guion largo, las comillas tipográficas y el
+# símbolo de euro, que aparecen todo el tiempo en un CV. Hay que registrar una
+# fuente Unicode del sistema (C:\Windows\Fonts\arial.ttf).
+fpdf2>=2.8.0
+
 # Opcional: sólo si usás llm.provider = "anthropic"
 # anthropic>=0.40.0
 
-# Próximas fases:
-# python-jobspy>=1.1.80   # LinkedInJobsSource
+# Fuente LinkedIn Jobs (sources/linkedin_jobs.py) — INSTALACIÓN ESPECIAL.
+#
+# python-jobspy fija NUMPY==1.26.3, que no tiene wheel para Python 3.13+ e
+# intenta compilarse desde el código fuente. Sin un compilador de C instalado,
+# `pip install python-jobspy` falla con "Unknown compiler(s)".
+#
+# Se instala en dos pasos, salteando ese pin:
+#
+#   pip install "numpy>=2.1" "pandas>=2.2.3" beautifulsoup4 markdownify "pydantic>=2.3" regex tls-client
+#   pip install --no-deps python-jobspy
+#
+# Probado con numpy 2.5.2 y pandas 3.0.5: jobspy funciona igual, el pin era
+# innecesariamente estricto. Si la fuente `linkedin` no está instalada, el
+# motor la saltea con un aviso y sigue con las demás.
+# python-jobspy>=1.1.82

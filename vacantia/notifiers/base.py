@@ -18,6 +18,6 @@ class Notifier(ABC):
         return True, ""
 
     @abstractmethod
-    def send(self, jobs: list[Job]) -> bool:
+    def send(self, jobs: list[Job], notes: list[str] | None = None) -> bool:
         """Entrega las ofertas ya filtradas. Devuelve True si salió bien."""
         raise NotImplementedError

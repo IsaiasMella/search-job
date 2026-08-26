@@ -15,6 +15,8 @@ estos filtros dejan pasar todo. Es deliberado: mejor no filtrar que filtrar mal.
 
 import re
 import unicodedata
+from collections import Counter
+from dataclasses import dataclass, field
 
 from vacantia.log import get_logger
 from vacantia.models import Job
@@ -219,11 +221,59 @@ def passes_language(job: Job, cfg: dict) -> tuple[bool, str]:
     return True, ""
 
 
-def apply_filters(jobs: list[Job], profile: dict) -> list[Job]:
-    """Aplica los tres filtros y loguea cada descarte con su motivo."""
+@dataclass
+class FilterStats:
+    """Qué se descartó y por qué. Lo consume el informe de la notificación."""
+
+    kept: int = 0
+    dropped: int = 0
+    by_reason: Counter = field(default_factory=Counter)
+    #: Descartadas por el filtro de idioma, ya puntuadas. Sirve para mostrar
+    #: cuánto valía lo que te perdiste por no saber inglés.
+    english_dropped: list[Job] = field(default_factory=list)
+
+    @property
+    def english_count(self) -> int:
+        return len(self.english_dropped)
+
+    @property
+    def english_best(self) -> Job | None:
+        """La mejor puntuada de las que se cayeron por idioma."""
+        return max(self.english_dropped, key=lambda j: j.score or 0, default=None)
+
+
+def english_pain_lines(stats: FilterStats, limit: int = 3) -> list[str]:
+    """Resumen en texto plano de lo que costó no saber inglés.
+
+    Existe por pedido explícito: ver sólo las ofertas en español da la impresión
+    de que el mercado es así, cuando en realidad lo que se ve es el recorte que
+    deja el filtro. Esto pone el número adelante.
+    """
+    if not stats.english_dropped:
+        return []
+
+    total = stats.english_count
+    lines = [f"{total} oferta(s) descartadas por estar en inglés o pedir inglés."]
+
+    mejores = sorted(stats.english_dropped, key=lambda j: j.score or 0, reverse=True)
+    best = mejores[0]
+    if best.score is not None:
+        lines.append(f"La mejor de esas puntuaba {best.score}.")
+
+    for job in mejores[:limit]:
+        if (job.score or 0) <= 0:
+            continue
+        lines.append(f"  [{job.score}] {job.display_title[:60]}")
+    return lines
+
+
+def apply_filters(jobs: list[Job], profile: dict) -> tuple[list[Job], FilterStats]:
+    """Aplica los tres filtros. Devuelve (las que pasan, estadísticas)."""
+    stats = FilterStats()
     cfg = profile.get("filters") or {}
     if not cfg:
-        return jobs
+        stats.kept = len(jobs)
+        return jobs, stats
 
     location_cfg = cfg.get("location") or {}
     modes_cfg = cfg.get("work_modes")
@@ -232,20 +282,24 @@ def apply_filters(jobs: list[Job], profile: dict) -> list[Job]:
     kept: list[Job] = []
     dropped: list[tuple[Job, str]] = []
     for job in jobs:
-        for check, conf in (
-            (passes_location, location_cfg),
-            (passes_work_mode, modes_cfg),
-            (passes_language, language_cfg),
+        for etiqueta, check, conf in (
+            ("location", passes_location, location_cfg),
+            ("work_mode", passes_work_mode, modes_cfg),
+            ("language", passes_language, language_cfg),
         ):
             ok, why = check(job, conf)
             if not ok:
                 dropped.append((job, why))
+                stats.by_reason[etiqueta] += 1
+                if etiqueta == "language":
+                    stats.english_dropped.append(job)
                 break
         else:
             kept.append(job)
 
+    stats.kept, stats.dropped = len(kept), len(dropped)
     if dropped:
         logger.info(f"Filtros: {len(kept)} pasaron, {len(dropped)} descartadas")
         for job, why in dropped:
             logger.debug(f"    descartada: {job.display_title[:45]} — {why}")
-    return kept
+    return kept, stats

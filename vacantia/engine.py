@@ -8,13 +8,13 @@ import time
 from dataclasses import dataclass, field
 
 from vacantia.config import load_resume
-from vacantia.filters import apply_filters
+from vacantia.filters import apply_filters, english_pain_lines
 from vacantia.log import get_logger
 from vacantia.models import Job
 from vacantia.notifiers import build_notifiers
 from vacantia.notifiers.base import Notifier
 from vacantia.notifiers.console import ConsoleNotifier
-from vacantia.scoring import filter_by_min_score, score_jobs
+from vacantia.scoring import filter_by_min_score, score_jobs, triage
 from vacantia.sources import build_sources
 from vacantia.sources.base import Source
 from vacantia.sources.dummy import DummySource
@@ -34,6 +34,8 @@ class RunResult:
     new: int = 0
     scored: int = 0
     filtered_out: int = 0
+    english_dropped: int = 0
+    deferred: int = 0
     matched: int = 0
     sources_used: list[str] = field(default_factory=list)
     notifiers_used: list[str] = field(default_factory=list)
@@ -122,24 +124,36 @@ def run(profile: dict, dry_run: bool = False) -> RunResult:
     new_jobs = state.filter_new(jobs)
     result.new = len(new_jobs)
 
-    # 3) scoring contra el CV
-    scored = score_jobs(new_jobs, resume, profile) if new_jobs else []
+    # 3) triaje: si entraron muchas de golpe (cargaste empresas nuevas, cambiaste
+    #    los search_terms), puntúa las más prometedoras y difiere el resto.
+    to_score, deferred = triage(new_jobs, resume, profile)
+    result.deferred = len(deferred)
+
+    # 4) scoring contra el CV
+    scored = score_jobs(to_score, resume, profile) if to_score else []
     result.scored = len(scored)
 
-    # 4) filtros de ubicación / modalidad / idioma
-    eligible = apply_filters(scored, profile)
-    result.filtered_out = len(scored) - len(eligible)
+    # 5) filtros de ubicación / modalidad / idioma
+    eligible, fstats = apply_filters(scored, profile)
+    result.filtered_out = fstats.dropped
+    result.english_dropped = fstats.english_count
 
-    # 5) filtro por min_score
+    # Informe opcional: cuántas se cayeron por idioma y cuánto valía la mejor.
+    # Va en la notificación a pedido del perfil — ver report.english_pain.
+    notes: list[str] = []
+    if (profile.get("report") or {}).get("english_pain", False):
+        notes = english_pain_lines(fstats)
+
+    # 6) filtro por min_score
     matches = filter_by_min_score(eligible, min_score, top_n)
     result.matched = len(matches)
     result.jobs = matches
     logger.info(f"{len(matches)} de {len(eligible)} pasaron el min_score de {min_score}")
 
-    # 6) notificación
+    # 7) notificación
     if dry_run:
         logger.info("--dry-run: no notifico ni guardo estado.")
-        ConsoleNotifier({"type": "console"}, profile).send(matches)
+        ConsoleNotifier({"type": "console"}, profile).send(matches, notes)
         result.seconds = time.time() - t0
         return result
 
@@ -147,7 +161,7 @@ def run(profile: dict, dry_run: bool = False) -> RunResult:
     if matches or notify_empty:
         for notifier in _usable_notifiers(profile, result):
             try:
-                if notifier.send(matches):
+                if notifier.send(matches, notes):
                     result.notifiers_used.append(notifier.name)
             except Exception as e:
                 msg = f"notificador '{notifier.name}' falló: {e}"
@@ -156,15 +170,17 @@ def run(profile: dict, dry_run: bool = False) -> RunResult:
     else:
         logger.info("Sin coincidencias — no notifico (poné notify_when_empty=true para avisar igual).")
 
-    # 7) estado: recién acá marcamos como vistas, para que un fallo previo
+    # 8) estado: recién acá marcamos como vistas, para que un fallo previo
     #    no haga perder ofertas que nunca llegaron a avisarse.
-    state.mark_seen(new_jobs)
+    # Sólo lo que efectivamente se puntuó: las diferidas por el triaje tienen
+    # que volver a aparecer en la próxima corrida.
+    state.mark_seen(to_score)
     state.save(scored)
 
     result.seconds = time.time() - t0
     logger.info(
         f"=== Listo en {result.seconds:.1f}s — {result.fetched} recolectadas, "
-        f"{result.new} nuevas, {result.filtered_out} filtradas, "
+        f"{result.new} nuevas, {result.deferred} diferidas, {result.filtered_out} filtradas, "
         f"{result.matched} avisadas ==="
     )
     return result
