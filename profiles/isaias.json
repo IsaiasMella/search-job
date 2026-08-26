@@ -1,0 +1,70 @@
+{
+  "name": "isaias",
+  "cv_path": "resume/isaias.md",
+  "keywords": [
+    "AI engineer",
+    "Python"
+  ],
+  "min_score": 60,
+  "top_n": 5,
+  "notify_when_empty": false,
+  "filters": {
+    "location": {
+      "country": "Argentina",
+      "city": ""
+    },
+    "work_modes": [
+      "remote"
+    ],
+    "language": {
+      "allow_english": false,
+      "max_english_level": "A2",
+      "scan_description": true
+    }
+  },
+  "candidate": {
+    "name": "Isaías",
+    "profile": "Perfil de datos / IA. Stack: Python, SQL, ML, LLMs.",
+    "seeking": "Remoto o relocación a UE",
+    "not_suitable": "Puestos junior, roles no técnicos",
+    "relocation_note": "",
+    "search_seniority": "",
+    "search_keywords": ""
+  },
+  "llm": {
+    "provider": "openrouter",
+    "openrouter_api_key": "${OPENROUTER_API_KEY}",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "fallback_models": [
+      "z-ai/glm-5.2:free",
+      "google/gemma-4-26b-a4b-it:free",
+      "minimax/minimax-m2.7:free"
+    ]
+  },
+  "sources": [
+    {
+      "type": "careers",
+      "enabled": true,
+      "companies_file": "companies.json",
+      "api_key": "${TINYFISH_API_KEY}",
+      "use_search": true,
+      "max_companies": null
+    },
+    {
+      "type": "dummy",
+      "enabled": false
+    }
+  ],
+  "notifiers": [
+    {
+      "type": "telegram",
+      "enabled": true,
+      "token": "${TELEGRAM_TOKEN}",
+      "chat_id": "${TELEGRAM_CHAT_ID}"
+    },
+    {
+      "type": "console",
+      "enabled": true
+    }
+  ]
+}

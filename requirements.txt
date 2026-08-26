@@ -1,0 +1,13 @@
+# Núcleo — necesario para el scoring con LLM y las notificaciones
+openai>=2.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Fuente de careers pages (sources/careers.py)
+tinyfish>=0.2.5
+
+# Opcional: sólo si usás llm.provider = "anthropic"
+# anthropic>=0.40.0
+
+# Próximas fases:
+# python-jobspy>=1.1.80   # LinkedInJobsSource

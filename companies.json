@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Accenture Argentina",
+    "careers_url": "https://www.accenture.com/ar-es/careers",
+    "search_domain": "accenture.com",
+    "location": "Buenos Aires, Argentina / Remoto",
+    "region": "LATAM"
+  },
+  {
+    "name": "Mercado Libre",
+    "careers_url": "https://careers-meli.mercadolibre.com/",
+    "search_domain": "mercadolibre.com",
+    "location": "Buenos Aires / Córdoba, Argentina / Híbrido",
+    "region": "LATAM"
+  },
+  {
+    "name": "Globant Argentina",
+    "careers_url": "https://more.globant.com/es/oportunidades-argentina",
+    "search_domain": "globant.com",
+    "location": "Buenos Aires, Argentina / Remoto",
+    "region": "LATAM"
+  },
+  {
+    "name": "Mutt Data",
+    "careers_url": "https://muttdata.ai/careers",
+    "search_domain": "muttdata.ai",
+    "location": "Buenos Aires, Argentina / Remoto",
+    "region": "LATAM"
+  },
+  {
+    "name": "Telecom Argentina",
+    "careers_url": "https://empleos.personal.com.ar/",
+    "search_domain": "personal.com.ar",
+    "location": "Buenos Aires, Argentina / Remoto",
+    "region": "LATAM"
+  },
+  {
+    "name": "Ualá",
+    "careers_url": "https://www.ua.la/sumate",
+    "search_domain": "ua.la",
+    "location": "Buenos Aires, Argentina / Híbrido",
+    "region": "LATAM"
+  },
+  {
+    "name": "Despegar",
+    "careers_url": "https://despegar.evaluar.com/",
+    "search_domain": "despegar.com",
+    "location": "Buenos Aires, Argentina / Híbrido",
+    "region": "LATAM"
+  },
+  {
+    "name": "Naranja X",
+    "careers_url": "https://www.naranjax.com/trabaja-con-nosotros",
+    "search_domain": "naranjax.com",
+    "location": "Córdoba / Buenos Aires, Argentina / Remoto",
+    "region": "LATAM"
+  },
+  {
+    "name": "Banco Galicia",
+    "careers_url": "https://galicia.evaluar.com/",
+    "search_domain": "galicia.ar",
+    "location": "Buenos Aires, Argentina / Híbrido",
+    "region": "LATAM"
+  },
+  {
+    "name": "Swiss Medical Group",
+    "careers_url": "https://recursos.swissmedical.com.ar/empleos",
+    "search_domain": "swissmedical.com.ar",
+    "location": "Buenos Aires, Argentina / Híbrido",
+    "region": "LATAM"
+  }
+]
