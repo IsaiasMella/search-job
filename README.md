@@ -252,6 +252,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 | `careers` | Careers pages de las empresas de `companies.json` | `TINYFISH_API_KEY` | no |
 | `google_posts` | Publicaciones de LinkedIn indexadas por un buscador | `TINYFISH_API_KEY` (o Google CSE) | **no** |
 | `linkedin` | LinkedIn Jobs vía JobSpy | ninguna | **sí** |
+| `rrhh` | Publicaciones de reclutadores que seguís por URL | `TINYFISH_API_KEY` | **no** |
 | `dummy` | Ofertas de ejemplo para probar el pipeline | ninguna | no |
 
 **`google_posts`** le pega a una search API con `site:linkedin.com/posts`: no hay
@@ -260,6 +261,14 @@ de menor competencia (posts sueltos de RRHH que no llegan a ningún portal), a
 cambio de la latencia de indexación del buscador. Si el perfil tiene
 `allow_english: false`, busca sólo con términos en español — filtrar en la query
 evita traer decenas de posts que el filtro de idioma va a descartar igual.
+
+**`rrhh`** vigila **personas**, no palabras clave: se le carga una lista de URLs
+(el perfil de actividad de alguien de RRHH, la página de búsquedas de una
+consultora) y de cada una saca los links a publicaciones, los links con pinta de
+aviso, o —si no hay ninguno— los párrafos del texto que anuncian una búsqueda.
+Esos párrafos se identifican con la URL de la página más un hash del texto: por
+eso una página cuya dirección nunca cambia igual genera una oferta nueva cuando
+publica algo nuevo. Para nichos chicos suele rendir más que buscar por keyword.
 
 **`linkedin`** sí scrapea LinkedIn, sin login. Rate-limitea por IP y se corta
 cerca de la página 10, así que conviene `results_wanted` moderado y acotar con

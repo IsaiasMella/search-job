@@ -11,6 +11,7 @@ from vacantia.sources.careers import CareersPagesSource
 from vacantia.sources.dummy import DummySource
 from vacantia.sources.google_posts import GooglePostsSource
 from vacantia.sources.linkedin_jobs import LinkedInJobsSource
+from vacantia.sources.rrhh_profiles import RRHHProfilesSource
 
 logger = get_logger()
 
@@ -19,6 +20,7 @@ SOURCE_REGISTRY: dict[str, type[Source]] = {
     DummySource.name: DummySource,
     GooglePostsSource.name: GooglePostsSource,
     LinkedInJobsSource.name: LinkedInJobsSource,
+    RRHHProfilesSource.name: RRHHProfilesSource,
 }
 
 
@@ -43,6 +45,7 @@ __all__ = [
     "DummySource",
     "GooglePostsSource",
     "LinkedInJobsSource",
+    "RRHHProfilesSource",
     "SOURCE_REGISTRY",
     "build_sources",
 ]

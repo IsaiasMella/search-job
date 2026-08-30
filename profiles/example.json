@@ -51,6 +51,13 @@
       "max_companies": null
     },
     {
+      "type": "rrhh",
+      "enabled": false,
+      "profiles": [],
+      "max_profiles": 12,
+      "api_key": "${TINYFISH_API_KEY}"
+    },
+    {
       "type": "dummy",
       "enabled": false
     }
