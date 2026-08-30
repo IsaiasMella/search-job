@@ -55,7 +55,7 @@ Usá `profiles/example.json` como molde y `--list-profiles` para ver los que hay
   "keywords": ["data scientist", "MLOps", "Python"],
   "min_score": 60,                 // umbral 0-100 para avisar
   "top_n": 5,                      // cuántas mandar como máximo
-  "notify_when_empty": false,      // avisar aunque no haya nada
+  "notify_when_empty": true,       // avisar aunque no haya nada (ver abajo)
   "filters":   { ... },            // ubicación / modalidad / idioma (ver abajo)
   "candidate": { "name": "...", "profile": "...", "seeking": "...", "not_suitable": "..." },
   "llm":       { "provider": "openrouter", "model": "...", "fallback_models": ["..."] },
@@ -113,6 +113,17 @@ no completó un campo. Por lo mismo, sin LLM (scoring heurístico) no hay nada
 extraído y los filtros dejan pasar todo.
 
 Cada descarte queda en el log con su motivo (`LOG_LEVEL=DEBUG` para verlos).
+
+---
+
+## Corridas sin resultados
+
+Con `notify_when_empty: true` el aviso llega igual, y explica **por qué** no hay
+nada: cuántas ofertas se revisaron y de qué fuentes, cuántas ya estaban vistas,
+cuántas eran vacantes ya cubiertas, cuántas se cayeron por cada filtro y si
+alguna fuente no estuvo disponible. Sin eso, "hoy no salió nada" y "hace tres
+días que la fuente está caída" son el mismo silencio y el segundo no se
+descubre hasta que a alguien se le ocurre ir a mirar.
 
 ---
 

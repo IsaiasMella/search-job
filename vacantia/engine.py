@@ -103,6 +103,42 @@ def collect(sources: list[Source], result: RunResult) -> list[Job]:
     return jobs
 
 
+def empty_run_notes(result: RunResult, fstats, min_score: int) -> list[str]:
+    """Qué pasó en una corrida que no tiene nada para avisar.
+
+    Es lo que le da sentido a `notify_when_empty`: sin este detalle, "hoy no
+    salió nada" y "hace tres días que la fuente está caída" son el mismo
+    silencio, y el segundo caso no se descubre hasta que alguien lo busca.
+    """
+    fuentes = ", ".join(dict.fromkeys(result.sources_used)) or "ninguna"
+    lineas = [f"Sin coincidencias. Revisé {result.fetched} oferta(s) de: {fuentes}."]
+
+    partes = []
+    ya_vistas = result.fetched - result.new - result.filled
+    if ya_vistas > 0:
+        partes.append(f"{ya_vistas} ya vistas o repetidas")
+    if result.filled:
+        partes.append(f"{result.filled} ya cubiertas")
+    if result.deferred:
+        partes.append(f"{result.deferred} diferidas para la próxima corrida")
+    if result.scored:
+        partes.append(f"{result.scored} puntuadas")
+    if partes:
+        lineas.append(" · ".join(partes) + ".")
+
+    if fstats.dropped:
+        porque = ", ".join(f"{n} por {etq}" for etq, n in fstats.by_reason.most_common())
+        lineas.append(f"{fstats.dropped} descartadas por los filtros ({porque}).")
+    if result.scored and not result.matched:
+        lineas.append(f"Ninguna llegó al min_score de {min_score}.")
+
+    if result.skipped:
+        lineas.extend(f"⚠ {nota}" for nota in result.skipped)
+    else:
+        lineas.append("Ningún error en la corrida: el silencio es del mercado, no del sistema.")
+    return lineas
+
+
 def run(profile: dict, dry_run: bool = False) -> RunResult:
     t0 = time.time()
     result = RunResult()
@@ -155,6 +191,10 @@ def run(profile: dict, dry_run: bool = False) -> RunResult:
     result.matched = len(matches)
     result.jobs = matches
     logger.info(f"{len(matches)} de {len(eligible)} pasaron el min_score de {min_score}")
+
+    # Si no hay nada que avisar, el aviso lo explica (ver notify_when_empty).
+    if not matches:
+        notes = notes + empty_run_notes(result, fstats, min_score)
 
     # 7) notificación
     if dry_run:

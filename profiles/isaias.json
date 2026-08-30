@@ -8,7 +8,7 @@
   "min_score": 60,
   "top_n": 5,
   "max_new_per_run": 30,
-  "notify_when_empty": false,
+  "notify_when_empty": true,
   "filters": {
     "location": {
       "country": "Argentina",
