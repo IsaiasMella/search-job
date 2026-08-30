@@ -526,10 +526,6 @@ Requiere: campos nuevos en el modelo `Job` (`aplicado`, `motivo_descarte`, `fech
 
 Ordenado por cómo lo encararía. Tildá a medida que salgan.
 
-### Ahora mismo — 30 segundos
-
-- [ ] **Pegar la API key de Gemini** en `.env`. Sin esto el scoring va por keywords y los puntajes no significan nada.
-
 ### Bloque 1 — La UI local (sección 9)
 
 Es lo próximo. Destraba las dos pestañas y el aprendizaje.

@@ -5,6 +5,7 @@ cuatro lugares distintos según el campo: el perfil, `resume/<nombre>.md`,
 `companies.json` y `.env`.
 """
 
+from vacantia.filters import home_cities
 from vacantia.log import get_logger
 from vacantia.ui import data
 from vacantia.ui.render import avisos, esc
@@ -67,6 +68,8 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
     rrhh = data.fuente_o_crear(perfil, "rrhh") if _tiene(perfil, "rrhh") else {}
     activas = {s.get("type"): s.get("enabled", True) for s in perfil.get("sources") or []}
     rrhh_texto = "\n".join(rrhh.get("profiles") or [])
+    # `city` y `home_city` significan lo mismo; el formulario muestra una sola.
+    ciudades = ", ".join(home_cities(loc))
 
     claves = "".join(
         _campo(clave, clave, "", tipo="password",
@@ -96,11 +99,9 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
 <h2>Dónde</h2>
 <div class="grilla">
   {_campo("pais", "País", _lista(loc.get("country")),
-          ayuda="Vacío = cualquier país.")}
-  {_campo("ciudad", "Sólo esta ciudad", _lista(loc.get("city")),
-          ayuda="Vacío = cualquier ciudad del país.")}
-  {_campo("home_city", "Ciudad donde vivo", _lista(loc.get("home_city")),
-          ayuda="Un presencial acá entra aunque sólo pidas remoto.")}
+          ayuda="Vacío = de todo el mundo. Con el país puesto, el remoto también tiene que ser de acá.")}
+  {_campo("ciudad", "Ciudades a las que puedo ir en persona", ciudades,
+          ayuda="Separadas por coma: Bahía Blanca, Punta Alta. Sólo filtran presencial e híbrido: el remoto entra venga de la ciudad que venga. Y un presencial acá entra aunque pidas sólo remoto.")}
   <div class="campo">
     <label>Modalidades que acepto</label>
     <div class="checks">
@@ -231,8 +232,12 @@ def aplicar(nombre: str, form: dict) -> list[tuple[str, str]]:
     filtros = perfil.setdefault("filters", {})
     loc = filtros.setdefault("location", {})
     loc["country"] = form.get("pais", "").strip()
-    loc["city"] = form.get("ciudad", "").strip()
-    loc["home_city"] = form.get("home_city", "").strip()
+    # Una sola ciudad se guarda como texto y varias como lista: los filtros
+    # aceptan las dos formas. `home_city` era el nombre viejo de este mismo
+    # campo y se borra, para que no queden dos valores peleándose.
+    ciudades = _lista_desde(form.get("ciudad", ""))
+    loc["city"] = ciudades[0] if len(ciudades) == 1 else ciudades
+    loc.pop("home_city", None)
     filtros["work_modes"] = [c for c, _ in MODALIDADES if f"modo_{c}" in form]
     idioma = filtros.setdefault("language", {})
     idioma["allow_english"] = "allow_english" in form

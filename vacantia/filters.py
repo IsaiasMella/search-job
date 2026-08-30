@@ -235,33 +235,44 @@ def passes_work_mode(job: Job, cfg) -> tuple[bool, str]:
 
 
 def home_cities(cfg: dict) -> list[str]:
-    """La ciudad donde vive la persona: `home_city` si está, si no `city`.
+    """Las ciudades a las que la persona puede ir a trabajar en persona.
 
-    Son dos cosas distintas y conviene poder separarlas: `city` acota *dónde*
-    busca (filtro duro), `home_city` dice dónde vive (habilita la excepción de
-    abajo). Cuando el perfil sólo tiene `city` cargada, alcanza: es su ciudad.
+    Es una sola idea con dos nombres por historia: `city` es el campo de
+    siempre y `home_city` el que se agregó después. Significan lo mismo y se
+    acepta una lista — "Bahía Blanca, Punta Alta" para quien vive en el sur,
+    "La Plata, Buenos Aires, CABA" para quien vive en el conurbano.
+
+    **Sólo filtran presencial e híbrido.** Una oferta remota no se descarta por
+    la ciudad: un remoto publicado desde Córdoba se trabaja igual desde Bahía
+    Blanca.
     """
-    return _as_list(cfg.get("home_city")) or _as_list(cfg.get("city"))
+    return _as_list(cfg.get("city")) or _as_list(cfg.get("home_city"))
 
 
 def passes_place(job: Job, location_cfg: dict, modes_cfg) -> tuple[bool, str, str]:
     """Ubicación y modalidad, evaluadas **juntas** — la regla de Bahía Blanca.
 
-    Por separado se perdían ofertas buenas: quien vive en Bahía Blanca y pone
-    `work_modes: ["remote"]` lo hace porque no se muda, no porque le moleste
-    salir de su casa. Un presencial *en Bahía Blanca* le sirve igual, y el
-    filtro de modalidad lo tiraba.
+    El país y la ciudad no filtran lo mismo, y ahí está toda la regla:
 
-    La regla, entonces:
+      - **El país filtra siempre, también al remoto.** "Remoto" no quiere decir
+        "desde cualquier parte del mundo": Argentina es enorme y muchísimas
+        búsquedas remotas de Buenos Aires o Córdoba son para todo el país, que
+        es justo lo que se busca. Al revés, un remoto de Colombia o México suele
+        ser remoto *para Colombia o México* por temas legales de contratación, y
+        traerlo es ruido puro. País vacío en el perfil = todo el mundo.
+      - **La ciudad filtra sólo presencial e híbrido.** Un remoto publicado
+        desde Córdoba se trabaja igual desde Bahía Blanca, así que descartarlo
+        por ciudad sería perder una oferta buena. Ciudad vacía = cualquier lugar
+        del país.
+      - **Presencial o híbrido en las ciudades de uno entra aunque `work_modes`
+        pida sólo remoto.** Es el caso que dio nombre a la regla: quien pone
+        sólo remoto lo hace porque no se muda, no porque le moleste salir de su
+        casa, y un presencial *en su ciudad* le sirve igual. Exige que el aviso
+        *diga* la ciudad: si no la dice no se asume que sea la de uno, porque
+        ahí el falso positivo sería sistemático.
 
-      1. **Remoto en cualquier lado.** Si el aviso dice remoto, la ubicación no
-        filtra: da lo mismo dónde tenga la sede la empresa. Se puede apagar
-        con `location.remote_anywhere: false`.
-      2. **Presencial o híbrido en la ciudad del perfil.** Pasa aunque
-        `work_modes` pida sólo remoto. Exige que el aviso *diga* la ciudad: si
-        no la dice no se asume que sea la de uno, porque ahí el falso positivo
-        sería sistemático (todo presencial sin ciudad entraría).
-      3. **Todo lo demás**, como siempre: primero modalidad, después ubicación.
+    `location.remote_anywhere: true` vuelve al comportamiento viejo, donde el
+    remoto ignora el país. Por defecto está apagado.
 
     Devuelve (pasa, motivo, etiqueta) — la etiqueta es "location" o "work_mode",
     para que FilterStats siga contando por dónde se cayó cada oferta.
@@ -270,37 +281,46 @@ def passes_place(job: Job, location_cfg: dict, modes_cfg) -> tuple[bool, str, st
     if mode not in WORK_MODES:
         mode = ""  # el aviso no lo aclara
     allowed = [norm(m) for m in _as_list(modes_cfg)]
+    countries = _as_list(location_cfg.get("country"))
+    ciudades = home_cities(location_cfg)
 
-    # 1) Remoto: sirve venga de donde venga.
+    def pais_ok() -> tuple[bool, str, str]:
+        if countries and not _country_matches(job.country, countries):
+            return False, f"país '{job.country}' fuera de {', '.join(countries)}", "location"
+        return True, "", ""
+
+    # 1) Remoto: filtra el país, no la ciudad.
     if mode == "remote":
         if allowed and "remote" not in allowed:
             return False, f"modalidad 'remote' no está en {', '.join(allowed)}", "work_mode"
-        if location_cfg.get("remote_anywhere", True):
+        if location_cfg.get("remote_anywhere", False):
             return True, "", ""
+        return pais_ok()
 
-    # 2) Presencial/híbrido en la ciudad de uno: entra aunque work_modes no lo
-    #    liste. Es la excepción que da nombre a la regla.
-    if mode in ("hybrid", "onsite") and job.city:
-        casa = home_cities(location_cfg)
-        countries = _as_list(location_cfg.get("country"))
-        if (
-            casa
-            and _city_matches(job.city, casa)
-            and (not countries or _country_matches(job.country, countries))
-        ):
+    # El país filtra en todos los casos, sea cual sea la modalidad.
+    ok, why, etiqueta = pais_ok()
+    if not ok:
+        return False, why, etiqueta
+
+    # 2) Presencial/híbrido en una de las ciudades de uno: entra aunque
+    #    work_modes no lo liste. Es la excepción que da nombre a la regla.
+    if mode in ("hybrid", "onsite") and job.city and ciudades:
+        if _city_matches(job.city, ciudades):
             logger.debug(
                 f"    regla de Bahía Blanca: '{job.display_title[:45]}' es {mode} "
                 f"en {job.city} — pasa aunque work_modes pida {allowed or 'todas'}"
             )
             return True, "", ""
 
-    # 3) El caso general.
     ok, why = passes_work_mode(job, modes_cfg)
     if not ok:
         return False, why, "work_mode"
-    ok, why = passes_location(job, location_cfg)
-    if not ok:
-        return False, why, "location"
+
+    # 3) La ciudad, sólo para lo que exige estar ahí. Si el aviso no dice de qué
+    #    ciudad es, pasa: puede ser remoto sin aclararlo.
+    if mode in ("hybrid", "onsite") and ciudades and job.city:
+        if not _city_matches(job.city, ciudades):
+            return False, f"ciudad '{job.city}' fuera de {', '.join(ciudades)}", "location"
     return True, "", ""
 
 

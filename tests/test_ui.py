@@ -162,7 +162,7 @@ def test_guardar_escribe_el_perfil_el_cv_y_las_empresas(sitio):
         "perfil": "test",
         "keywords": "Python, SQL",
         "min_score": "70", "top_n": "8", "max_new_per_run": "30",
-        "pais": "Argentina", "ciudad": "", "home_city": "Bahía Blanca",
+        "pais": "Argentina", "ciudad": "Bahía Blanca, Punta Alta",
         "modo_remote": "1", "modo_hybrid": "1",
         "max_english_level": "B1",
         "notify_when_empty": "1",
@@ -176,7 +176,8 @@ def test_guardar_escribe_el_perfil_el_cv_y_las_empresas(sitio):
     perfil = json.loads((tmp / "profiles" / "test.json").read_text(encoding="utf-8"))
     assert perfil["keywords"] == ["Python", "SQL"]
     assert perfil["min_score"] == 70 and perfil["top_n"] == 8
-    assert perfil["filters"]["location"]["home_city"] == "Bahía Blanca"
+    assert perfil["filters"]["location"]["city"] == ["Bahía Blanca", "Punta Alta"]
+    assert "home_city" not in perfil["filters"]["location"]
     assert perfil["filters"]["work_modes"] == ["remote", "hybrid"]
     assert perfil["filters"]["language"]["allow_english"] is False   # no vino tildado
     assert perfil["notify_when_empty"] is True
@@ -281,3 +282,22 @@ def test_el_perfil_nuevo_aparece_en_el_selector(sitio):
     post(base, "/perfil-nuevo", {"nombre": "maria"})
     _, html, _ = get(base, "/trabajos?perfil=test")
     assert 'value="maria"' in html and 'value="test"' in html
+
+
+def test_una_sola_ciudad_se_guarda_como_texto(sitio):
+    base, tmp = sitio
+    post(base, "/datos", {"perfil": "test", "keywords": "Python", "pais": "Argentina",
+                          "ciudad": "  La Plata  "})
+    perfil = json.loads((tmp / "profiles" / "test.json").read_text(encoding="utf-8"))
+    assert perfil["filters"]["location"]["city"] == "La Plata"
+
+
+def test_el_formulario_muestra_la_ciudad_de_un_perfil_viejo_con_home_city(sitio):
+    base, tmp = sitio
+    ruta = tmp / "profiles" / "test.json"
+    perfil = json.loads(ruta.read_text(encoding="utf-8"))
+    perfil["filters"]["location"] = {"country": "Argentina", "city": "",
+                                     "home_city": "Bahía Blanca"}
+    ruta.write_text(json.dumps(perfil), encoding="utf-8")
+    _, html, _ = get(base, "/datos?perfil=test")
+    assert "Bahía Blanca" in html

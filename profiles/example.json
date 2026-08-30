@@ -10,8 +10,7 @@
   "filters": {
     "location": {
       "country": "Argentina",
-      "city": "",
-      "home_city": ""
+      "city": ""
     },
     "work_modes": [],
     "language": {
