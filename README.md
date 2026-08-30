@@ -47,7 +47,13 @@ y `llm.provider = "anthropic"` en el perfil usa la API de Anthropic con `ANTHROP
 ## Perfiles
 
 Cada persona es un JSON en `profiles/`. `--profile isaias` carga `profiles/isaias.json`.
-Usá `profiles/example.json` como molde y `--list-profiles` para ver los que hay.
+`--list-profiles` muestra los que hay.
+
+**No hace falta escribirlo a mano.** En la pantalla (`abrir.bat`), *Mis datos →
+Crear perfil* genera `profiles/<nombre>.json` y `resume/<nombre>.md` a partir del
+molde `profiles/example.json`, con todo en blanco y los huecos marcados
+(`COMPLETAR`, `PEGAR CV ACÁ`) para que cada uno cargue lo suyo desde el
+formulario. Una instalación puede tener varios perfiles conviviendo.
 
 ```jsonc
 {

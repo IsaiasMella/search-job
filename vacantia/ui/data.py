@@ -96,6 +96,7 @@ def crear_perfil(nombre: str) -> str:
         raise FileNotFoundError(f"Falta la plantilla {PLANTILLA_PERFIL}")
 
     data = json.loads(PLANTILLA_PERFIL.read_text(encoding="utf-8"))
+    data.pop("_comentario", None)   # la nota es del molde, no del perfil nuevo
     data["name"] = nombre
     data["cv_path"] = f"resume/{nombre}.md"
     guardar_perfil(nombre, data)

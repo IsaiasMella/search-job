@@ -262,3 +262,22 @@ def test_una_url_que_no_esta_vuelve_a_trabajos(sitio):
     base, _ = sitio
     _, html, url = get(base, "/mensajes?perfil=test&url=https%3A%2F%2Fno-existe.com%2F9")
     assert "trabajos" in url and "No encontré" in html
+
+
+def test_el_perfil_nuevo_sale_del_molde_con_los_huecos_a_la_vista(sitio):
+    """No se inventan datos de nadie: se crea en blanco y lo completa la persona."""
+    base, tmp = sitio
+    post(base, "/perfil-nuevo", {"nombre": "juan pablo"})     # el espacio se normaliza
+    perfil = json.loads((tmp / "profiles" / "juan_pablo.json").read_text(encoding="utf-8"))
+    assert perfil["keywords"] == []
+    assert "COMPLETAR" in perfil["candidate"]["name"]
+    assert "_comentario" not in perfil          # la nota es del molde
+    cv = (tmp / "resume" / "juan_pablo.md").read_text(encoding="utf-8")
+    assert "PEGAR CV ACÁ" in cv
+
+
+def test_el_perfil_nuevo_aparece_en_el_selector(sitio):
+    base, _ = sitio
+    post(base, "/perfil-nuevo", {"nombre": "maria"})
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert 'value="maria"' in html and 'value="test"' in html
