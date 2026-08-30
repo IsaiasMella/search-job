@@ -6,6 +6,7 @@ Que sea linda es otra etapa.
 """
 
 from html import escape
+from urllib.parse import quote
 
 CSS = """
 :root { --borde:#d0d0d0; --gris:#666; --fondo:#fafafa; --verde:#1b7f3b; --rojo:#b3261e; }
@@ -76,6 +77,10 @@ textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-siz
 .herramientas { margin: 0 0 14px; }
 a.boton { display: inline-block; padding: 7px 14px; border-radius: 4px;
           background: #14509b; color: #fff; text-decoration: none; font-size: 14px; }
+a.chico { font-size: 13px; }
+.mensaje textarea { min-height: 150px; }
+.mensaje { background: #fff; border: 1px solid var(--borde); border-radius: 6px;
+           padding: 14px; margin-bottom: 14px; }
 .vacio { color: var(--gris); background: #fff; border: 1px dashed var(--borde);
          border-radius: 6px; padding: 24px; text-align: center; }
 @media (max-width: 760px) {
@@ -178,6 +183,8 @@ def _tarjeta(oferta: dict, perfil: str, ver: str) -> str:
 
     razon = oferta.get("reason") or ""
     stack = oferta.get("stack") or ""
+    mensajes_link = (f'<a class="chico" href="/mensajes?perfil={esc(perfil)}'
+                     f'&url={quote(url, safe="")}">Mensaje para escribirle</a>')
     return f"""<article class="oferta">
   <div class="{clase}">{esc(score if score is not None else '?')}</div>
   <div class="datos">
@@ -185,6 +192,7 @@ def _tarjeta(oferta: dict, perfil: str, ver: str) -> str:
     <p class="meta">{esc(meta)}</p>
     {f'<p class="meta">{esc(stack)}</p>' if stack else ''}
     {f'<p class="razon">{esc(razon)}</p>' if razon else ''}
+    <p class="meta">{mensajes_link}</p>
   </div>
   {acciones}
 </article>"""
@@ -211,3 +219,36 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
 </p>
 <div class="filtros">{filtros}</div>
 {listado}"""
+
+
+# --- mensajes para el reclutador -------------------------------------------
+
+def mensajes(perfil: str, oferta: dict, textos: dict[str, str], con_llm: bool,
+             avisos_: list[tuple[str, str]]) -> str:
+    """Los dos moldes, en cajas de texto para copiar y pegar."""
+    titulo = oferta.get("scored_title") or oferta.get("title") or "(sin título)"
+    url = oferta.get("url", "")
+    cajas = "".join(
+        f"""<div class="mensaje">
+  <h3>{esc(etiqueta)}</h3>
+  <textarea rows="8" onclick="this.select()">{esc(textos.get(clave, ''))}</textarea>
+  <p class="ayuda">Clic adentro para seleccionar todo y copiar.</p>
+</div>"""
+        for clave, etiqueta in (("dm", "DM por LinkedIn"), ("mail", "Mail a RRHH"))
+    )
+    boton = "" if con_llm else f"""<form method="post" action="/mensajes">
+  <input type="hidden" name="perfil" value="{esc(perfil)}">
+  <input type="hidden" name="url" value="{esc(url)}">
+  <button type="submit">Completar con IA leyendo el aviso y mi CV</button>
+  <p class="ayuda">Usa una llamada al modelo. Sin esto, completá a mano lo que
+  está entre llaves.</p>
+</form>"""
+    return f"""{avisos(avisos_)}
+<h2>Mensaje para {esc(oferta.get('company') or 'quien publicó')}</h2>
+<p class="meta">{esc(titulo)} — <a href="{esc(url)}" target="_blank" rel="noopener">ver el aviso</a></p>
+<p class="herramientas"><a class="boton" href="/trabajos?perfil={esc(perfil)}">Volver a Trabajos</a></p>
+{cajas}
+{boton}
+<p class="ayuda">Estos moldes son un borrador de la sección 10 de COSTOS.md:
+máximo 4 líneas, cero adjetivos sobre uno mismo, y cerrar con una pregunta
+fácil de responder.</p>"""

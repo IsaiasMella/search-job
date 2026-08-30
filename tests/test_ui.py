@@ -245,3 +245,20 @@ def test_nombres_invalidos_o_repetidos_se_rechazan(sitio, nombre):
     _, html, _ = post(base, "/perfil-nuevo", {"nombre": nombre})
     assert "aviso error" in html
     assert sorted(p.name for p in (tmp / "profiles").glob("*.json")) == antes
+
+
+# --- mensajes para el reclutador -------------------------------------------
+
+def test_la_pagina_de_mensajes_trae_los_dos_moldes(sitio):
+    base, _ = sitio
+    _, html, _ = get(base, "/mensajes?perfil=test&url=https%3A%2F%2Fempresa.com%2Fjobs%2F1")
+    assert "DM por LinkedIn" in html and "Mail a RRHH" in html
+    assert "Data Scientist" in html and "ACME" in html
+    # Sin credenciales de LLM, los huecos quedan a la vista para completar.
+    assert "{tu logro" in html or "logro" in html
+
+
+def test_una_url_que_no_esta_vuelve_a_trabajos(sitio):
+    base, _ = sitio
+    _, html, url = get(base, "/mensajes?perfil=test&url=https%3A%2F%2Fno-existe.com%2F9")
+    assert "trabajos" in url and "No encontré" in html

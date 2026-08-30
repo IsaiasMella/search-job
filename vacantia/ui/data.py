@@ -14,8 +14,9 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from vacantia.config import PROFILES_DIR, profile_path
+from vacantia.config import PROFILES_DIR, load_profile, load_resume, profile_path
 from vacantia.log import get_logger
+from vacantia.models import Job
 from vacantia.state import State
 
 logger = get_logger()
@@ -306,3 +307,34 @@ def guardar_feedback(nombre_perfil: str, url: str, aplicado: bool, motivo: str) 
         url, aplicado=aplicado, motivo_descarte=motivo,
         fecha_feedback=datetime.now(timezone.utc).isoformat(),
     )
+
+
+def buscar_oferta(nombre_perfil: str, url: str) -> dict | None:
+    """La oferta del historial con esa URL, o None."""
+    clave = (url or "").split("?")[0].rstrip("/").lower()
+    for entrada in State(nombre_perfil).load_history():
+        if entrada.get("url", "").split("?")[0].rstrip("/").lower() == clave:
+            return entrada
+    return None
+
+
+def como_job(oferta: dict) -> Job:
+    return Job.from_dict(oferta)
+
+
+def mensajes_con_llm(nombre_perfil: str, job: Job) -> tuple[dict[str, str], bool]:
+    """Los dos mensajes escritos por el modelo. (textos, los escribió el modelo).
+
+    Usa `load_profile` y no `leer_perfil` porque acá sí hacen falta los secretos
+    resueltos: es el único lugar de la UI que llama a una API.
+    """
+    from vacantia import mensajes as mensajes_mod
+
+    perfil = load_profile(nombre_perfil)
+    cv = load_resume(perfil)
+    textos, escritos = {}, []
+    for tipo in mensajes_mod.TIPOS:
+        texto, ok = mensajes_mod.generar(job, cv, perfil, tipo)
+        textos[tipo] = texto
+        escritos.append(ok)
+    return textos, all(escritos)

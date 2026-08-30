@@ -96,6 +96,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._get_datos(perfil, params)
             if ruta == "/cv.pdf":
                 return self._get_cv_pdf(perfil)
+            if ruta == "/mensajes":
+                return self._get_mensajes(perfil, params)
         except FileNotFoundError as e:
             return self._pagina("Error", render.avisos([("error", str(e))]), perfil,
                                 "trabajos", 404)
@@ -139,6 +141,31 @@ class Handler(BaseHTTPRequestHandler):
         self._responder(contenido, tipo="application/pdf",
                         extra={"Content-Disposition": f'attachment; filename="{nombre}"'})
 
+    def _get_mensajes(self, perfil: str, params: dict, con_llm: bool = False) -> None:
+        """Los moldes para escribirle a quien publicó. Con `con_llm`, se los
+        completa el modelo leyendo el aviso y el CV (cuesta una llamada)."""
+        from vacantia import mensajes as mensajes_mod
+
+        url = (params.get("url") or [""])[0]
+        oferta = data.buscar_oferta(perfil, url)
+        if oferta is None:
+            return self._redirigir("/trabajos", perfil=perfil,
+                                   error="No encontré esa oferta en el historial.")
+
+        datos = data.leer_perfil(perfil)
+        job = data.como_job(oferta)
+        avisos_: list[tuple[str, str]] = []
+        if con_llm:
+            textos, escrito = data.mensajes_con_llm(perfil, job)
+            avisos_.append(("ok", "Mensajes completados con IA.") if escrito else
+                           ("error", "No pude usar el modelo — quedan los moldes para "
+                                     "completar a mano."))
+        else:
+            textos = {t: mensajes_mod.molde(job, datos, t) for t in mensajes_mod.TIPOS}
+            escrito = False
+        cuerpo = render.mensajes(perfil, oferta, textos, escrito, avisos_)
+        self._pagina("Mensajes", cuerpo, perfil, "trabajos")
+
     def _get_datos(self, perfil: str, params: dict) -> None:
         cuerpo = formulario.render(perfil, data.leer_perfil(perfil), _mensajes(params))
         self._pagina("Mis datos", cuerpo, perfil, "datos")
@@ -156,6 +183,9 @@ class Handler(BaseHTTPRequestHandler):
             if ruta == "/datos":
                 mensajes = formulario.aplicar(perfil, form)
                 return self._redirigir("/datos", perfil=perfil, ok=_resumen(mensajes))
+            if ruta == "/mensajes":
+                return self._get_mensajes(perfil, {"url": [form.get("url", "")]},
+                                          con_llm=True)
             if ruta == "/perfil-nuevo":
                 nuevo = data.crear_perfil(form.get("nombre", ""))
                 return self._redirigir(
