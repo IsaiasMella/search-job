@@ -1,0 +1,308 @@
+"""Lectura y escritura de los archivos que edita la UI.
+
+La UI no habla con el motor: escribe sobre los mismos archivos que el motor ya
+usa (`profiles/<nombre>.json`, `resume/<nombre>.md`, `companies.json`, `.env` y
+`state/<nombre>/`). Una sola fuente de verdad, sin sincronizar nada.
+
+Todo lo que toca disco vive acá, así `server.py` se ocupa sólo de HTTP.
+"""
+
+import json
+import os
+import re
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+
+from vacantia.config import PROFILES_DIR, profile_path
+from vacantia.log import get_logger
+from vacantia.state import State
+
+logger = get_logger()
+
+ENV_FILE = Path(".env")
+RESUME_DIR = Path("resume")
+PLANTILLA_PERFIL = PROFILES_DIR / "example.json"
+PLANTILLA_CV = RESUME_DIR / "EJEMPLO_CV.md"
+
+#: Claves que la UI deja editar en el `.env`. El resto del archivo no se toca.
+CLAVES_ENV = (
+    "TELEGRAM_CHAT_ID",
+    "TELEGRAM_TOKEN",
+    "GEMINI_API_KEY",
+    "TINYFISH_API_KEY",
+    "OPENROUTER_API_KEY",
+)
+
+NOMBRE_VALIDO = re.compile(r"^[a-z0-9_-]{2,32}$")
+
+
+# --- perfiles ---------------------------------------------------------------
+
+def perfiles() -> list[str]:
+    """Los perfiles editables. `example` es la plantilla, no se lista."""
+    if not PROFILES_DIR.exists():
+        return []
+    return sorted(p.stem for p in PROFILES_DIR.glob("*.json") if p.stem != "example")
+
+
+def leer_perfil(nombre: str) -> dict:
+    """El JSON tal cual está en disco.
+
+    A propósito NO se usa `config.load_profile`: esa resuelve los `${VAR}` a su
+    valor real, y guardar eso escribiría las claves de la API dentro del perfil,
+    que se versiona en git.
+    """
+    ruta = profile_path(nombre)
+    if not ruta.exists():
+        raise FileNotFoundError(f"No existe el perfil '{nombre}'")
+    return json.loads(ruta.read_text(encoding="utf-8"))
+
+
+def guardar_perfil(nombre: str, data: dict) -> None:
+    ruta = profile_path(nombre)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    _escribir_atomico(ruta, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    logger.info(f"[ui] Perfil guardado: {ruta}")
+
+
+def _escribir_atomico(ruta: Path, texto: str) -> None:
+    """Escribe a un temporal y reemplaza. Si se corta la luz a mitad de un
+    guardado, el archivo viejo queda entero en vez de truncado."""
+    tmp = ruta.with_suffix(ruta.suffix + ".tmp")
+    tmp.write_text(texto, encoding="utf-8")
+    tmp.replace(ruta)
+
+
+def crear_perfil(nombre: str) -> str:
+    """Perfil nuevo en blanco a partir de la plantilla. Devuelve el nombre.
+
+    No inventa datos de nadie: copia `profiles/example.json` con los
+    placeholders puestos para que la persona los complete desde la UI.
+    """
+    nombre = (nombre or "").strip().lower().replace(" ", "_")
+    if not NOMBRE_VALIDO.match(nombre):
+        raise ValueError(
+            "El nombre tiene que tener entre 2 y 32 letras, números, guiones o "
+            "guiones bajos, sin espacios ni acentos (ej: maria, juan_pablo)."
+        )
+    if nombre == "example":
+        raise ValueError("'example' es la plantilla: elegí otro nombre.")
+    destino = profile_path(nombre)
+    if destino.exists():
+        raise ValueError(f"Ya existe un perfil llamado '{nombre}'.")
+    if not PLANTILLA_PERFIL.exists():
+        raise FileNotFoundError(f"Falta la plantilla {PLANTILLA_PERFIL}")
+
+    data = json.loads(PLANTILLA_PERFIL.read_text(encoding="utf-8"))
+    data["name"] = nombre
+    data["cv_path"] = f"resume/{nombre}.md"
+    guardar_perfil(nombre, data)
+
+    cv = RESUME_DIR / f"{nombre}.md"
+    if not cv.exists():
+        RESUME_DIR.mkdir(parents=True, exist_ok=True)
+        if PLANTILLA_CV.exists():
+            shutil.copyfile(PLANTILLA_CV, cv)
+        else:
+            cv.write_text("# PEGAR CV ACÁ\n", encoding="utf-8")
+        logger.info(f"[ui] CV en blanco creado: {cv}")
+    return nombre
+
+
+# --- CV ---------------------------------------------------------------------
+
+def ruta_cv(perfil: dict) -> Path:
+    return Path(perfil.get("cv_path") or f"resume/{perfil.get('name', 'cv')}.md")
+
+
+def leer_cv(perfil: dict) -> str:
+    ruta = ruta_cv(perfil)
+    return ruta.read_text(encoding="utf-8") if ruta.exists() else ""
+
+
+def guardar_cv(perfil: dict, texto: str) -> None:
+    ruta = ruta_cv(perfil)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    _escribir_atomico(ruta, texto.replace("\r\n", "\n"))
+    logger.info(f"[ui] CV guardado: {ruta} ({len(texto)} chars)")
+
+
+# --- .env -------------------------------------------------------------------
+
+def leer_env() -> dict[str, str]:
+    if not ENV_FILE.exists():
+        return {}
+    valores = {}
+    for linea in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if not linea or linea.startswith("#") or "=" not in linea:
+            continue
+        clave, _, valor = linea.partition("=")
+        valores[clave.strip()] = valor.strip().strip('"').strip("'")
+    return valores
+
+
+def guardar_env(cambios: dict[str, str]) -> list[str]:
+    """Escribe sólo las claves que vienen con valor, respetando el resto.
+
+    Un campo vacío en el formulario significa "no lo cambies", no "borralo":
+    la UI muestra las claves enmascaradas, así que si vaciarlas borrara el
+    valor, entrar a la pantalla y guardar sin tocar nada dejaría a la persona
+    sin credenciales.
+    """
+    cambios = {k: v.strip() for k, v in cambios.items() if k in CLAVES_ENV and v.strip()}
+    if not cambios:
+        return []
+
+    lineas = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else []
+    pendientes = dict(cambios)
+    salida = []
+    for linea in lineas:
+        clave = linea.split("=", 1)[0].strip() if "=" in linea else ""
+        if clave in pendientes and not linea.strip().startswith("#"):
+            salida.append(f"{clave}={pendientes.pop(clave)}")
+        else:
+            salida.append(linea)
+    for clave, valor in pendientes.items():
+        salida.append(f"{clave}={valor}")
+
+    _escribir_atomico(ENV_FILE, "\n".join(salida) + "\n")
+    # Para que la corrida que se dispare desde esta misma sesión las vea.
+    for clave, valor in cambios.items():
+        os.environ[clave] = valor
+    logger.info(f"[ui] .env actualizado: {', '.join(sorted(cambios))}")
+    return sorted(cambios)
+
+
+def enmascarar(valor: str) -> str:
+    """'abc123def456' -> 'abc1…f456'. Para mostrar sin exponer la clave."""
+    valor = (valor or "").strip()
+    if not valor:
+        return ""
+    if len(valor) <= 8:
+        return "•" * len(valor)
+    return f"{valor[:4]}…{valor[-4:]}"
+
+
+# --- empresas ---------------------------------------------------------------
+
+def ruta_companies(perfil: dict) -> Path:
+    fuente = _fuente(perfil, "careers")
+    return Path((fuente or {}).get("companies_file") or "companies.json")
+
+
+def leer_companies(perfil: dict) -> list[dict]:
+    ruta = ruta_companies(perfil)
+    if not ruta.exists():
+        return []
+    try:
+        data = json.loads(ruta.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        logger.warning(f"[ui] {ruta} no es JSON válido — lo muestro vacío")
+        return []
+    return data if isinstance(data, list) else []
+
+
+def companies_a_texto(companies: list[dict]) -> str:
+    """Una empresa por línea: `Nombre | careers_url | dominio`."""
+    return "\n".join(
+        " | ".join(
+            [c.get("name", ""), c.get("careers_url", ""), c.get("search_domain", "")]
+        ).rstrip(" |")
+        for c in companies
+    )
+
+
+def texto_a_companies(texto: str, previas: list[dict]) -> list[dict]:
+    """Parsea el textarea conservando los campos que la UI no muestra.
+
+    `use_search`, `location` y `region` no están en el formulario; si se
+    reconstruyera la lista de cero se perderían (y con ellos el ahorro de las
+    siete empresas que tienen la búsqueda apagada).
+    """
+    por_nombre = {c.get("name", "").strip().lower(): c for c in previas}
+    salida = []
+    for linea in texto.splitlines():
+        linea = linea.strip()
+        if not linea or linea.startswith("#"):
+            continue
+        partes = [p.strip() for p in linea.split("|")]
+        nombre = partes[0]
+        if not nombre:
+            continue
+        entrada = dict(por_nombre.get(nombre.lower(), {}))
+        entrada["name"] = nombre
+        if len(partes) > 1 and partes[1]:
+            entrada["careers_url"] = partes[1]
+        if len(partes) > 2 and partes[2]:
+            entrada["search_domain"] = partes[2]
+        entrada.setdefault("careers_url", "")
+        salida.append(entrada)
+    return salida
+
+
+def guardar_companies(perfil: dict, companies: list[dict]) -> None:
+    ruta = ruta_companies(perfil)
+    _escribir_atomico(ruta, json.dumps(companies, indent=2, ensure_ascii=False) + "\n")
+    logger.info(f"[ui] {ruta} actualizado ({len(companies)} empresa(s))")
+
+
+# --- fuentes dentro del perfil ---------------------------------------------
+
+def _fuente(perfil: dict, tipo: str) -> dict | None:
+    for entrada in perfil.get("sources", []) or []:
+        if entrada.get("type") == tipo:
+            return entrada
+    return None
+
+
+def fuente_o_crear(perfil: dict, tipo: str, defaults: dict | None = None) -> dict:
+    """Devuelve el bloque de esa fuente en el perfil, creándolo si no está."""
+    encontrada = _fuente(perfil, tipo)
+    if encontrada is not None:
+        return encontrada
+    nueva = {"type": tipo, "enabled": True, **(defaults or {})}
+    perfil.setdefault("sources", []).append(nueva)
+    return nueva
+
+
+# --- ofertas ----------------------------------------------------------------
+
+#: Cuántas mostrar en la pestaña Trabajos. Con 3 corridas por día y ~25 ofertas
+#: nuevas diarias, 300 son unas dos semanas de historial.
+MAX_OFERTAS = 300
+
+
+def ofertas(nombre_perfil: str, ver: str = "pendientes") -> list[dict]:
+    """Las ofertas del historial, de la más nueva a la más vieja.
+
+    `ver`: pendientes (sin marcar) | aplicadas | descartadas | todas.
+    """
+    historial = State(nombre_perfil).load_history()
+    historial.sort(key=lambda h: h.get("found_at", ""), reverse=True)
+
+    if ver == "aplicadas":
+        historial = [h for h in historial if h.get("aplicado") is True]
+    elif ver == "descartadas":
+        historial = [h for h in historial if h.get("aplicado") is False]
+    elif ver == "pendientes":
+        historial = [h for h in historial if h.get("aplicado") is None]
+    return historial[:MAX_OFERTAS]
+
+
+def contar_ofertas(nombre_perfil: str) -> dict[str, int]:
+    historial = State(nombre_perfil).load_history()
+    return {
+        "todas": len(historial),
+        "pendientes": sum(1 for h in historial if h.get("aplicado") is None),
+        "aplicadas": sum(1 for h in historial if h.get("aplicado") is True),
+        "descartadas": sum(1 for h in historial if h.get("aplicado") is False),
+    }
+
+
+def guardar_feedback(nombre_perfil: str, url: str, aplicado: bool, motivo: str) -> bool:
+    return State(nombre_perfil).record_feedback(
+        url, aplicado=aplicado, motivo_descarte=motivo,
+        fecha_feedback=datetime.now(timezone.utc).isoformat(),
+    )

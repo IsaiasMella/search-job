@@ -158,6 +158,24 @@ oferta.
 
 ---
 
+## La pantalla local
+
+```bash
+python -m vacantia.ui          # http://localhost:8756, abre el navegador solo
+```
+
+En Windows: doble clic en `abrir.bat`. Escucha sólo en `127.0.0.1`, así que no
+se ve desde otra máquina ni desde internet, y por eso no pide contraseña.
+
+- **Trabajos** — las ofertas puntuadas, con dos botones: *Apliqué* (verde) y
+  *No apliqué* (rojo). El rojo pide un motivo obligatorio; se guarda en
+  `aplicado` / `motivo_descarte` / `fecha_feedback` dentro de
+  `state/<perfil>/job_history.json`.
+- **Mis datos** — el perfil sin tocar el JSON: CV, palabras clave, país/ciudad,
+  modalidad, idioma, fuentes, empresas a seguir, perfiles de RRHH y las claves
+  (que van al `.env`, no al perfil). Desde ahí también se crea un perfil nuevo
+  en blanco para otra persona de la casa.
+
 ## Comandos
 
 ```bash
