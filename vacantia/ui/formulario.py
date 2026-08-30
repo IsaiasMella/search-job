@@ -156,9 +156,18 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
          ayuda="Una URL por línea (perfil de LinkedIn, página de la consultora...).")}
 </div>
 
+<h2>Mi Telegram</h2>
+<div class="grilla">
+  {_campo("chat_id", "Mi chat de Telegram", data.chat_id_de(perfil),
+          ayuda=("Es TUYO, no de la computadora: si en esta máquina busca trabajo "
+                 "más de una persona, cada una pone el suyo acá y recibe sólo sus "
+                 "ofertas. Vacío = usa el chat compartido del archivo .env."))}
+</div>
+
 <h2>Claves</h2>
 <div class="grilla">{claves}</div>
-<p class="ayuda">Se guardan en el archivo .env de esta carpeta, no en internet.</p>
+<p class="ayuda">Estas sí se comparten entre todos los perfiles de esta computadora.
+Se guardan en el archivo .env de esta carpeta, no en internet.</p>
 
 <h2>Datos personales</h2>
 <div class="grilla">
@@ -253,6 +262,9 @@ def aplicar(nombre: str, form: dict) -> list[tuple[str, str]]:
         bloque["enabled"] = f"fuente_{tipo}" in form
     rrhh = data.fuente_o_crear(perfil, "rrhh")
     rrhh["profiles"] = [u.strip() for u in form.get("rrhh", "").splitlines() if u.strip()]
+
+    if "chat_id" in form:
+        data.guardar_chat_id(perfil, form.get("chat_id", ""))
 
     data.guardar_perfil(nombre, perfil)
     mensajes.append(("ok", "Datos guardados."))

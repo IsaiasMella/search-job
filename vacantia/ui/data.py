@@ -27,13 +27,21 @@ PLANTILLA_PERFIL = PROFILES_DIR / "example.json"
 PLANTILLA_CV = RESUME_DIR / "EJEMPLO_CV.md"
 
 #: Claves que la UI deja editar en el `.env`. El resto del archivo no se toca.
+#:
+#: El TELEGRAM_CHAT_ID NO está acá a propósito: es el único dato que no se
+#: comparte. Dos personas que usan la misma computadora comparten la clave del
+#: bot y las de las APIs, pero cada una tiene que recibir SUS ofertas en SU
+#: Telegram, así que el chat_id va dentro del perfil (ver `chat_id_de`).
 CLAVES_ENV = (
-    "TELEGRAM_CHAT_ID",
     "TELEGRAM_TOKEN",
     "GEMINI_API_KEY",
     "TINYFISH_API_KEY",
     "OPENROUTER_API_KEY",
 )
+
+#: Lo que se deja en el perfil cuando la persona no carga un chat propio: cae
+#: al TELEGRAM_CHAT_ID del .env, que es como venía funcionando.
+CHAT_ID_COMPARTIDO = "${TELEGRAM_CHAT_ID}"
 
 NOMBRE_VALIDO = re.compile(r"^[a-z0-9_-]{2,32}$")
 
@@ -339,3 +347,28 @@ def mensajes_con_llm(nombre_perfil: str, job: Job) -> tuple[dict[str, str], bool
         textos[tipo] = texto
         escritos.append(ok)
     return textos, all(escritos)
+
+
+# --- Telegram por persona ---------------------------------------------------
+
+def _telegram(perfil: dict) -> dict:
+    """El bloque del notificador de Telegram, creándolo si no está."""
+    for entrada in perfil.get("notifiers") or []:
+        if entrada.get("type") == "telegram":
+            return entrada
+    nuevo = {"type": "telegram", "enabled": True, "token": "${TELEGRAM_TOKEN}",
+             "chat_id": CHAT_ID_COMPARTIDO}
+    perfil.setdefault("notifiers", []).append(nuevo)
+    return nuevo
+
+
+def chat_id_de(perfil: dict) -> str:
+    """El chat propio de esta persona, o "" si usa el compartido del .env."""
+    valor = str(_telegram(perfil).get("chat_id") or "").strip()
+    return "" if valor.startswith("${") else valor
+
+
+def guardar_chat_id(perfil: dict, chat_id: str) -> None:
+    """Vacío = volver al chat compartido del .env."""
+    chat_id = (chat_id or "").strip()
+    _telegram(perfil)["chat_id"] = chat_id or CHAT_ID_COMPARTIDO

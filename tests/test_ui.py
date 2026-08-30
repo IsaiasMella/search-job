@@ -198,10 +198,10 @@ def test_guardar_no_pisa_las_claves_con_vacio(sitio):
     base, tmp = sitio
     (tmp / ".env").write_text("TELEGRAM_TOKEN=abc123\n", encoding="utf-8")
     post(base, "/datos", {"perfil": "test", "keywords": "Python",
-                          "TELEGRAM_TOKEN": "", "TELEGRAM_CHAT_ID": "555"})
+                          "TELEGRAM_TOKEN": "", "GEMINI_API_KEY": "nueva"})
     env = (tmp / ".env").read_text(encoding="utf-8")
     assert "TELEGRAM_TOKEN=abc123" in env      # no se borró
-    assert "TELEGRAM_CHAT_ID=555" in env       # se agregó
+    assert "GEMINI_API_KEY=nueva" in env       # se agregó
 
 
 # --- CV en PDF -------------------------------------------------------------
@@ -301,3 +301,45 @@ def test_el_formulario_muestra_la_ciudad_de_un_perfil_viejo_con_home_city(sitio)
     ruta.write_text(json.dumps(perfil), encoding="utf-8")
     _, html, _ = get(base, "/datos?perfil=test")
     assert "Bahía Blanca" in html
+
+
+# --- Telegram, que es de cada persona y no de la computadora ----------------
+
+def test_cada_perfil_guarda_su_propio_chat_de_telegram(sitio):
+    """Dos personas en la misma compu tienen que recibir sus propias ofertas."""
+    base, tmp = sitio
+    post(base, "/perfil-nuevo", {"nombre": "novio"})
+    post(base, "/datos", {"perfil": "test", "keywords": "Python", "chat_id": "111"})
+    post(base, "/datos", {"perfil": "novio", "keywords": "Java", "chat_id": "222"})
+
+    def chat_de(nombre):
+        perfil = json.loads((tmp / "profiles" / f"{nombre}.json").read_text(encoding="utf-8"))
+        return {n["type"]: n for n in perfil["notifiers"]}["telegram"]["chat_id"]
+
+    assert chat_de("test") == "111"
+    assert chat_de("novio") == "222"
+
+
+def test_sin_chat_propio_se_usa_el_compartido_del_env(sitio):
+    base, tmp = sitio
+    post(base, "/datos", {"perfil": "test", "keywords": "Python", "chat_id": "  "})
+    perfil = json.loads((tmp / "profiles" / "test.json").read_text(encoding="utf-8"))
+    telegram = {n["type"]: n for n in perfil["notifiers"]}["telegram"]
+    assert telegram["chat_id"] == "${TELEGRAM_CHAT_ID}"
+
+
+def test_el_chat_propio_se_muestra_en_el_formulario(sitio):
+    base, _ = sitio
+    post(base, "/datos", {"perfil": "test", "keywords": "Python", "chat_id": "98765"})
+    _, html, _ = get(base, "/datos?perfil=test")
+    assert "98765" in html
+
+
+def test_la_clave_del_bot_sigue_siendo_compartida(sitio):
+    """El token del bot es de la computadora; el chat, de cada uno."""
+    base, tmp = sitio
+    post(base, "/datos", {"perfil": "test", "keywords": "Python",
+                          "TELEGRAM_TOKEN": "123:abc", "chat_id": "111"})
+    assert "TELEGRAM_TOKEN=123:abc" in (tmp / ".env").read_text(encoding="utf-8")
+    perfil = json.loads((tmp / "profiles" / "test.json").read_text(encoding="utf-8"))
+    assert "123:abc" not in json.dumps(perfil)      # nunca en el perfil

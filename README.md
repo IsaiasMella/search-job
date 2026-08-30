@@ -188,6 +188,12 @@ se ve desde otra máquina ni desde internet, y por eso no pide contraseña.
   (que van al `.env`, no al perfil). Desde ahí también se crea un perfil nuevo
   en blanco para otra persona de la casa.
 
+**El chat de Telegram es de cada persona, no de la computadora.** Las claves
+—el token del bot, Gemini, TinyFish— se comparten entre todos los perfiles de la
+máquina, pero el `chat_id` se guarda dentro de cada perfil: si en una misma PC
+buscan dos personas, cada una recibe sólo sus ofertas. Vacío = usa el
+`TELEGRAM_CHAT_ID` compartido del `.env`.
+
 ## Comandos
 
 ```bash
