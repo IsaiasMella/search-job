@@ -74,7 +74,7 @@ y Pune bajo una entrada que dice "Buenos Aires").
 
 ```jsonc
 "filters": {
-  "location": { "country": "Argentina", "city": "" },
+  "location": { "country": "Argentina", "city": "", "home_city": "Bahía Blanca" },
   "work_modes": ["remote", "hybrid"],
   "language": { "allow_english": false, "max_english_level": "A2" }
 }
@@ -85,12 +85,26 @@ y Pune bajo una entrada que dice "Buenos Aires").
 | `country` y `city` vacíos | ofertas de cualquier lado |
 | sólo `country` | cualquier ciudad de ese país |
 | `country` + `city` | únicamente esa ciudad |
+| `home_city` | la ciudad donde vivís — ver la regla de abajo |
+| `remote_anywhere: false` | aplica el filtro de país también a las remotas |
 | `work_modes` vacío | todas las modalidades |
 | `work_modes: ["remote"]` | sólo remoto (lo que no aclara modalidad, pasa) |
 | `allow_english: true` | avisos en español y en inglés |
 | `allow_english: false` | sólo en español, y descarta los que pidan inglés B1+ |
 
 Tanto `country` como `city` y `work_modes` aceptan un string o una lista.
+
+**Ubicación y modalidad se evalúan juntas (la "regla de Bahía Blanca").** Por
+separado se perdían ofertas: quien pone `work_modes: ["remote"]` lo hace porque
+no se muda, no porque le moleste salir de su casa, y un presencial *en su
+ciudad* le sirve igual. Entonces:
+
+1. **Remoto en cualquier lado** — si el aviso dice remoto, la ubicación no
+   filtra (se apaga con `remote_anywhere: false`).
+2. **Presencial o híbrido en `home_city`** — pasa aunque `work_modes` pida sólo
+   remoto. Requiere que el aviso *diga* la ciudad: si no la dice, no se asume
+   que sea la tuya. Si no cargás `home_city` se usa `city`.
+3. Todo lo demás, como siempre: primero modalidad, después ubicación.
 
 **Regla transversal: lo que el aviso no dice, no filtra.** Si no aclara país,
 modalidad o idioma, la oferta pasa igual — es preferible un falso positivo que

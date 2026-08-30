@@ -179,6 +179,76 @@ def passes_work_mode(job: Job, cfg) -> tuple[bool, str]:
     return True, ""
 
 
+def home_cities(cfg: dict) -> list[str]:
+    """La ciudad donde vive la persona: `home_city` si está, si no `city`.
+
+    Son dos cosas distintas y conviene poder separarlas: `city` acota *dónde*
+    busca (filtro duro), `home_city` dice dónde vive (habilita la excepción de
+    abajo). Cuando el perfil sólo tiene `city` cargada, alcanza: es su ciudad.
+    """
+    return _as_list(cfg.get("home_city")) or _as_list(cfg.get("city"))
+
+
+def passes_place(job: Job, location_cfg: dict, modes_cfg) -> tuple[bool, str, str]:
+    """Ubicación y modalidad, evaluadas **juntas** — la regla de Bahía Blanca.
+
+    Por separado se perdían ofertas buenas: quien vive en Bahía Blanca y pone
+    `work_modes: ["remote"]` lo hace porque no se muda, no porque le moleste
+    salir de su casa. Un presencial *en Bahía Blanca* le sirve igual, y el
+    filtro de modalidad lo tiraba.
+
+    La regla, entonces:
+
+      1. **Remoto en cualquier lado.** Si el aviso dice remoto, la ubicación no
+        filtra: da lo mismo dónde tenga la sede la empresa. Se puede apagar
+        con `location.remote_anywhere: false`.
+      2. **Presencial o híbrido en la ciudad del perfil.** Pasa aunque
+        `work_modes` pida sólo remoto. Exige que el aviso *diga* la ciudad: si
+        no la dice no se asume que sea la de uno, porque ahí el falso positivo
+        sería sistemático (todo presencial sin ciudad entraría).
+      3. **Todo lo demás**, como siempre: primero modalidad, después ubicación.
+
+    Devuelve (pasa, motivo, etiqueta) — la etiqueta es "location" o "work_mode",
+    para que FilterStats siga contando por dónde se cayó cada oferta.
+    """
+    mode = norm(job.work_mode)
+    if mode not in WORK_MODES:
+        mode = ""  # el aviso no lo aclara
+    allowed = [norm(m) for m in _as_list(modes_cfg)]
+
+    # 1) Remoto: sirve venga de donde venga.
+    if mode == "remote":
+        if allowed and "remote" not in allowed:
+            return False, f"modalidad 'remote' no está en {', '.join(allowed)}", "work_mode"
+        if location_cfg.get("remote_anywhere", True):
+            return True, "", ""
+
+    # 2) Presencial/híbrido en la ciudad de uno: entra aunque work_modes no lo
+    #    liste. Es la excepción que da nombre a la regla.
+    if mode in ("hybrid", "onsite") and job.city:
+        casa = home_cities(location_cfg)
+        countries = _as_list(location_cfg.get("country"))
+        if (
+            casa
+            and _city_matches(job.city, casa)
+            and (not countries or _country_matches(job.country, countries))
+        ):
+            logger.debug(
+                f"    regla de Bahía Blanca: '{job.display_title[:45]}' es {mode} "
+                f"en {job.city} — pasa aunque work_modes pida {allowed or 'todas'}"
+            )
+            return True, "", ""
+
+    # 3) El caso general.
+    ok, why = passes_work_mode(job, modes_cfg)
+    if not ok:
+        return False, why, "work_mode"
+    ok, why = passes_location(job, location_cfg)
+    if not ok:
+        return False, why, "location"
+    return True, "", ""
+
+
 def _english_level_rank(level: str) -> int:
     """-1 si no pide inglés o no se sabe; si no, la posición en CEFR_ORDER."""
     lvl = norm(level)[:2]
@@ -282,20 +352,22 @@ def apply_filters(jobs: list[Job], profile: dict) -> tuple[list[Job], FilterStat
     kept: list[Job] = []
     dropped: list[tuple[Job, str]] = []
     for job in jobs:
-        for etiqueta, check, conf in (
-            ("location", passes_location, location_cfg),
-            ("work_mode", passes_work_mode, modes_cfg),
-            ("language", passes_language, language_cfg),
-        ):
-            ok, why = check(job, conf)
-            if not ok:
-                dropped.append((job, why))
-                stats.by_reason[etiqueta] += 1
-                if etiqueta == "language":
-                    stats.english_dropped.append(job)
-                break
-        else:
-            kept.append(job)
+        # Ubicación y modalidad van juntas (regla de Bahía Blanca), el idioma
+        # aparte. `passes_place` ya devuelve con qué etiqueta contar el descarte.
+        ok, why, etiqueta = passes_place(job, location_cfg, modes_cfg)
+        if not ok:
+            dropped.append((job, why))
+            stats.by_reason[etiqueta] += 1
+            continue
+
+        ok, why = passes_language(job, language_cfg)
+        if not ok:
+            dropped.append((job, why))
+            stats.by_reason["language"] += 1
+            stats.english_dropped.append(job)
+            continue
+
+        kept.append(job)
 
     stats.kept, stats.dropped = len(kept), len(dropped)
     if dropped:

@@ -13,7 +13,8 @@
   "filters": {
     "location": {
       "country": "",
-      "city": ""
+      "city": "",
+      "home_city": ""
     },
     "work_modes": [],
     "language": {

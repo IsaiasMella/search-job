@@ -12,7 +12,9 @@
   "filters": {
     "location": {
       "country": "Argentina",
-      "city": ""
+      "city": "",
+      "home_city": "Bahía Blanca",
+      "remote_anywhere": true
     },
     "work_modes": [
       "remote"
