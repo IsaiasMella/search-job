@@ -20,6 +20,12 @@ SCORE_BATCH_SIZE = 6
 # Techo de salida. Los modelos free de OpenRouter admiten mucho más (nemotron
 # llega a 235k), el 4096 por defecto de llm.py era lo que truncaba.
 SCORE_MAX_TOKENS = 8192
+# Pausa entre lotes. Los planes gratis limitan por MINUTO (Gemini 5-15 req/min,
+# OpenRouter 20), y con max_new_per_run alto o muchas empresas nuevas una
+# corrida puede mandar varios lotes seguidos. Cinco segundos alcanzan para no
+# rozar el techo y no se notan en una corrida que tarda minutos.
+# Se puede ajustar con "llm": {"batch_delay": N} en el perfil.
+SCORE_BATCH_DELAY = 5.0
 
 SCORE_PROMPT = """You are evaluating job postings for a candidate. Output ONLY a JSON array, no other text.
 
@@ -304,10 +310,14 @@ def score_jobs(jobs: list[Job], resume: str, profile: dict) -> list[Job]:
             "Sin credenciales de LLM (OPENROUTER_API_KEY) — usando scoring heurístico por keywords."
         )
 
+    demora = float((profile.get("llm") or {}).get("batch_delay", SCORE_BATCH_DELAY))
     out: list[Job] = []
     for i in range(0, len(jobs), SCORE_BATCH_SIZE):
         batch = jobs[i: i + SCORE_BATCH_SIZE]
         if use_llm:
+            if i and demora > 0:
+                logger.debug(f"  Espero {demora:.0f}s entre lotes (límite por minuto)")
+                time.sleep(demora)
             try:
                 out.extend(_score_batch_with_llm(batch, resume, profile, min_score))
                 continue

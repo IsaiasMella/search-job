@@ -142,66 +142,41 @@ if ($LASTEXITCODE -ne 0) {
 }
 Ok "El programa arranca bien"
 
-# Perfil: si hay uno solo, se usa ese. Si hay varios, se pregunta.
+# Perfiles: pueden ser varios en la misma PC (dos personas de la misma casa).
+# No se pregunta cual: se programan TODOS, escalonados.
 $Perfiles = @(Get-ChildItem (Join-Path $RaizProyecto "profiles") -Filter *.json |
               Where-Object { $_.BaseName -ne "example" } |
               ForEach-Object { $_.BaseName })
 
 if ($Perfiles.Count -eq 0) {
-    Error2 "No hay ningun perfil en la carpeta profiles\. Avisale a Isaias."
-    Read-Host "`n  Enter para cerrar"
-    exit 1
-} elseif ($Perfiles.Count -eq 1) {
-    $Perfil = $Perfiles[0]
-    Ok "Perfil: $Perfil"
-} else {
-    Write-Host "  Hay varios perfiles: $($Perfiles -join ', ')"
-    $Perfil = Read-Host "  Escribi cual usar"
-    if ($Perfiles -notcontains $Perfil) {
-        Error2 "Ese perfil no existe."
-        Read-Host "`n  Enter para cerrar"
-        exit 1
-    }
+    Aviso "Todavia no hay ningun perfil cargado."
+    Write-Host ""
+    Write-Host "  Abri la pantalla con abrir.bat, crea el perfil de la persona que va"
+    Write-Host "  a buscar trabajo, y despues volve a ejecutar instalar.bat."
+    Write-Host ""
+    Read-Host "  Enter para cerrar"
+    exit 0
 }
+Ok "Perfil(es): $($Perfiles -join ', ')"
 
 # Aviso temprano si falta configuracion, antes de programar nada.
 $RutaEnv = Join-Path $RaizProyecto ".env"
 if (-not (Test-Path $RutaEnv)) {
-    Aviso "Falta el archivo .env con las claves. El programa va a correr limitado."
-    Aviso "Pediselo a Isaias y pegalo en: $RaizProyecto"
+    Aviso "Falta el archivo .env con las claves. Cargalas desde abrir.bat > Mis datos."
 }
 
-# --- 5. Tarea programada -----------------------------------------------------
+# --- 5. Tareas programadas ---------------------------------------------------
 Titulo "5 de 6 - Programando las corridas automaticas"
 
-$NombreTarea = "Vacantia - $Perfil"
-
-# pythonw.exe en vez de python.exe: no abre ventana negra. El log igual se
-# escribe en vacantia.log, asi que no se pierde nada.
-$Ejecutable = if (Test-Path $VenvPythonW) { $VenvPythonW } else { $VenvPython }
-
-$Accion = New-ScheduledTaskAction -Execute $Ejecutable `
-    -Argument "-m vacantia.run --profile $Perfil" `
-    -WorkingDirectory $RaizProyecto
+# Los horarios los reparte vacantia.agenda, que es la unica fuente de verdad:
+# cada perfil arranca 20 minutos despues del anterior. Los limites del plan
+# gratis son de la CUENTA, no del perfil, asi que si dos personas de la misma
+# casa arrancan juntas se pisan contra el tope por minuto.
+$Reparto = & $VenvPython -m vacantia.agenda --json | ConvertFrom-Json
 
 # Usuario actual, en formato DOMINIO\usuario. Es la clave para que todo esto
 # funcione SIN permisos de administrador.
 $UsuarioActual = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-
-# Al encender la maquina (con 3 min de espera para que levante la red) y en los
-# tres horarios elegidos: mediodia, antes de que RRHH se vaya, y tarde para los
-# que publican fuera de horario.
-#
-# OJO con el -User de AtLogOn: sin el, Windows entiende "cuando inicie sesion
-# CUALQUIER usuario" y eso exige permisos de administrador. Acotandolo al
-# usuario actual, un usuario comun puede registrar la tarea el solo.
-$Disparadores = @(
-    (New-ScheduledTaskTrigger -AtLogOn -User $UsuarioActual),
-    (New-ScheduledTaskTrigger -Daily -At "12:00"),
-    (New-ScheduledTaskTrigger -Daily -At "16:30"),
-    (New-ScheduledTaskTrigger -Daily -At "23:59")
-)
-$Disparadores[0].Delay = "PT3M"
 
 $Config = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
@@ -215,28 +190,63 @@ $Config = New-ScheduledTaskSettingsSet `
 $Principal = New-ScheduledTaskPrincipal -UserId $UsuarioActual `
     -LogonType Interactive -RunLevel Limited
 
-try {
-    Unregister-ScheduledTask -TaskName $NombreTarea -Confirm:$false -ErrorAction SilentlyContinue
-    Register-ScheduledTask -TaskName $NombreTarea `
-        -Action $Accion -Trigger $Disparadores -Settings $Config -Principal $Principal `
-        -Description "Busca ofertas de trabajo y las manda por Telegram." | Out-Null
-    Ok "Tarea programada: al encender la PC + 12:00, 16:30 y 23:59"
-    Ok "Si la PC estaba apagada a esa hora, corre apenas la prendas"
-} catch {
-    Error2 "No se pudo programar la tarea: $($_.Exception.Message)"
-    Aviso "Proba ejecutando instalar.bat con boton derecho > Ejecutar como administrador"
-    Read-Host "`n  Enter para cerrar"
-    exit 1
+# pythonw.exe en vez de python.exe: no abre ventana negra. El log igual se
+# escribe en vacantia.log, asi que no se pierde nada.
+$Ejecutable = if (Test-Path $VenvPythonW) { $VenvPythonW } else { $VenvPython }
+
+# Se limpian las tareas viejas antes de registrar: si se borro o se renombro un
+# perfil, su tarea quedaria huerfana corriendo un perfil que ya no existe.
+Get-ScheduledTask -ErrorAction SilentlyContinue |
+    Where-Object { $_.TaskName -like "Vacantia*" } |
+    ForEach-Object { Unregister-ScheduledTask -TaskName $_.TaskName -Confirm:$false -ErrorAction SilentlyContinue }
+
+$Primero = $true
+foreach ($Perfil in $Perfiles) {
+    $Horarios = $Reparto.$Perfil
+    if (-not $Horarios) { $Horarios = @("12:00", "16:30", "23:59") }
+
+    $NombreTarea = "Vacantia - $Perfil"
+    $Accion = New-ScheduledTaskAction -Execute $Ejecutable `
+        -Argument "-m vacantia.run --profile $Perfil" `
+        -WorkingDirectory $RaizProyecto
+
+    # Al encender la maquina + los horarios que le tocaron a este perfil.
+    #
+    # OJO con el -User de AtLogOn: sin el, Windows entiende "cuando inicie sesion
+    # CUALQUIER usuario" y eso exige permisos de administrador. Acotandolo al
+    # usuario actual, un usuario comun puede registrar la tarea el solo.
+    $Disparadores = @(New-ScheduledTaskTrigger -AtLogOn -User $UsuarioActual)
+    foreach ($h in $Horarios) {
+        $Disparadores += (New-ScheduledTaskTrigger -Daily -At $h)
+    }
+    # El retraso al encender tambien se escalona, por el mismo motivo que los
+    # horarios: si no, todos los perfiles arrancan juntos al prender la PC.
+    if ($Primero) { $Disparadores[0].Delay = "PT3M" } else { $Disparadores[0].Delay = "PT13M" }
+    $Primero = $false
+
+    try {
+        Register-ScheduledTask -TaskName $NombreTarea `
+            -Action $Accion -Trigger $Disparadores -Settings $Config -Principal $Principal `
+            -Description "Busca ofertas de trabajo para $Perfil y las manda por Telegram." | Out-Null
+        Ok "$Perfil : $($Horarios -join ', ')"
+    } catch {
+        Error2 "No se pudo programar '$Perfil': $($_.Exception.Message)"
+        Aviso "Proba ejecutando instalar.bat con boton derecho > Ejecutar como administrador"
+        Read-Host "  Enter para cerrar"
+        exit 1
+    }
 }
+Ok "Tambien corren al encender la PC. Si estaba apagada, corren apenas la prendas"
 
 # --- 6. Prueba ---------------------------------------------------------------
 Titulo "6 de 6 - Probando"
 
-Write-Host "  Corriendo una vez para verificar. Puede tardar unos minutos..."
+$PerfilPrueba = $Perfiles[0]
+Write-Host "  Corriendo una vez ($PerfilPrueba) para verificar. Puede tardar unos minutos..."
 Write-Host "  (podes seguir usando la computadora normalmente)"
 Write-Host ""
 
-& $VenvPython -m vacantia.run --profile $Perfil
+& $VenvPython -m vacantia.run --profile $PerfilPrueba
 $CodigoSalida = $LASTEXITCODE
 
 Titulo "LISTO"
@@ -248,10 +258,15 @@ if ($CodigoSalida -eq 0) {
 Write-Host ""
 Write-Host "  A partir de ahora se ejecuta solo:"
 Write-Host "    - Cada vez que prendas la computadora"
-Write-Host "    - Todos los dias a las 12:00, 16:30 y 23:59"
+foreach ($Perfil in $Perfiles) {
+    $h = $Reparto.$Perfil
+    if (-not $h) { $h = @("12:00", "16:30", "23:59") }
+    Write-Host "    - $Perfil : todos los dias a las $($h -join ', ')"
+}
 Write-Host ""
 Write-Host "  No tenes que hacer nada mas. Las ofertas te llegan por Telegram."
 Write-Host ""
+Write-Host "  Para ver las ofertas y cargar tus datos: doble clic en abrir.bat"
 Write-Host "  Si alguna vez queres ver como viene: doble clic en estado.bat"
 Write-Host "  Para que deje de correr solo:     doble clic en desinstalar.bat"
 Write-Host ""

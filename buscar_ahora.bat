@@ -12,26 +12,14 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
-REM Perfil: el primero que haya en profiles\, ignorando el de ejemplo.
-set PERFIL=
-for %%f in (profiles\*.json) do (
-    if /i not "%%~nf"=="example" if not defined PERFIL set PERFIL=%%~nf
-)
-
-if not defined PERFIL (
-    echo.
-    echo  No hay ningun perfil configurado. Avisale a Isaias.
-    echo.
-    pause
-    exit /b 1
-)
-
 echo.
-echo  Buscando ofertas para: %PERFIL%
+echo  Buscando ofertas para todos los perfiles de esta computadora.
 echo  Esto puede tardar unos minutos. Podes seguir usando la computadora.
 echo.
 
-".venv\Scripts\python.exe" -m vacantia.run --profile %PERFIL%
+REM --all corre los perfiles uno despues del otro, con una pausa en el medio:
+REM los limites del plan gratis son de la cuenta, no del perfil.
+".venv\Scripts\python.exe" -m vacantia.run --all
 
 echo.
 echo  Listo. Si hubo ofertas nuevas, te llegaron por Telegram.

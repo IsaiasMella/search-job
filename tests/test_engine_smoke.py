@@ -62,3 +62,36 @@ def test_las_vacantes_cubiertas_no_llegan_al_scoring(sin_llm, monkeypatch):
     monkeypatch.setattr(engine, "collect", lambda sources, result: [cerrada])
     result = engine.run(PERFIL, dry_run=True)
     assert (result.fetched, result.filled, result.new, result.scored) == (1, 1, 0, 0)
+
+
+# --- varios perfiles en la misma instalación -------------------------------
+
+def test_correr_todos_los_perfiles_no_se_frena_con_uno_que_falla(monkeypatch, tmp_path):
+    """Los perfiles de una misma PC comparten las claves, así que van uno
+    después del otro; y si uno explota, los demás igual buscan."""
+    from vacantia import run as run_mod
+
+    corridos = []
+    monkeypatch.setattr(run_mod, "available_profiles_reales", lambda: ["ana", "roto", "zoe"])
+    monkeypatch.setattr(run_mod, "load_profile", lambda n: {"name": n})
+    monkeypatch.setattr(run_mod.time, "sleep", lambda s: None)
+
+    import vacantia.engine as engine_mod
+
+    def falso_run(perfil, dry_run=False):
+        corridos.append(perfil["name"])
+        if perfil["name"] == "roto":
+            raise RuntimeError("se cayó la fuente")
+        return engine.RunResult()
+
+    monkeypatch.setattr(engine_mod, "run", falso_run)
+    codigo = run_mod.correr_todos(gap=0)
+
+    assert corridos == ["ana", "roto", "zoe"]
+    assert codigo == 1          # avisa que uno falló
+
+
+def test_sin_perfiles_correr_todos_avisa(monkeypatch):
+    from vacantia import run as run_mod
+    monkeypatch.setattr(run_mod, "available_profiles_reales", lambda: [])
+    assert run_mod.correr_todos(gap=0) == 2

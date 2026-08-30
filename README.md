@@ -198,6 +198,34 @@ LOG_LEVEL=DEBUG python -m vacantia.run --profile isaias   # detalle por oferta
 
 El log completo siempre queda en `vacantia.log`, más allá de lo que se vea en consola.
 
+## Varias personas en la misma computadora
+
+Una instalación aguanta N perfiles, y busca para todos:
+
+```bash
+python -m vacantia.run --all      # todos, uno después del otro
+python -m vacantia.agenda         # cómo quedaron repartidos los horarios
+```
+
+Las corridas **no arrancan todas juntas**, y no es un detalle: los límites del
+plan gratis son de la *cuenta*, no del perfil (Gemini 5-15 req/min, TinyFish 30
+búsquedas/min, OpenRouter 20/min). Dos personas de la misma casa comparten la
+clave. `vacantia.agenda` reparte cada perfil 20 minutos después del anterior
+sobre los tres horarios base:
+
+```
+ana     12:00, 16:30, 23:59
+mario   12:20, 16:50, 00:19
+zoe     12:40, 17:10, 00:39
+```
+
+El orden es alfabético, así agregar un perfil no le cambia el horario a media
+familia. `instalar.bat` lee ese reparto y registra una tarea programada por
+persona; `buscar_ahora.bat` corre `--all`. Además, dentro de una misma corrida
+los lotes del scoring van espaciados 5 segundos (`llm.batch_delay`) y sigue
+mandando el triaje `max_new_per_run`, que pone el techo en 5 llamadas al LLM por
+corrida por más empresas o portales que se carguen.
+
 ---
 
 ## Estructura
