@@ -62,28 +62,47 @@ def _val(row, column: str) -> str:
     return "" if text.lower() in ("nan", "none", "nat") else text
 
 
-def split_location(location: str) -> tuple[str, str]:
-    """'Buenos Aires Province, Argentina' -> ('Argentina', 'Buenos Aires Province').
+#: Palabras que LinkedIn devuelve en el lugar del país y no son un país.
+#: "Remote, LATAM" es lo más común: poner country="LATAM" haría que un filtro de
+#: país=Argentina descarte una oferta remota que sí sirve.
+_NO_ES_PAIS = {"latam", "latinoamerica", "america latina", "remote", "remoto",
+               "worldwide", "global", "emea", "apac", "europe", "europa"}
 
-    Sólo se marca como país el último segmento si es un país reconocible. Si no
-    lo es, se deja vacío a propósito: LinkedIn devuelve cosas como
-    "Remote, LATAM", y poner country="LATAM" haría que un filtro de
-    país=Argentina descarte una oferta remota que sí sirve. Con el país vacío
-    la oferta pasa y, si el aviso lo aclara, lo completa después el LLM.
+
+def split_location(location: str) -> tuple[str, str, str]:
+    """'Bahía Blanca, Buenos Aires, Argentina' -> ('Argentina', 'Bahía Blanca', 'Buenos Aires').
+
+    Devuelve (país, ciudad, provincia). Tres detalles que importan:
+
+    1. **La ciudad es el primer segmento, no todo lo que sobra.** LinkedIn
+       manda "Londres, Catamarca, Argentina" —Londres es un pueblo de
+       Catamarca— y dejar la ciudad como "Londres, Catamarca" hace que un
+       filtro por ciudad se comporte de manera imprevisible. La provincia se
+       guarda aparte, en `region`.
+    2. **El país sólo se marca si es un país reconocible.** Si el último
+       segmento es "LATAM" o "Remote", queda vacío: con el país vacío la oferta
+       pasa el filtro y, si el aviso lo aclara, lo completa después el LLM.
+    3. Un solo segmento se trata como ciudad, salvo que sea un país.
     """
     from vacantia.filters import COUNTRY_ALIASES, norm
 
     parts = [p.strip() for p in (location or "").split(",") if p.strip()]
     if not parts:
-        return "", ""
+        return "", "", ""
 
     conocidos = {alias for nombres in COUNTRY_ALIASES.values() for alias in nombres}
-    ultimo = norm(parts[-1])
-    if ultimo in conocidos:
-        return parts[-1], ", ".join(parts[:-1])
+    pais = ""
+    if norm(parts[-1]) in conocidos:
+        pais = parts[-1]
+        parts = parts[:-1]
+    elif norm(parts[-1]) in _NO_ES_PAIS:
+        parts = parts[:-1]
 
-    # Ningún segmento identificable como país: todo va a ciudad.
-    return "", ", ".join(parts)
+    if not parts:
+        return pais, "", ""
+    ciudad = parts[0]
+    provincia = ", ".join(parts[1:])
+    return pais, ciudad, provincia
 
 
 def build_searches(profile: dict, config: dict) -> list[tuple[str, str]]:
@@ -158,7 +177,7 @@ class LinkedInJobsSource(Source):
             return None
 
         location = _val(row, "location")
-        country, city = split_location(location)
+        country, city, provincia = split_location(location)
 
         # is_remote viene como campo propio de LinkedIn: es dato, no deducción.
         # Ojo con el caso falso: que LinkedIn no lo marque como remoto NO
@@ -189,6 +208,7 @@ class LinkedInJobsSource(Source):
             posted_at=_val(row, "date_posted"),
             country=country,
             city=city,
+            region=provincia,
             work_mode=work_mode,
             raw={
                 "id": _val(row, "id"),

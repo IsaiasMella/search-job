@@ -297,6 +297,12 @@ cambio de la latencia de indexación del buscador. Si el perfil tiene
 `allow_english: false`, busca sólo con términos en español — filtrar en la query
 evita traer decenas de posts que el filtro de idioma va a descartar igual.
 
+**`google_posts`** además separa las ofertas del ruido: descarta los posts que
+no mencionan ninguna búsqueda y los que usan ese vocabulario sin ofrecer nada
+(gente buscando trabajo para sí misma, cursos, webinars, felicitaciones). Se
+apaga con `"solo_ofertas": false`. El país sale del texto del post cuando lo
+nombra; si no lo nombra queda vacío, salvo que se cargue `"default_country"`.
+
 **`rrhh`** vigila **personas**, no palabras clave: se le carga una lista de URLs
 (el perfil de actividad de alguien de RRHH, la página de búsquedas de una
 consultora) y de cada una saca los links a publicaciones, los links con pinta de

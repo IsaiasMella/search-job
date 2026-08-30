@@ -84,6 +84,97 @@ _AUTHOR_SPLIT = re.compile(
 )
 
 
+# --- Separar ofertas de posts de opinión ------------------------------------
+# La query pide términos de búsqueda laboral, pero el buscador devuelve
+# coincidencias flojas: charlas, cursos, felicitaciones y —lo más molesto—
+# posts de gente que ESTÁ BUSCANDO trabajo, que usan exactamente el mismo
+# vocabulario que quien ofrece uno. Cada uno de esos se puntúa con el LLM y se
+# descarta después: cuesta cuota y ensucia el aviso.
+def _plano(texto: str) -> str:
+    """Minúsculas, sin tildes ni eñes y en una sola línea. Reusa `filters.norm`,
+    que es la misma normalización que aplican los filtros."""
+    from vacantia.filters import norm
+
+    return " ".join(norm(texto).split())
+
+
+#: Si aparece alguno de estos, el post NO es una oferta por más que hable de
+#: búsquedas. El primer grupo es gente buscando trabajo para sí misma; el
+#: segundo, contenido que no es un aviso.
+_NO_ES_OFERTA = re.compile(
+    r"(?:busco trabajo|busco empleo|estoy buscando trabajo|estoy en busqueda laboral"
+    r"|me quede sin trabajo|open to work|#openttowork|#opentowork|disponible para nuevas"
+    r"|si sabes de alguna|si saben de alguna|si conocen alguna|quede sin trabajo"
+    r"|agradezco difusion|agradeceria difusion|agradezco la difusion"
+    r"|me sumo a la busqueda|alguien sabe de|avisenme si"
+    r"|webinar|curso |cursos |capacitacion|masterclass|charla |workshop|meetup"
+    r"|felicitaciones|felicito|aniversario|cumplimos \d+ anos|orgulloso de anunciar"
+    r"|mi opinion|reflexion|hilo |tips para|consejos para|como hacer un cv"
+    r"|encuesta|que opinan|te comparto mi experiencia)"
+)
+
+
+def parece_oferta(titulo: str, snippet: str, terminos: list[str]) -> tuple[bool, str]:
+    """(es una oferta, motivo del descarte).
+
+    Dos condiciones, en este orden:
+
+    1. Tiene que **decir** que hay una búsqueda. Un post que ni menciona una
+       vacante no es una oferta por más que el buscador lo haya traído.
+    2. No tiene que ser de los que usan ese mismo vocabulario sin ofrecer nada:
+       alguien buscando trabajo para sí mismo, un curso, una felicitación.
+    """
+    texto = _plano(f"{titulo} {snippet}")
+    if not texto:
+        return False, "sin texto"
+    if not any(_plano(t) in texto for t in terminos):
+        return False, "no menciona ninguna búsqueda"
+    marca = _NO_ES_OFERTA.search(texto)
+    if marca:
+        return False, f"no es un aviso ({marca.group(0).strip()!r})"
+    return True, ""
+
+
+# --- De dónde es la oferta --------------------------------------------------
+# El snippet rara vez dice el país, así que sin esto entra LATAM entero: el
+# filtro de ubicación deja pasar todo lo que no lo aclara, que es lo correcto
+# como regla general pero acá es casi el 100%.
+#
+# La salida sigue siendo "" cuando de verdad no hay señal: preferimos un falso
+# positivo antes que inventar un país y descartar una oferta buena.
+_CIUDADES_AR = {
+    "buenos aires": "Argentina", "caba": "Argentina", "capital federal": "Argentina",
+    "cordoba": "Argentina", "rosario": "Argentina", "mendoza": "Argentina",
+    "la plata": "Argentina", "mar del plata": "Argentina", "bahia blanca": "Argentina",
+    "tucuman": "Argentina", "salta": "Argentina", "neuquen": "Argentina",
+    "santa fe": "Argentina", "quilmes": "Argentina", "vicente lopez": "Argentina",
+}
+
+
+def pais_del_post(titulo: str, snippet: str) -> str:
+    """El país que el post nombra, o "" si no nombra ninguno."""
+    from vacantia.filters import COUNTRY_ALIASES
+
+    texto = _plano(f"{titulo} {snippet}")
+    if not texto:
+        return ""
+    for canonico, alias in COUNTRY_ALIASES.items():
+        # Sólo los nombres largos: "ar", "us" o "it" sueltos aparecen dentro de
+        # cualquier palabra y darían falsos positivos todo el tiempo.
+        for nombre in alias:
+            if len(nombre) > 3 and _menciona(texto, nombre):
+                return canonico.title()
+    for ciudad, pais in _CIUDADES_AR.items():
+        if _menciona(texto, ciudad):
+            return pais
+    return ""
+
+
+def _menciona(texto: str, palabra: str) -> bool:
+    """Palabra entera: "salta" no puede matchear dentro de "resaltar"."""
+    return re.search(r"\b" + re.escape(palabra) + r"\b", texto) is not None
+
+
 def _hiring_terms_for(profile: dict) -> list[str]:
     """Términos de búsqueda acordes al filtro de idioma del perfil.
 
@@ -172,6 +263,14 @@ class GooglePostsSource(Source):
         self.language = config.get("language", "es")
         self.results_per_query = int(config.get("results_per_query", 10))
         self.search_delay = float(config.get("search_delay", _SEARCH_DELAY))
+        #: Filtrar los posts que no son ofertas. Se puede apagar por si algún
+        #: día el filtro resulta demasiado goloso.
+        self.solo_ofertas = bool(config.get("solo_ofertas", True))
+        #: Qué país asumir cuando el post no nombra ninguno. Vacío = no asumir
+        #: nada, que es la regla general del proyecto ("lo que el aviso no dice,
+        #: no filtra"). Ponerle "Argentina" acota a costa de perder ofertas
+        #: remotas de la región que no aclaran de dónde son.
+        self.default_country = str(config.get("default_country", "") or "")
 
         if self.provider == "google_cse":
             self.api_key = resolve_secret(
@@ -283,8 +382,10 @@ class GooglePostsSource(Source):
         queries = build_queries(self.profile, self.config)
         logger.info(f"[google_posts] {len(queries)} búsqueda(s) vía {self.provider}")
 
+        hiring = self.config.get("hiring_terms") or _hiring_terms_for(self.profile)
         jobs: list[Job] = []
         seen: set[str] = set()
+        descartados = 0
         for i, query in enumerate(queries, 1):
             if i > 1:
                 time.sleep(self.search_delay)
@@ -303,9 +404,18 @@ class GooglePostsSource(Source):
                     continue
                 seen.add(key)
 
-                title, author = clean_title(
-                    result.get("title", ""), result.get("snippet", "")
-                )
+                snippet = result.get("snippet", "")
+                title, author = clean_title(result.get("title", ""), snippet)
+
+                if self.solo_ofertas:
+                    es_oferta, motivo = parece_oferta(
+                        result.get("title", ""), snippet, hiring
+                    )
+                    if not es_oferta:
+                        descartados += 1
+                        logger.debug(f"    no es oferta ({motivo}): {title[:60]}")
+                        continue
+
                 jobs.append(
                     Job(
                         url=url,
@@ -315,8 +425,12 @@ class GooglePostsSource(Source):
                         # a quien hay que escribirle.
                         company=author,
                         source=self.name,
-                        description=result.get("snippet", ""),
+                        description=snippet,
                         posted_at=result.get("date", ""),
+                        # El snippet rara vez dice el país; cuando lo nombra, se
+                        # aprovecha. Si no, queda "" (o lo que diga el perfil en
+                        # default_country) y lo intenta después el LLM.
+                        country=pais_del_post(title, snippet) or self.default_country,
                         raw={
                             "query": query,
                             "author": author,
@@ -329,5 +443,8 @@ class GooglePostsSource(Source):
                 f"[google_posts]   {len(results)} resultado(s), {nuevos} post(s) nuevos"
             )
 
-        logger.info(f"[google_posts] {len(jobs)} publicación(es) en total")
+        logger.info(
+            f"[google_posts] {len(jobs)} publicación(es) en total"
+            + (f", {descartados} descartada(s) por no ser ofertas" if descartados else "")
+        )
         return jobs
