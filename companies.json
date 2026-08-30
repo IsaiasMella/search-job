@@ -11,7 +11,8 @@
     "careers_url": "https://careers-meli.mercadolibre.com/",
     "search_domain": "mercadolibre.com",
     "location": "Buenos Aires / Córdoba, Argentina / Híbrido",
-    "region": "LATAM"
+    "region": "LATAM",
+    "use_search": false
   },
   {
     "name": "Globant Argentina",
@@ -25,7 +26,8 @@
     "careers_url": "https://muttdata.ai/careers",
     "search_domain": "muttdata.ai",
     "location": "Buenos Aires, Argentina / Remoto",
-    "region": "LATAM"
+    "region": "LATAM",
+    "use_search": false
   },
   {
     "name": "Telecom Argentina",
@@ -39,34 +41,39 @@
     "careers_url": "https://www.ua.la/sumate",
     "search_domain": "ua.la",
     "location": "Buenos Aires, Argentina / Híbrido",
-    "region": "LATAM"
+    "region": "LATAM",
+    "use_search": false
   },
   {
     "name": "Despegar",
     "careers_url": "https://despegar.evaluar.com/",
     "search_domain": "despegar.com",
     "location": "Buenos Aires, Argentina / Híbrido",
-    "region": "LATAM"
+    "region": "LATAM",
+    "use_search": false
   },
   {
     "name": "Naranja X",
     "careers_url": "https://www.naranjax.com/trabaja-con-nosotros",
     "search_domain": "naranjax.com",
     "location": "Córdoba / Buenos Aires, Argentina / Remoto",
-    "region": "LATAM"
+    "region": "LATAM",
+    "use_search": false
   },
   {
     "name": "Banco Galicia",
     "careers_url": "https://galicia.evaluar.com/",
     "search_domain": "galicia.ar",
     "location": "Buenos Aires, Argentina / Híbrido",
-    "region": "LATAM"
+    "region": "LATAM",
+    "use_search": false
   },
   {
     "name": "Swiss Medical Group",
     "careers_url": "https://recursos.swissmedical.com.ar/empleos",
     "search_domain": "swissmedical.com.ar",
     "location": "Buenos Aires, Argentina / Híbrido",
-    "region": "LATAM"
+    "region": "LATAM",
+    "use_search": false
   }
 ]

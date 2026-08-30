@@ -145,9 +145,16 @@ borrala y cargá las tuyas. Las entradas cuyo nombre empieza con `EJEMPLO` se ig
   "careers_url": "https://empresa.com/careers/",
   "search_domain": "empresa.com",
   "location": "Barcelona, España / Remoto",
-  "region": "EU"
+  "region": "EU",
+  "use_search": true
 }
 ```
+
+La careers page se lee siempre. `"use_search": false` apaga sólo la búsqueda
+por dominio de esa empresa: es la parte cara (la API no la batchea, va serial y
+son ~3s por empresa), así que conviene apagarla en las que nunca devuelven
+nada. En `companies.json` ya están apagadas las siete que no aportaron una sola
+oferta.
 
 ---
 
