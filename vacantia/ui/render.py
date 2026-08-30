@@ -259,9 +259,8 @@ def mensajes(perfil: str, oferta: dict, textos: dict[str, str], con_llm: bool,
 <p class="herramientas"><a class="boton" href="/trabajos?perfil={esc(perfil)}">Volver a Trabajos</a></p>
 {cajas}
 {boton}
-<p class="ayuda">Estos moldes son un borrador de la sección 10 de COSTOS.md:
-máximo 4 líneas, cero adjetivos sobre uno mismo, y cerrar con una pregunta
-fácil de responder.</p>"""
+<p class="ayuda">Estos moldes son un borrador: máximo 4 líneas, cero adjetivos
+sobre uno mismo, y cerrar con una pregunta fácil de responder.</p>"""
 
 
 # --- consejo sobre el CV ----------------------------------------------------

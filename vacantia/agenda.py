@@ -13,7 +13,7 @@ rompe si todos arrancan juntos es el **de por minuto**.
 
 La solución es aburrida y funciona: correr escalonado. Cada perfil arranca
 `SEPARACION_MINUTOS` después del anterior, sobre los tres horarios base ya
-decididos (12:00, 16:30 y 23:59 — sección 4 de COSTOS.md).
+decididos: 12:00, 16:30 y 23:59.
 
     perfil 1 -> 12:00, 16:30, 23:59
     perfil 2 -> 12:20, 16:50, 00:19
@@ -34,7 +34,8 @@ import sys
 
 from vacantia.config import available_profiles
 
-#: Los tres horarios decididos en la sección 4 de COSTOS.md.
+#: Los tres horarios elegidos: mediodía, antes de que RRHH se vaya, y tarde
+#: para los que publican fuera de horario.
 HORARIOS_BASE = ("12:00", "16:30", "23:59")
 
 #: Cuánto se corre cada perfil respecto del anterior.

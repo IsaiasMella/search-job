@@ -163,7 +163,7 @@ Tu CV no se toca nunca. Es consejo para que lo edites vos.
 
 ## 3.5. Los moldes de mensaje siguen siendo borradores
 
-Están en `vacantia/mensajes.py`, copiados de la sección 10 de COSTOS.md.
+Están en `vacantia/mensajes.py`, tal como los habíamos propuesto.
 **Ajustalos**: tu experiencia es más fresca que la de quien los escribió.
 
 ```
@@ -211,7 +211,10 @@ después en el abecedario.
 
 # 5. QUÉ FALTA
 
-Contra el checklist maestro de COSTOS.md, sección 12.
+El checklist maestro, que antes vivía en `COSTOS.md`. Ese archivo se borró: lo
+que seguía valiendo (las decisiones cerradas y lo que falta) quedó acá, y lo
+demás eran cuentas de consumo de API que ya no cambian nada. Si alguna vez lo
+querés releer, está en el historial de git.
 
 ## Bloque 1 — La UI local ✅ COMPLETO
 
@@ -265,7 +268,34 @@ Contra el checklist maestro de COSTOS.md, sección 12.
 
 ---
 
-## Dónde está cada cosa
+## Qué es cada archivo de la raíz
+
+Los cinco `.bat` son todo lo que tocan las personas que no programan:
+
+| Archivo | Para qué | Cuándo se usa |
+|---|---|---|
+| `instalar.bat` | Instala todo y programa las búsquedas automáticas | Una vez, al principio. Y de nuevo cada vez que agregues un perfil o muevas la carpeta |
+| `abrir.bat` | **La pantalla**: ver las ofertas y cargar los datos | Todos los días |
+| `buscar_ahora.bat` | Una búsqueda ya, sin esperar el horario | Cuando no querés esperar |
+| `estado.bat` | "¿Esto anda?" — si está programado, cuándo corrió, cómo le fue | Cuando algo parece raro |
+| `desinstalar.bat` | Deja de buscar y borra el programa. Pregunta aparte si borrar también los datos | Cuando consiguieron trabajo |
+
+El resto:
+
+| | |
+|---|---|
+| `README.md` | La documentación técnica. **Falta reescribirlo** como guía de instalación para cada persona |
+| `NOTAS-PARA-ISAIAS.md` | Este archivo: lo que hay que repasar y lo que falta |
+| `companies.json` | Las empresas que sigue la fuente `careers`. Se edita desde la pantalla |
+| `.env` | Las claves. Se edita desde la pantalla. **No se sube a git** |
+| `.env.example` | El molde del `.env`, sin claves |
+| `requirements.txt` | Lo que instala `instalar.bat` |
+| `requirements-dev.txt` | pytest. Sólo para vos, nadie más lo necesita |
+| `conftest.py` | Deja que los tests encuentren el paquete |
+| `profiles/` `resume/` `state/` `output/` | Perfiles, CVs, ofertas guardadas y documentos generados |
+| `vacantia/` `tests/` `scripts/` | El programa, sus pruebas, y los scripts de PowerShell que usan los `.bat` |
+
+## Dónde está cada cosa del código
 
 ```
 vacantia/

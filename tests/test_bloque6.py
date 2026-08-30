@@ -1,4 +1,4 @@
-"""Bloque 6 de COSTOS.md: ruido en google_posts y geografía rara de LinkedIn."""
+"""Ruido en google_posts y geografía rara de LinkedIn."""
 
 import pytest
 

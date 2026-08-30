@@ -1,4 +1,4 @@
-"""El CV en PDF. La trampa a cubrir es el guion largo (ver COSTOS.md §10)."""
+"""El CV en PDF. La trampa a cubrir es el guion largo: ver vacantia/pdf.py."""
 
 import pytest
 

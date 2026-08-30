@@ -1,8 +1,7 @@
 """Moldes de mensaje para escribirle a un reclutador o a RRHH.
 
-Son los de la sección 10 de COSTOS.md, tal como quedaron propuestos ahí. **Son
-borradores**: el dueño los tiene que ajustar contra su propia experiencia, que
-es más fresca que la de quien los escribió.
+**Son borradores**: hay que ajustarlos contra la experiencia de quien los usa,
+que es más fresca que la de quien los escribió.
 
 Dos formatos, porque son dos situaciones distintas:
 

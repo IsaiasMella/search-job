@@ -1,7 +1,6 @@
 """Modo consejo: qué reordenar del CV para este aviso, sin reescribirlo.
 
-La distinción que ordena todo esto (sección 10 de COSTOS.md): **el CV que ya
-funciona no se toca.** Para quien pagó un curso y tiene evidencia de que su CV
+La distinción que ordena todo esto: **el CV que ya funciona no se toca.** Para quien pagó un curso y tiene evidencia de que su CV
 anda, un CV generado por una máquina es un downgrade. Lo que sí sirve es que
 alguien lea el aviso y le diga *qué reordenar* y *qué palabra le falta* para que
 el filtro automático de la empresa (el ATS) no lo descarte antes de que un

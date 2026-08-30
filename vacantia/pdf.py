@@ -3,10 +3,9 @@
 Nada de "apretá Ctrl+P y elegí Guardar como PDF": un botón y listo. El usuario
 más difícil de este sistema tiene 62 años.
 
-⚠️ La trampa de fpdf2, documentada en la sección 10 de COSTOS.md y verificada
-ahí: las fuentes que trae por defecto son latin-1 y **explotan** con el guion
-largo (—), las comillas tipográficas y el símbolo de euro, que aparecen todo el
-tiempo en un CV:
+⚠️ La trampa de fpdf2, verificada en este mismo entorno: las fuentes que trae
+por defecto son latin-1 y **explotan** con el guion largo (—), las comillas
+tipográficas y el símbolo de euro, que aparecen todo el tiempo en un CV:
 
     FPDFUnicodeEncodingException: Character "—" ... outside the range of
     characters supported by the font

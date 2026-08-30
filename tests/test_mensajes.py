@@ -1,4 +1,4 @@
-"""Moldes de mensaje para el reclutador (COSTOS.md §10). Son borradores."""
+"""Moldes de mensaje para el reclutador. Son borradores a corregir."""
 
 from vacantia import mensajes
 from vacantia.models import Job
