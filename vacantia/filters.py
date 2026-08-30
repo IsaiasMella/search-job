@@ -103,6 +103,61 @@ def mentions_english_requirement(text: str) -> str:
     return ""
 
 
+# --- Vacantes ya cubiertas -------------------------------------------------
+# Un aviso cerrado sigue indexado y sigue llegando por las tres fuentes. No es
+# ruido inocuo: se puntúa con el LLM (plata y cuota) y llega al Telegram como
+# si fuera una oportunidad.
+#
+# Se busca en la URL, el título y la descripción, sobre el texto ya normalizado
+# (minúsculas, sin tildes). En la URL los guiones se pasan a espacios, así
+# ".../busqueda-cerrada/" también cae.
+_CUBIERTA_RE = re.compile(
+    # El relleno del medio es una lista corta y cerrada a propósito ("búsqueda
+    # ya está cerrada", "posición ha sido cubierta"): dejar pasar cualquier
+    # palabra haría que "búsqueda de un perfil senior cerrada" también matchee.
+    r"(?:(?:vacante|puesto|posicion|busqueda|convocatoria|oferta|seleccion)\s+"
+    r"(?:(?:ya|se|esta|fue|quedo|encuentra|ha|sido)\s+){0,3}"
+    r"(?:cubiert[ao]|cerrad[ao]|finalizad[ao])"
+    r"|ya (?:fue |esta )?cubiert[ao]"
+    r"|no longer (?:accepting applications|available|open)"
+    r"|(?:position|job|role|vacancy) (?:has been |is )?(?:filled|closed)"
+    r"|applications (?:are )?closed)"
+)
+
+
+def filled_marker(job: Job) -> str:
+    """El texto que delata que la vacante ya está cubierta, o "".
+
+    Mira la URL, el título y la descripción — el aviso puede avisarlo en
+    cualquiera de los tres.
+    """
+    url_texto = norm(job.url).replace("-", " ").replace("_", " ").replace("/", " ")
+    for texto in (url_texto, norm(job.title), norm(job.description)):
+        if not texto:
+            continue
+        m = _CUBIERTA_RE.search(" ".join(texto.split()))
+        if m:
+            return m.group(0)
+    return ""
+
+
+def drop_filled(jobs: list[Job]) -> tuple[list[Job], list[tuple[Job, str]]]:
+    """Parte la lista en (sirven, ya cubiertas con su motivo).
+
+    Se usa **antes** del scoring: puntuar una vacante cerrada es gastar una
+    llamada al LLM para descartarla después.
+    """
+    kept, dropped = [], []
+    for job in jobs:
+        marca = filled_marker(job)
+        (dropped.append((job, marca)) if marca else kept.append(job))
+    if dropped:
+        logger.info(f"Descartadas {len(dropped)} vacante(s) ya cubierta(s)")
+        for job, marca in dropped:
+            logger.debug(f"    cubierta ({marca!r}): {job.display_title[:45]} — {job.url}")
+    return kept, dropped
+
+
 def norm(text: str) -> str:
     """Minúsculas y sin tildes: 'Córdoba' y 'Cordoba' tienen que ser iguales."""
     if not text:

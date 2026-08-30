@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 
 from vacantia.config import load_resume
-from vacantia.filters import apply_filters, english_pain_lines
+from vacantia.filters import apply_filters, drop_filled, english_pain_lines
 from vacantia.log import get_logger
 from vacantia.models import Job
 from vacantia.notifiers import build_notifiers
@@ -32,6 +32,7 @@ def _cap(msg: str) -> str:
 class RunResult:
     fetched: int = 0
     new: int = 0
+    filled: int = 0
     scored: int = 0
     filtered_out: int = 0
     english_dropped: int = 0
@@ -122,6 +123,11 @@ def run(profile: dict, dry_run: bool = False) -> RunResult:
 
     # 2) quitar duplicados
     new_jobs = state.filter_new(jobs)
+
+    # 2 bis) vacantes ya cubiertas. Va antes del scoring: puntuar una búsqueda
+    #        cerrada es gastar una llamada al LLM para descartarla después.
+    new_jobs, cubiertas = drop_filled(new_jobs)
+    result.filled = len(cubiertas)
     result.new = len(new_jobs)
 
     # 3) triaje: si entraron muchas de golpe (cargaste empresas nuevas, cambiaste
@@ -174,13 +180,15 @@ def run(profile: dict, dry_run: bool = False) -> RunResult:
     #    no haga perder ofertas que nunca llegaron a avisarse.
     # Sólo lo que efectivamente se puntuó: las diferidas por el triaje tienen
     # que volver a aparecer en la próxima corrida.
-    state.mark_seen(to_score)
+    # Las ya cubiertas también: no cuestan nada, pero vuelven en cada corrida
+    # mientras el buscador las tenga indexadas.
+    state.mark_seen(to_score + [j for j, _ in cubiertas])
     state.save(scored)
 
     result.seconds = time.time() - t0
     logger.info(
         f"=== Listo en {result.seconds:.1f}s — {result.fetched} recolectadas, "
-        f"{result.new} nuevas, {result.deferred} diferidas, {result.filtered_out} filtradas, "
-        f"{result.matched} avisadas ==="
+        f"{result.new} nuevas, {result.filled} ya cubiertas, {result.deferred} diferidas, "
+        f"{result.filtered_out} filtradas, {result.matched} avisadas ==="
     )
     return result
