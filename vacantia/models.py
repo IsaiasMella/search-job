@@ -89,6 +89,14 @@ class Job:
     # deja vacío con frecuencia. None = no se sabe.
     requires_english: bool | None = None
 
+    # --- Feedback de la persona (lo escribe la pestaña Trabajos de la UI) ---
+    # Es la materia prima del ciclo de aprendizaje: las descartadas con su
+    # motivo van al prompt de scoring como ejemplos negativos, y las aplicadas
+    # como positivos. Se guardan en job_history.json vía State.record_feedback.
+    aplicado: bool | None = None   # True verde, False rojo, None todavía sin mirar
+    motivo_descarte: str = ""      # por qué no sirve. Obligatorio cuando aplicado=False
+    fecha_feedback: str = ""       # ISO-8601 UTC. "" = nunca se lo miró
+
     # --- Trazabilidad ---
     found_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()

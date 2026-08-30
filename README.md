@@ -204,6 +204,15 @@ vacantia/
 El estado vive en `state/<perfil>/` (`seen_jobs.json`, `last_run.json`, `job_history.json`),
 así que dos perfiles no se pisan. Los borradores salen en `output/<perfil>/`.
 
+**Feedback.** `Job` tiene tres campos que escribe la persona, no el motor:
+`aplicado` (verde/rojo/sin mirar), `motivo_descarte` y `fecha_feedback`. Se
+guardan con `State.record_feedback(url, aplicado, motivo_descarte)` en
+`job_history.json`, que es el archivo durable: una oferta que vuelve a aparecer
+no pisa a la que ya está marcada. `State.feedback_jobs(aplicado=False)` devuelve
+las descartadas de la más reciente a la más vieja. Todavía nada las escribe ni
+las lee: es la base para la pestaña Trabajos y para meter esos ejemplos en el
+prompt de scoring.
+
 ---
 
 ## Agregar una fuente

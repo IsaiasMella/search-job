@@ -16,6 +16,12 @@ logger = get_logger()
 STATE_ROOT = Path("state")
 
 
+def _url_key(url: str) -> str:
+    """Misma normalización que `Job.key`, para poder comparar contra el JSON
+    del historial, donde hay dicts y no Jobs."""
+    return (url or "").split("?")[0].rstrip("/").lower()
+
+
 def _richness(job: Job) -> tuple:
     """Cuánto sabe de la oferta esta copia. Ante dos iguales, gana la mayor.
 
@@ -134,14 +140,103 @@ class State:
         else:
             logger.debug("Sin ofertas nuevas — conservo el last_run.json anterior")
 
-        history: list[dict] = []
-        if self.history_file.exists():
-            try:
-                history = json.loads(self.history_file.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                history = []
+        history = self.load_history()
         existing = {h.get("url") for h in history}
         added = [d for d in payload if d["url"] not in existing]
+        # Sólo se agregan las que no estaban: una oferta que vuelve a aparecer
+        # no pisa a la que ya está, que puede tener el feedback cargado.
         history.extend(added)
-        self.history_file.write_text(json.dumps(history, indent=2), encoding="utf-8")
+        self._write_history(history)
         logger.debug(f"Estado guardado en {self.dir} (+{len(added)} al historial, {len(history)} total)")
+
+
+    # --- Feedback de la persona --------------------------------------------
+    # `job_history.json` es el archivo durable (last_run.json se pisa en cada
+    # corrida con novedades), así que el feedback vive ahí. Esto es sólo el
+    # guardado: quien lo escribe es la pestaña Trabajos de la UI, que todavía
+    # no existe.
+
+    def load_history(self) -> list[dict]:
+        """El historial completo, tal como está en disco. [] si no hay o está roto."""
+        if not self.history_file.exists():
+            return []
+        try:
+            data = json.loads(self.history_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            logger.warning(f"{self.history_file} corrupto — lo trato como vacío")
+            return []
+        return data if isinstance(data, list) else []
+
+    def _write_history(self, history: list[dict]) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.history_file.write_text(json.dumps(history, indent=2), encoding="utf-8")
+
+    def record_feedback(
+        self,
+        url: str,
+        aplicado: bool | None,
+        motivo_descarte: str = "",
+        fecha_feedback: str | None = None,
+    ) -> bool:
+        """Guarda el veredicto de la persona sobre una oferta.
+
+        Devuelve False si esa URL no está en el historial, para que quien
+        llame lo pueda avisar en vez de perder el dato en silencio.
+
+        La fecha se estampa sola salvo que se pase una (sirve para importar
+        feedback viejo). Se escribe también en last_run.json cuando la oferta
+        está ahí, así lo que se muestre desde ese archivo no queda desfasado.
+        """
+        clave = _url_key(url)
+        if aplicado is False and not motivo_descarte.strip():
+            # No se rechaza: el motivo es una regla de la UI, no del estado. Pero
+            # sin motivo esta oferta no le sirve al prompt como ejemplo negativo.
+            logger.warning(f"Feedback sin motivo para {url} — no va a servir de ejemplo")
+
+        cambios = {
+            "aplicado": aplicado,
+            "motivo_descarte": motivo_descarte.strip(),
+            "fecha_feedback": fecha_feedback or datetime.now(timezone.utc).isoformat(),
+        }
+
+        history = self.load_history()
+        tocadas = [h for h in history if _url_key(h.get("url", "")) == clave]
+        for entrada in tocadas:
+            entrada.update(cambios)
+        if not tocadas:
+            logger.warning(f"No encontré {url} en {self.history_file} — no guardo el feedback")
+            return False
+        self._write_history(history)
+
+        # Espejo en last_run.json, si la oferta es de la última tanda.
+        ultima = self._read_last_run()
+        espejo = [h for h in ultima if _url_key(h.get("url", "")) == clave]
+        if espejo:
+            for entrada in espejo:
+                entrada.update(cambios)
+            self.last_run_file.write_text(json.dumps(ultima, indent=2), encoding="utf-8")
+
+        logger.info(f"Feedback guardado: aplicado={aplicado} — {url}")
+        return True
+
+    def _read_last_run(self) -> list[dict]:
+        if not self.last_run_file.exists():
+            return []
+        try:
+            data = json.loads(self.last_run_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return []
+        return data if isinstance(data, list) else []
+
+    def feedback_jobs(self, aplicado: bool | None = None, limit: int | None = None) -> list[Job]:
+        """Las ofertas ya marcadas, de la más reciente a la más vieja.
+
+        `aplicado=False` devuelve las descartadas (con su motivo), que es lo que
+        va a alimentar el prompt de scoring como ejemplos negativos.
+        """
+        marcadas = [h for h in self.load_history() if h.get("fecha_feedback")]
+        if aplicado is not None:
+            marcadas = [h for h in marcadas if h.get("aplicado") is aplicado]
+        marcadas.sort(key=lambda h: h.get("fecha_feedback", ""), reverse=True)
+        jobs = [Job.from_dict(h) for h in marcadas]
+        return jobs[:limit] if limit else jobs
