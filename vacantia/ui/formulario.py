@@ -21,6 +21,9 @@ FUENTES = (
     ("google_posts", "Publicaciones de LinkedIn (vía buscador, no toca LinkedIn)"),
     ("linkedin", "LinkedIn Jobs"),
     ("rrhh", "Perfiles de reclutadores que sigo"),
+    ("bumeran", "Bumeran"),
+    ("zonajobs", "Zonajobs"),
+    ("computrabajo", "Computrabajo"),
 )
 
 

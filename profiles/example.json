@@ -58,6 +58,33 @@
       "api_key": "${TINYFISH_API_KEY}"
     },
     {
+      "type": "bumeran",
+      "enabled": false,
+      "search_terms": [],
+      "location": "",
+      "max_queries": 3,
+      "results_wanted": 20,
+      "api_key": "${TINYFISH_API_KEY}"
+    },
+    {
+      "type": "zonajobs",
+      "enabled": false,
+      "search_terms": [],
+      "location": "",
+      "max_queries": 3,
+      "results_wanted": 20,
+      "api_key": "${TINYFISH_API_KEY}"
+    },
+    {
+      "type": "computrabajo",
+      "enabled": false,
+      "search_terms": [],
+      "location": "",
+      "max_queries": 3,
+      "results_wanted": 20,
+      "api_key": "${TINYFISH_API_KEY}"
+    },
+    {
       "type": "dummy",
       "enabled": false
     }

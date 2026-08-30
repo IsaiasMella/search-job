@@ -253,6 +253,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 | `google_posts` | Publicaciones de LinkedIn indexadas por un buscador | `TINYFISH_API_KEY` (o Google CSE) | **no** |
 | `linkedin` | LinkedIn Jobs vía JobSpy | ninguna | **sí** |
 | `rrhh` | Publicaciones de reclutadores que seguís por URL | `TINYFISH_API_KEY` | **no** |
+| `bumeran` / `zonajobs` / `computrabajo` | Portales de empleo argentinos | `TINYFISH_API_KEY` | no |
 | `dummy` | Ofertas de ejemplo para probar el pipeline | ninguna | no |
 
 **`google_posts`** le pega a una search API con `site:linkedin.com/posts`: no hay
@@ -269,6 +270,18 @@ aviso, o —si no hay ninguno— los párrafos del texto que anuncian una búsqu
 Esos párrafos se identifican con la URL de la página más un hash del texto: por
 eso una página cuya dirección nunca cambia igual genera una oferta nueva cuando
 publica algo nuevo. Para nichos chicos suele rendir más que buscar por keyword.
+
+**Los tres portales argentinos** (`bumeran`, `zonajobs`, `computrabajo`) son los
+que importan para los rubros no técnicos: ahí no hay careers pages ni posts de
+LinkedIn, hay portal. ⚠️ **Están sin verificar contra los sitios reales.** Por
+eso lo frágil —la dirección de búsqueda y el patrón de URL de aviso— se puede
+pisar desde el perfil con `search_url` y `job_url_pattern`, sin tocar código:
+
+```jsonc
+{ "type": "bumeran", "enabled": true, "location": "bahia-blanca",
+  "search_url": "https://www.bumeran.com.ar/empleos-busqueda-{query}.html",
+  "job_url_pattern": "/empleos/.+-\d+\.html" }
+```
 
 **`linkedin`** sí scrapea LinkedIn, sin login. Rate-limitea por IP y se corta
 cerca de la página 10, así que conviene `results_wanted` moderado y acotar con
