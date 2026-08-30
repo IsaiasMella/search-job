@@ -1,90 +1,170 @@
 # Notas para Isaías
 
-Dos tandas de trabajo nocturno. **172 tests pasan.**
+**200 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  172 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  200 passed
 ```
-
-Ordenado por importancia: primero lo que tenés que decidir o verificar vos,
-después lo que se hizo, y al final el panorama completo de lo que falta.
 
 ---
 
-# 1. LO PRIMERO QUE TENÉS QUE MIRAR
+# 1. LO QUE TENÉS QUE REPASAR VOS
 
-## 1.1. La duda de remoto + ubicación (sigue abierta, como pediste)
+Esta es la lista corta. Todo lo demás es contexto.
 
-**No la toqué. El código quedó como estaba anoche**, que es:
+| # | Qué | Dónde | Cuánto te lleva |
+|---|---|---|---|
+| 1 | **Verificar los 3 portales argentinos** contra los sitios reales | ver 2.1 | 15 min |
+| 2 | **Verificar la fuente `rrhh`** con un perfil real de LinkedIn | ver 2.1 | 5 min |
+| 3 | **Confirmar la nueva regla de ubicación** corriendo una búsqueda | ver 3.1 | 5 min |
+| 4 | **Corregir los moldes de mensaje** contra tu experiencia | `vacantia/mensajes.py` | 10 min |
+| 5 | **Cargar más empresas** en `companies.json` | pantalla → Mis datos | tuyo |
+| 6 | **Cargar el chat de Telegram de cada persona** cuando armes sus carpetas | ver 3.2 | 1 min c/u |
+| 7 | **Correr `instalar.bat` de nuevo** cuando haya más de un perfil | — | 5 min |
+| 8 | Mirar cómo queda **tu CV en PDF** | pantalla → Trabajos | 1 min |
+| 9 | Una **corrida real** de punta a punta con todo prendido | `--dry-run` primero | 10 min |
 
-1. **Remoto en cualquier lado** → si el aviso dice remoto, el filtro de país
-   *no se aplica*.
-2. **Presencial o híbrido en tu ciudad** (`filters.location.home_city`,
-   cargada con "Bahía Blanca") → pasa aunque `work_modes` pida sólo remoto.
-3. El resto, como siempre.
+---
 
-**El efecto que te va a molestar, si te molesta:** ahora entran remotos de
-España, México y Estados Unidos que antes se caían por país. Al filtro de
-idioma se le escapan los de México y Colombia, que son en español.
+# 2. LO QUE NO PUDE VERIFICAR
 
-**Cómo lo corregís en 10 segundos**, sin tocar código:
-
-| Qué querés | Qué hacés |
-|---|---|
-| Que las remotas vuelvan a ser sólo de Argentina | En `profiles/isaias.json`, dentro de `filters.location`, poné `"remote_anywhere": false` |
-| Que además entre presencial en Punta Alta | `"home_city": ["Bahía Blanca", "Punta Alta"]` (acepta lista) |
-| Que el presencial local NO entre | Borrá el valor de `home_city` (dejalo `""`) |
-
-También se cambia desde la pantalla (`abrir.bat` → Mis datos → Dónde), salvo
-`remote_anywhere`, que es sólo del JSON.
-
-## 1.2. Lo que NO pude verificar y necesita tu ojo
+## 2.1. Las dos fuentes nuevas
 
 | Qué | Por qué | Cómo lo verificás |
 |---|---|---|
-| **Los tres portales argentinos** (`bumeran`, `zonajobs`, `computrabajo`) | Escribí el código sin poder probarlo contra los sitios reales. Las direcciones de búsqueda y los patrones de URL son los que usan hoy según su estructura conocida, pero cambian sin avisar | Prendé una sola en el perfil, corré `buscar_ahora.bat` y mirá `vacantia.log`. Si dice "0 aviso(s)", el patrón cambió: ver 1.3 |
-| **La fuente `rrhh`** | Probada con páginas de ejemplo, no con un perfil real de LinkedIn. LinkedIn puede devolver una página de login en vez del contenido | Cargá una URL en Mis datos → "Perfiles de reclutadores", corré, y mirá el log |
-| **El instalador multi-perfil** | No lo corrí: registra tareas programadas de verdad en tu Windows | Corré `instalar.bat` cuando tengas dos perfiles y fijate que aparezcan dos tareas en `estado.bat` |
-| **El PDF con tu CV real** | El PDF se genera y abre bien (59 KB, Arial, con `—`, `“”`, `€`), pero no juzgué cómo se ve | `abrir.bat` → Trabajos → "Descargar CV en PDF" |
+| **Bumeran, Zonajobs, Computrabajo** | Escribí el código sin poder probarlo contra los sitios. Las direcciones y los patrones de URL son los que usan hoy según su estructura conocida, pero cambian sin avisar | Prendé una sola en la pantalla, corré `buscar_ahora.bat` y mirá `vacantia.log`. Si dice "0 aviso(s)", el patrón cambió → 2.2 |
+| **La fuente `rrhh`** | Probada con páginas de ejemplo, no con un perfil real. LinkedIn puede devolver una pantalla de login en vez del contenido | Cargá una URL en Mis datos → "Perfiles de reclutadores", corré, mirá el log |
+| **El instalador multi-perfil** | Registra tareas programadas de verdad en Windows; no lo corrí | Corré `instalar.bat` con dos perfiles y fijate que aparezcan dos tareas en `estado.bat` |
+| **El PDF con tu CV real** | Se genera bien (59 KB, Arial, con `—`, `“”`, `€`) pero no juzgué cómo se ve | Pantalla → Trabajos → "Descargar CV en PDF" |
 
-## 1.3. Si un portal no devuelve nada
+## 2.2. Si un portal no devuelve nada
 
-Está pensado para que lo arregles sin programar. En `profiles/isaias.json`, en
-el bloque de esa fuente:
+Está pensado para que lo arregles sin programar. En `profiles/isaias.json`, en el
+bloque de esa fuente:
 
 ```jsonc
 {
   "type": "bumeran",
   "enabled": true,
-  "search_url": "PEGAR ACÁ la dirección de una búsqueda real, con {query} donde va el puesto",
-  "job_url_pattern": "un pedazo de la dirección de un aviso, ej: /empleos/"
+  "search_url": "PEGAR la dirección de una búsqueda real, con {query} donde va el puesto",
+  "job_url_pattern": "un pedazo común a las direcciones de aviso, ej: /empleos/"
 }
 ```
 
-Buscá algo en el portal a mano, copiá la dirección de la barra del navegador y
-reemplazá el término por `{query}`. Después abrí un aviso cualquiera y mirá qué
-tienen en común todas las direcciones de aviso: eso va en `job_url_pattern`.
+Buscá algo a mano en el portal, copiá la dirección de la barra del navegador y
+reemplazá el término buscado por `{query}`. Después abrí dos o tres avisos y
+mirá qué tienen en común sus direcciones: eso va en `job_url_pattern`.
 
-## 1.4. Decisiones que tomé solo (y cómo se revierten)
+---
 
-| Asumí | Por qué | Se cambia en |
+# 3. LO QUE CAMBIÉ CON TUS INDICACIONES
+
+## 3.1. Ubicación — resuelto como me lo explicaste
+
+Ahora funciona así:
+
+| Campo | Qué hace |
+|---|---|
+| `country` vacío | de todo el mundo |
+| `country: "Argentina"` | **sólo Argentina, también el remoto** |
+| `city` vacía | cualquier lugar del país |
+| `city: ["Bahía Blanca", "Punta Alta"]` | **sólo filtra presencial e híbrido**; el remoto entra venga de la ciudad que venga |
+| `work_modes: ["remote"]` | sólo remoto… salvo un presencial en tus ciudades, que entra igual |
+
+Las tres cosas que te importaban:
+
+1. **El remoto ahora tiene que ser de Argentina.** Un remoto publicado desde
+   Buenos Aires o Córdoba para todo el país entra; uno de Colombia o México, que
+   por temas legales sólo contrata allá, ya no.
+2. **La ciudad no filtra el remoto.** Un remoto de Córdoba se trabaja igual
+   desde Bahía Blanca, así que no se descarta.
+3. **Un presencial en tus ciudades entra aunque pidas sólo remoto**, y `city`
+   acepta lista: para tus hermanos de La Plata sería
+   `"city": ["La Plata", "Buenos Aires", "CABA"]`.
+
+**Tu perfil quedó así:** `country: "Argentina"`, `city: "Bahía Blanca"`.
+Se edita desde la pantalla, en un solo campo: *"Ciudades a las que puedo ir en
+persona"*, separadas por coma.
+
+**Detalle técnico**: `city` y `home_city` eran dos nombres del mismo campo y los
+unifiqué en `city`. Los perfiles viejos que tengan `home_city` se siguen
+leyendo, y al guardar desde la pantalla se limpia solo.
+
+**El escape hatch**: si algún día querés remoto worldwide, `"remote_anywhere":
+true` dentro de `filters.location`. Está apagado.
+
+## 3.2. Telegram: cada persona su chat ⚠️ ESTO ES LO QUE TE IBAS A OLVIDAR
+
+**El problema que me planteaste**: tu hermana y su novio, una sola compu, cosas
+separadas. Las claves sí se comparten (el token del bot, Gemini, TinyFish son de
+la máquina) **pero el chat de Telegram no**: con uno solo, los avisos de los dos
+caían en el mismo teléfono.
+
+**Ya está arreglado.** El `chat_id` se guarda dentro de cada perfil, no en el
+`.env`. En la pantalla hay una sección nueva, *Mi Telegram*, con un solo campo.
+
+**Lo que tenés que hacer vos, por persona:**
+
+1. Que le escriba a su bot de Telegram y le mande cualquier cosa.
+2. Sacá su `chat_id` (el clásico: abrir
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` y buscar `"chat":{"id":...}`).
+3. Pantalla → seleccionar su perfil arriba a la derecha → *Mi Telegram* → pegar
+   el número → Guardar.
+
+Si lo dejás vacío, ese perfil usa el `TELEGRAM_CHAT_ID` del `.env` — o sea, el
+tuyo. **Si dos personas comparten compu y no cargás esto, los dos reciben todo
+en el mismo chat.**
+
+## 3.3. Confirmaciones que me pediste
+
+**¿Hay botón de perfil nuevo?** Sí, ya estaba: pantalla → *Mis datos* → abajo de
+todo, "Crear un perfil nuevo". Genera `profiles/<nombre>.json` y
+`resume/<nombre>.md` en blanco, con los huecos marcados (`COMPLETAR`,
+`PEGAR CV ACÁ`). Cada uno completa lo suyo desde el formulario.
+
+**¿Una sola API key da para dos perfiles en la misma compu?** Sí, sobrado:
+
+| | Techo absoluto con 2 perfiles | Límite del plan gratis |
 |---|---|---|
-| Los perfiles arrancan **20 minutos** uno después del otro | Una corrida tarda minutos; 20 da margen de sobra sin estirar el día | `SEPARACION_MINUTOS` en `vacantia/agenda.py` |
-| El orden de los horarios es **alfabético** | Así agregar un perfil no le cambia la hora a media familia | idem |
-| **5 segundos** entre lotes del scoring | Gemini free permite 5-15 por minuto; 5s no se notan en una corrida de minutos | `"llm": {"batch_delay": N}` en el perfil |
-| `--all` espera **60 segundos** entre perfiles | Al ser secuencial el anterior ya terminó; es sólo para no pegar dos requests seguidos | `--gap N` en la línea de comandos |
-| Un perfil nuevo se crea con **todas las fuentes apagadas** | Que las prenda quien sepa cuáles le sirven; prender LinkedIn sin querer es scrapear | Mis datos → De dónde traer ofertas |
-| El **motivo del descarte es obligatorio**, validado también en el servidor | El cliente se puede saltear, y sin motivo el feedback no sirve para nada | `vacantia/ui/server.py` |
-| Las claves van al **`.env`, nunca al perfil** | Los perfiles se versionan en git | — |
-| Un campo de clave vacío significa "no la cambies" | Si vaciarlo borrara la clave, entrar y guardar sin tocar nada te dejaría sin credenciales | — |
-| `pytest` va en **`requirements-dev.txt`**, no en `requirements.txt` | Nadie de tu familia necesita pytest instalado | — |
-| **No creé ningún perfil de nadie** | Me lo pediste explícitamente | — |
+| Gemini | 30 llamadas/día | 1000/día |
+| TinyFish | 6 corridas/día | sin tope diario |
+| Por minuto | nunca se cruzan | las corridas salen escalonadas 20 min |
 
-## 1.5. Los moldes de mensaje son un borrador
+Da incluso para 6 perfiles (90 llamadas/día contra 1000). Lo único que no
+escala son las 50/día de OpenRouter, y ya no lo usás: el perfil está en Gemini.
 
-Están en `vacantia/mensajes.py`, copiados de la sección 10 de COSTOS.md tal como
-los propusiste discutir. **Ajustalos**: tu experiencia es más fresca.
+**Los perfiles de tu familia**: los saqué de la lista de pendientes, como
+pediste. Queda dicho que cada uno crea el suyo cuando le pases la carpeta.
+
+**Recolección compartida entre hermanos**: descartada por decisión tuya. Cada
+uno en su compu, todo aislado — que además es lo que hace que LinkedIn no
+bloquee: cada casa aporta su propia IP residencial.
+
+**La "pestaña de shops"**: era *jobs*, la pestaña de Trabajos. Ya está hecha, y
+es justo lo que necesitás para tu viejo: doble clic en `abrir.bat` y ve sus
+ofertas en el navegador, sin explicarle nada. Si igual le resulta difícil, la
+alternativa que mencionaste (que le lleguen por mail) queda anotada abajo como
+idea, no como pendiente.
+
+## 3.4. Modo consejo — hecho
+
+Link "Consejo para el CV" en cada oferta. Dos partes:
+
+- **Palabras del aviso que no están en tu CV.** Gratis, sin llamar al modelo. Es
+  literalmente lo que hace un ATS. Con la advertencia bien visible: *no las
+  agregues si no las hacés*.
+- **Qué mover**, con un botón: tres bloques (qué subir, qué palabra falta, qué
+  no tocar). El prompt tiene prohibido reescribir el CV e inventar experiencia,
+  y si el aviso pide algo que no tenés lo dice como riesgo en vez de sugerirte
+  ponerlo.
+
+Tu CV no se toca nunca. Es consejo para que lo edites vos.
+
+## 3.5. Los moldes de mensaje siguen siendo borradores
+
+Están en `vacantia/mensajes.py`, copiados de la sección 10 de COSTOS.md.
+**Ajustalos**: tu experiencia es más fresca que la de quien los escribió.
 
 ```
 Hola {nombre}, vi la búsqueda de {puesto}.
@@ -92,82 +172,30 @@ Trabajo con {área} hace {X} años; lo último fue {logro}.
 ¿Te sirve que te pase el CV?
 ```
 
-Lo que está entre llaves lo completa el LLM leyendo el aviso y tu CV, con un
-botón. Sin credenciales, los huecos quedan a la vista — a propósito: es más
+Lo que está entre llaves lo completa el modelo leyendo el aviso y tu CV, con un
+botón. Sin credenciales, los huecos quedan a la vista a propósito: es más
 honesto que un mensaje genérico disfrazado de personalizado.
-
-No hice molde de carta de presentación de una carilla: vos mismo anotaste que
-en Argentina casi no se usa.
 
 ---
 
-# 2. QUÉ SE HIZO ESTA NOCHE
+# 4. QUÉ HAY CONSTRUIDO
 
-## 2.1. La pantalla local — `ade760b`
+| Commit | Qué |
+|---|---|
+| `878a6b4` | **Ubicación**: el país filtra también el remoto, la ciudad sólo lo presencial, `city` acepta lista |
+| `40b0bb8` | **Telegram por persona** |
+| `07af321` | **Modo consejo** para el CV |
+| `d053ae8` | Bloque 6: posts que no son ofertas, país en `google_posts`, "Londres, Catamarca" |
+| `afb9a14` | **Multi-perfil escalonado** + `run --all` + instalador |
+| `cf3441d` | Molde de perfil y CV con huecos marcados |
+| `8bd2dce` | **Bumeran / Zonajobs / Computrabajo** |
+| `19c6046` | Moldes de mensaje |
+| `349898d` | **CV en PDF** |
+| `a2715c3` | **Fuente `rrhh`** |
+| `ade760b` | **La pantalla local** |
+| tanda 1 | Regla de Bahía Blanca · dedupe entre fuentes · vacantes cubiertas · `notify_when_empty` · `use_search: false` · campos de feedback |
 
-`abrir.bat` levanta un servidor en `http://localhost:8756` y abre el navegador.
-Sólo biblioteca estándar de Python, atado a `127.0.0.1`: no se ve desde la red
-ni desde internet, por eso no pide contraseña.
-
-**Trabajos**: las ofertas con puntaje, empresa, link y por qué. Botón verde
-"Apliqué" y rojo "No apliqué" con motivo obligatorio. Filtros por sin marcar /
-apliqué / descarté / todas. Se guarda en `aplicado`, `motivo_descarte` y
-`fecha_feedback` dentro de `state/<perfil>/job_history.json`.
-
-**Mis datos**: el perfil entero sin tocar JSON — CV, palabras clave,
-país/ciudad/ciudad donde vivís, modalidad, idioma, fuentes, empresas, perfiles
-de RRHH, claves y datos personales. Más el botón de crear un perfil nuevo.
-
-El CSS es el mínimo para que se lea. El único JavaScript son ocho líneas para
-exigir el motivo al descartar.
-
-**Lo que NO hice, porque me lo pediste:** el ciclo de aprendizaje. El feedback
-se guarda pero no entra al prompt del scoring.
-
-## 2.2. Seguir reclutadores por URL — `a2715c3`
-
-Fuente `rrhh`. Se le carga una lista de URLs (perfil de actividad de alguien de
-RRHH, página de búsquedas de una consultora) y de cada una saca los links a
-publicaciones, los links con pinta de aviso, o —si no hay ninguno— los párrafos
-del texto que anuncian una búsqueda.
-
-Ese último caso resuelve el problema de fondo: la dirección de la página de una
-consultora no cambia nunca, así que el dedupe por URL taparía cada búsqueda
-nueva. Cada párrafo se identifica con la URL más un hash de su texto, así una
-publicación nueva es una clave nueva.
-
-Para el perfil de tu viejo esto probablemente rinda más que la búsqueda por
-keyword.
-
-## 2.3. CV en PDF — `349898d`
-
-Botón "Descargar CV en PDF" en la pestaña Trabajos. Seguí al pie la advertencia
-de la sección 10: registra Arial de `C:\Windows\Fonts` antes de escribir, porque
-la fuente por defecto de fpdf2 revienta con el guion largo. Si no hubiera
-ninguna fuente Unicode instalada, en vez de fallar reemplaza los caracteres
-problemáticos y genera el PDF igual.
-
-## 2.4. Mensajes para el reclutador — `19c6046`
-
-Ver 1.5.
-
-## 2.5. Portales argentinos — `8bd2dce`
-
-`bumeran`, `zonajobs` y `computrabajo`. Ver 1.2 y 1.3: **necesitan verificación
-contra el sitio real.**
-
-## 2.6. Molde de perfil y de CV — `cf3441d`
-
-`profiles/example.json` es ahora una plantilla de verdad (keywords vacías,
-fuentes apagadas, `"COMPLETAR: ..."` en los datos personales) y
-`resume/EJEMPLO_CV.md` arranca con "PEGAR CV ACÁ". De ahí sale cada perfil nuevo
-que se crea desde la pantalla.
-
-## 2.7. Varios perfiles con corridas escalonadas — `afb9a14`
-
-El punto que más me importaba de esta tanda. Los límites del plan gratis son
-**de la cuenta, no del perfil**: dos personas de la misma casa comparten la
-clave de Gemini y la de TinyFish.
+**Horarios cuando hay varios perfiles** (`python -m vacantia.agenda`):
 
 ```
 ana     12:00, 16:30, 23:59
@@ -175,48 +203,17 @@ mario   12:20, 16:50, 00:19
 zoe     12:40, 17:10, 00:39
 ```
 
-`python -m vacantia.agenda` muestra el reparto. `instalar.bat` lo lee y registra
-una tarea programada por persona (limpiando antes las viejas, para que un perfil
-borrado no deje una huérfana). `buscar_ahora.bat` ahora corre `--all`, así sirve
-igual para uno que para seis.
-
-**Si agregás un perfil**: corré `instalar.bat` de nuevo. Recalcula el reparto y
-reprograma todo. Al ser alfabético, sólo se corren de horario los que quedan
+Si agregás un perfil, corré `instalar.bat` de nuevo: recalcula y reprograma
+todo. El orden es alfabético, así que sólo se corren de horario los que quedan
 después en el abecedario.
-
-**El caso de las 50 empresas**: el techo por corrida sigue siendo el triaje
-`max_new_per_run` (30 ofertas = 5 llamadas al LLM), más los 5 segundos entre
-lotes que agregué. Con 6 perfiles y 3 corridas, el peor caso absoluto son 90
-llamadas contra las 1000 diarias de Gemini.
-
-## 2.8. Bloque 6 — `d053ae8`
-
-- **Posts que no son ofertas**: se descartan los que no mencionan ninguna
-  búsqueda y los que usan ese vocabulario sin ofrecer nada (gente buscando
-  trabajo para sí misma, cursos, webinars, felicitaciones).
-- **País en `google_posts`**: sale del texto cuando lo nombra. Si no, queda
-  vacío (`default_country` es opt-in).
-- **"Londres, Catamarca"**: la ciudad pasa a ser el primer segmento y la
-  provincia va a `region`. "LATAM" y "Remote" ya no se toman por un país.
-
-## 2.9. De la tanda anterior (ya estaba)
-
-Regla de Bahía Blanca · dedupe entre fuentes por empresa+título · descartar
-vacantes ya cubiertas · `notify_when_empty` con diagnóstico de la corrida ·
-`use_search: false` en las 7 empresas · campos de feedback en `Job`.
 
 ---
 
-# 3. QUÉ FALTA POR HACER
+# 5. QUÉ FALTA
 
 Contra el checklist maestro de COSTOS.md, sección 12.
 
 ## Bloque 1 — La UI local ✅ COMPLETO
-
-- [x] Servidor local + `abrir.bat`
-- [x] Pestaña **Mis datos**
-- [x] Pestaña **Trabajos** con verde/rojo y motivo obligatorio
-- [x] Campos nuevos en `Job`
 
 ## Bloque 2 — Que el sistema aprenda ⬜ PENDIENTE (lo dejaste fuera a propósito)
 
@@ -225,63 +222,46 @@ Contra el checklist maestro de COSTOS.md, sección 12.
       como ejemplos negativos, y las aplicadas como positivos.
       *Está todo listo para engancharlo*: `State.feedback_jobs(aplicado=False,
       limit=15)` devuelve exactamente eso. Falta armar el bloque de texto en
-      `scoring.SCORE_PROMPT`. Es media hora de trabajo.
+      `scoring.SCORE_PROMPT`. Media hora.
 
-## Bloque 3 — Documentos para postularse 🟡 CASI
+## Bloque 3 — Documentos para postularse ✅ COMPLETO
 
 - [x] CV en PDF con botón de descarga
-- [x] Mensaje corto para DM y para mail (borradores, ver 1.5)
-- [ ] **Modo "consejo" para tu perfil**: que compare tu CV con el aviso y te
-      diga qué reordenar o qué keyword te falta para el ATS, en vez de
-      reescribirte el CV. Riesgo cero sobre lo que ya te funciona.
+- [x] Mensaje corto para DM y para mail — *borradores, corregilos*
+- [x] Modo "consejo" en vez de generación
 
-## Bloque 4 — Que la familia lo pueda usar 🟡 A MEDIAS
+## Bloque 4 — Que la familia lo pueda usar 🟡
 
-- [ ] `profiles/hermana.json` + `resume/hermana.md` (marketing)
-- [ ] `profiles/papa.json` + `resume/papa.md` (QHSE, presencial, oil & gas)
-- [ ] Perfiles de tus dos hermanos menores (ventas / gastronomía)
-      → **Los tres puntos de arriba son de ellos, no míos.** El sistema ya está
-      listo: `abrir.bat` → Mis datos → Crear perfil, y que cada uno complete lo
-      suyo. No inventé datos de nadie.
-- [ ] Una carpeta por persona con su `.env` y su `TELEGRAM_CHAT_ID`
-      → **Ya no hace falta una carpeta por persona**: una instalación maneja N
-      perfiles con corridas escalonadas (2.7). Lo que sí sigue siendo de cada
-      uno es el `TELEGRAM_CHAT_ID`. **Ojo: hoy el chat_id es uno solo para toda
-      la instalación**, así que si dos personas comparten PC, los dos avisos
-      llegan al mismo Telegram. Se arregla poniendo el chat_id literal en el
-      perfil de cada uno en vez de `${TELEGRAM_CHAT_ID}` — pero conviene que lo
-      decidas vos, porque quizás preferís verlos todos.
-- [x] Fuentes para rubros no técnicos (Bumeran / Zonajobs / Computrabajo) —
-      **hechas, sin verificar**
-- [x] Seguir perfiles de RRHH puntuales por URL — **hecho, sin verificar**
+- [x] Fuentes para rubros no técnicos — **hechas, sin verificar**
+- [x] Seguir perfiles de RRHH por URL — **hecha, sin verificar**
+- [x] Que cada uno pueda armar su perfil y su Telegram por separado
+- [ ] **Cargarle el `chat_id` a cada persona** cuando les pases la carpeta (3.2)
 
-## Bloque 5 — Calidad de los resultados 🟡 CASI
+## Bloque 5 — Calidad de los resultados 🟡
 
-- [x] Regla de Bahía Blanca
+- [x] Regla de Bahía Blanca — **corregida con tu criterio de remoto** (3.1)
 - [x] Duplicados entre fuentes
 - [x] Descartar vacantes ya cubiertas
 - [x] `notify_when_empty`
 - [x] `use_search: false` en las 7 empresas
-- [ ] **Cargar más empresas en `companies.json`** — sigue siendo tuyo: hay que
-      elegirlas. Ahora se cargan desde la pantalla, una por línea.
+- [ ] **Cargar más empresas** en `companies.json` — tuyo
 
-## Bloque 6 — Vigilar 🟡 CASI
+## Bloque 6 — Vigilar 🟡
 
 - [x] Ruido de posts de opinión en `google_posts`
 - [x] País vacío en `google_posts`
 - [x] Rareza geográfica de LinkedIn
-- [ ] La pestaña de "shops" y las otras fuentes que mencionaste
-- [ ] Recolección compartida entre los dos hermanos que se cruzan
+- [x] La "pestaña de jobs" — es la pestaña Trabajos, ya está
+- [x] ~~Recolección compartida~~ — **descartada**: todo aislado, cada uno en su compu
 
-## Fuera del checklist
+## Ideas, no pendientes
 
-- [ ] Verificar los tres portales y la fuente `rrhh` contra los sitios reales (1.2)
-- [ ] Decidir la regla de remoto/ubicación (1.1)
-- [ ] Corregir los moldes de mensaje (1.5)
-- [ ] Decidir si cada perfil lleva su propio `TELEGRAM_CHAT_ID` (Bloque 4)
-- [ ] Una corrida real de punta a punta con todo esto prendido. No la hice para
-      no gastarte cuota ni escribir estado real de noche:
-      `python -m vacantia.run --profile isaias --dry-run`
+- Que a tu viejo le lleguen las ofertas **por mail** además de por Telegram. El
+  motor ya tiene la interfaz `Notifier` lista (`vacantia/notifiers/`): agregar
+  un canal nuevo es un archivo, no tocar el motor. Decidilo después de ver si se
+  arregla con `abrir.bat`.
+- Que la pantalla muestre el resumen de la última corrida (hoy eso está en
+  `estado.bat`).
 
 ---
 
@@ -290,8 +270,10 @@ Contra el checklist maestro de COSTOS.md, sección 12.
 ```
 vacantia/
 ├── agenda.py         reparto de horarios entre perfiles
+├── consejo.py        qué reordenar del CV (no lo reescribe)
 ├── mensajes.py       moldes de DM y mail (borradores)
 ├── pdf.py            CV a PDF (ojo con la fuente Unicode)
+├── filters.py        la regla de ubicación y modalidad
 ├── ui/
 │   ├── server.py     el servidor y las rutas
 │   ├── data.py       todo lo que toca disco
