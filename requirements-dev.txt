@@ -1,0 +1,6 @@
+# Dependencias de desarrollo. NO las instala la familia: `instalar.bat` sólo lee
+# requirements.txt, así que agregar cosas acá no le pesa a nadie.
+#
+#   .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+#   .venv\Scripts\python.exe -m pytest tests -q
+pytest>=8.0
