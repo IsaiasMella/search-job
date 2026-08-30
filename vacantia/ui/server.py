@@ -98,6 +98,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._get_cv_pdf(perfil)
             if ruta == "/mensajes":
                 return self._get_mensajes(perfil, params)
+            if ruta == "/consejo":
+                return self._get_consejo(perfil, params)
         except FileNotFoundError as e:
             return self._pagina("Error", render.avisos([("error", str(e))]), perfil,
                                 "trabajos", 404)
@@ -166,6 +168,32 @@ class Handler(BaseHTTPRequestHandler):
         cuerpo = render.mensajes(perfil, oferta, textos, escrito, avisos_)
         self._pagina("Mensajes", cuerpo, perfil, "trabajos")
 
+    def _get_consejo(self, perfil: str, params: dict, con_llm: bool = False) -> None:
+        """Qué reordenar del CV para este aviso. La lista de palabras faltantes
+        sale gratis; el consejo escrito cuesta una llamada al modelo."""
+        from vacantia import consejo as consejo_mod
+
+        url = (params.get("url") or [""])[0]
+        oferta = data.buscar_oferta(perfil, url)
+        if oferta is None:
+            return self._redirigir("/trabajos", perfil=perfil,
+                                   error="No encontré esa oferta en el historial.")
+
+        datos = data.leer_perfil(perfil)
+        job = data.como_job(oferta)
+        cv = data.leer_cv(datos)
+        faltantes = consejo_mod.faltan_en_el_cv(job, cv)
+
+        texto, escrito = "", False
+        avisos_: list[tuple[str, str]] = []
+        if con_llm:
+            texto, escrito = data.consejo_con_llm(perfil, job)
+            if not escrito:
+                avisos_.append(("error", "No pude usar el modelo — te queda igual "
+                                         "la lista de palabras que faltan."))
+        cuerpo = render.consejo(perfil, oferta, faltantes, texto, escrito, avisos_)
+        self._pagina("Consejo", cuerpo, perfil, "trabajos")
+
     def _get_datos(self, perfil: str, params: dict) -> None:
         cuerpo = formulario.render(perfil, data.leer_perfil(perfil), _mensajes(params))
         self._pagina("Mis datos", cuerpo, perfil, "datos")
@@ -186,6 +214,9 @@ class Handler(BaseHTTPRequestHandler):
             if ruta == "/mensajes":
                 return self._get_mensajes(perfil, {"url": [form.get("url", "")]},
                                           con_llm=True)
+            if ruta == "/consejo":
+                return self._get_consejo(perfil, {"url": [form.get("url", "")]},
+                                         con_llm=True)
             if ruta == "/perfil-nuevo":
                 nuevo = data.crear_perfil(form.get("nombre", ""))
                 return self._redirigir(

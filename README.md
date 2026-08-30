@@ -188,6 +188,12 @@ se ve desde otra máquina ni desde internet, y por eso no pide contraseña.
   (que van al `.env`, no al perfil). Desde ahí también se crea un perfil nuevo
   en blanco para otra persona de la casa.
 
+Cada oferta tiene además dos ayudas: **"Mensaje para escribirle"** (los moldes
+de DM y mail) y **"Consejo para el CV"** — qué reordenar y qué palabra falta
+para el filtro automático de la empresa, sin reescribir el CV. La lista de
+términos del aviso que no están en tu CV sale sin gastar una llamada al modelo;
+el consejo escrito se pide con un botón.
+
 **El chat de Telegram es de cada persona, no de la computadora.** Las claves
 —el token del bot, Gemini, TinyFish— se comparten entre todos los perfiles de la
 máquina, pero el `chat_id` se guarda dentro de cada perfil: si en una misma PC

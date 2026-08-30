@@ -343,3 +343,26 @@ def test_la_clave_del_bot_sigue_siendo_compartida(sitio):
     assert "TELEGRAM_TOKEN=123:abc" in (tmp / ".env").read_text(encoding="utf-8")
     perfil = json.loads((tmp / "profiles" / "test.json").read_text(encoding="utf-8"))
     assert "123:abc" not in json.dumps(perfil)      # nunca en el perfil
+
+
+# --- consejo para el CV ----------------------------------------------------
+
+def test_la_pagina_de_consejo_muestra_lo_que_falta_en_el_cv(sitio):
+    base, tmp = sitio
+    (tmp / "resume" / "test.md").write_text("Analista con SQL y Excel.", encoding="utf-8")
+    historial = json.loads((tmp / "state" / "test" / "job_history.json").read_text(encoding="utf-8"))
+    historial[0]["description"] = ("Buscamos Analista con Snowflake. "
+                                   "Snowflake y dbt son excluyentes, usamos dbt a diario.")
+    (tmp / "state" / "test" / "job_history.json").write_text(json.dumps(historial), encoding="utf-8")
+
+    _, html, _ = get(base, "/consejo?perfil=test&url=https%3A%2F%2Fempresa.com%2Fjobs%2F1")
+    assert "snowflake" in html and "dbt" in html
+    assert "No las agregues si no las" in html      # el aviso de no mentir
+    # Sin credenciales de LLM se ofrece el botón, no un error.
+    assert "qué reordenar" in html
+
+
+def test_el_consejo_de_una_url_desconocida_vuelve_a_trabajos(sitio):
+    base, _ = sitio
+    _, html, url = get(base, "/consejo?perfil=test&url=https%3A%2F%2Fno-existe%2F1")
+    assert "trabajos" in url and "No encontré" in html

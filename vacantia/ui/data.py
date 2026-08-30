@@ -372,3 +372,12 @@ def guardar_chat_id(perfil: dict, chat_id: str) -> None:
     """Vacío = volver al chat compartido del .env."""
     chat_id = (chat_id or "").strip()
     _telegram(perfil)["chat_id"] = chat_id or CHAT_ID_COMPARTIDO
+
+
+def consejo_con_llm(nombre_perfil: str, job: Job) -> tuple[str, bool]:
+    """El consejo escrito por el modelo. Necesita los secretos resueltos, así
+    que va por `load_profile` y no por `leer_perfil`."""
+    from vacantia import consejo as consejo_mod
+
+    perfil = load_profile(nombre_perfil)
+    return consejo_mod.consejo_con_llm(job, load_resume(perfil), perfil)

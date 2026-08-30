@@ -78,6 +78,11 @@ textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-siz
 a.boton { display: inline-block; padding: 7px 14px; border-radius: 4px;
           background: #14509b; color: #fff; text-decoration: none; font-size: 14px; }
 a.chico { font-size: 13px; }
+.terminos { display: flex; flex-wrap: wrap; gap: 6px; list-style: none;
+            padding: 0; margin: 0 0 8px; }
+.terminos li { background: #eef2f7; border-radius: 4px; padding: 3px 8px;
+               font-size: 13px; }
+pre.consejo { white-space: pre-wrap; font: inherit; margin: 0; }
 .mensaje textarea { min-height: 150px; }
 .mensaje { background: #fff; border: 1px solid var(--borde); border-radius: 6px;
            padding: 14px; margin-bottom: 14px; }
@@ -183,8 +188,13 @@ def _tarjeta(oferta: dict, perfil: str, ver: str) -> str:
 
     razon = oferta.get("reason") or ""
     stack = oferta.get("stack") or ""
-    mensajes_link = (f'<a class="chico" href="/mensajes?perfil={esc(perfil)}'
-                     f'&url={quote(url, safe="")}">Mensaje para escribirle</a>')
+    enlace = quote(url, safe="")
+    mensajes_link = (
+        f'<a class="chico" href="/mensajes?perfil={esc(perfil)}&url={enlace}">'
+        f'Mensaje para escribirle</a> · '
+        f'<a class="chico" href="/consejo?perfil={esc(perfil)}&url={enlace}">'
+        f'Consejo para el CV</a>'
+    )
     return f"""<article class="oferta">
   <div class="{clase}">{esc(score if score is not None else '?')}</div>
   <div class="datos">
@@ -252,3 +262,46 @@ def mensajes(perfil: str, oferta: dict, textos: dict[str, str], con_llm: bool,
 <p class="ayuda">Estos moldes son un borrador de la sección 10 de COSTOS.md:
 máximo 4 líneas, cero adjetivos sobre uno mismo, y cerrar con una pregunta
 fácil de responder.</p>"""
+
+
+# --- consejo sobre el CV ----------------------------------------------------
+
+def consejo(perfil: str, oferta: dict, faltantes: list[str], texto: str,
+            con_llm: bool, avisos_: list[tuple[str, str]]) -> str:
+    """Qué reordenar del CV para este aviso. No lo reescribe."""
+    titulo = oferta.get("scored_title") or oferta.get("title") or "(sin título)"
+    url = oferta.get("url", "")
+
+    if faltantes:
+        lista = "".join(f"<li>{esc(t)}</li>" for t in faltantes)
+        huecos = f"""<ul class="terminos">{lista}</ul>
+<p class="ayuda">Están en el aviso y no en tu CV. <b>No las agregues si no las
+hacés</b>: se nota en la primera entrevista. Sí valen las que sabés hacer y
+escribiste con otra palabra.</p>"""
+    else:
+        huecos = ('<p class="ayuda">Tu CV ya menciona todos los términos '
+                  'importantes del aviso.</p>')
+
+    if texto:
+        cuerpo = f'<div class="mensaje"><pre class="consejo">{esc(texto)}</pre></div>'
+    else:
+        cuerpo = f"""<form method="post" action="/consejo">
+  <input type="hidden" name="perfil" value="{esc(perfil)}">
+  <input type="hidden" name="url" value="{esc(url)}">
+  <button type="submit">Leer el aviso y decirme qué reordenar</button>
+  <p class="ayuda">Usa una llamada al modelo. No reescribe el CV: dice qué subir
+  y qué palabra falta.</p>
+</form>"""
+
+    return f"""{avisos(avisos_)}
+<h2>Consejo para tu CV</h2>
+<p class="meta">{esc(titulo)} — {esc(oferta.get('company') or 'sin empresa')} —
+<a href="{esc(url)}" target="_blank" rel="noopener">ver el aviso</a></p>
+<p class="herramientas"><a class="boton" href="/trabajos?perfil={esc(perfil)}">Volver a Trabajos</a></p>
+
+<h2>Palabras del aviso que no están en tu CV</h2>
+<div class="mensaje">{huecos}</div>
+
+<h2>Qué mover</h2>
+{cuerpo}
+<p class="ayuda">Tu CV no se toca: esto es para que lo edites vos con criterio.</p>"""
