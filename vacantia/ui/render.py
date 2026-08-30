@@ -73,6 +73,9 @@ textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-siz
 .guardar { margin-top: 18px; }
 .guardar button { padding: 9px 20px; background: #14509b; border-color: #14509b;
                   color: #fff; font-size: 15px; }
+.herramientas { margin: 0 0 14px; }
+a.boton { display: inline-block; padding: 7px 14px; border-radius: 4px;
+          background: #14509b; color: #fff; text-decoration: none; font-size: 14px; }
 .vacio { color: var(--gris); background: #fff; border: 1px dashed var(--borde);
          border-radius: 6px; padding: 24px; text-align: center; }
 @media (max-width: 760px) {
@@ -203,5 +206,8 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
         )
     return f"""{avisos(mensajes)}
 <h2>Trabajos</h2>
+<p class="herramientas">
+  <a class="boton" href="/cv.pdf?perfil={esc(perfil)}">Descargar CV en PDF</a>
+</p>
 <div class="filtros">{filtros}</div>
 {listado}"""

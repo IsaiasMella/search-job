@@ -203,6 +203,25 @@ def test_guardar_no_pisa_las_claves_con_vacio(sitio):
     assert "TELEGRAM_CHAT_ID=555" in env       # se agregó
 
 
+# --- CV en PDF -------------------------------------------------------------
+
+def test_el_boton_de_descargar_el_cv_devuelve_un_pdf(sitio):
+    base, _ = sitio
+    from urllib.request import urlopen
+    with urlopen(base + "/cv.pdf?perfil=test") as r:
+        cuerpo = r.read()
+        assert r.headers["Content-Type"] == "application/pdf"
+        assert "CV_test.pdf" in r.headers["Content-Disposition"]
+    assert cuerpo.startswith(b"%PDF-")
+
+
+def test_sin_cv_cargado_avisa_en_vez_de_bajar_un_pdf_vacio(sitio):
+    base, tmp = sitio
+    (tmp / "resume" / "test.md").write_text("      ", encoding="utf-8")
+    _, html, url = get(base, "/cv.pdf?perfil=test")
+    assert "Mis datos" in html and "trabajos" in url
+
+
 # --- crear perfil ----------------------------------------------------------
 
 def test_crear_perfil_deja_todo_en_blanco_listo_para_completar(sitio):
