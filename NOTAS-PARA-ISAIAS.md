@@ -7,9 +7,8 @@
 .venv\Scripts\python.exe -m pytest tests -q      →  242 passed
 ```
 
-Andando: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de las
-empresas, el scoring con Gemini y la pantalla. Lo único que no se puede hacer es
-seguir a un reclutador por su perfil de LinkedIn (ver 2.5).
+Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
+las empresas, seguir reclutadores, el scoring con Gemini y la pantalla.
 
 ---
 
