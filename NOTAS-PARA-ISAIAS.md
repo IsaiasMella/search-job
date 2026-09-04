@@ -16,13 +16,12 @@ las empresas, seguir reclutadores, el scoring con Gemini y la pantalla.
 
 | # | Qué | Dónde | Cuánto lleva |
 |---|---|---|---|
-| 1 | Una **corrida real** de punta a punta con todo prendido | ver 2.3 | 10 min |
+| 1 | **Correr `instalar.bat`** para que empiece a buscar solo. Todavía no lo corriste | doble clic | 5 min |
 | 2 | **Usarlo una semana** y anotar qué falla antes de pasárselo a nadie | — | tuyo |
 
-Los moldes de mensaje ya están corregidos con los tuyos (2.4). Lo de armarle la
-carpeta a cada persona (su perfil, su chat de Telegram, correr `instalar.bat` de
-nuevo) queda para cuando termines la semana de prueba: no tiene sentido repartir
-algo que todavía no sabés si tiene bugs.
+La corrida de punta a punta ya salió bien (4/9/2026, ver 2.3). Lo de armarle la
+carpeta a cada persona queda para después de la semana de prueba: no tiene
+sentido repartir algo que todavía no sabés si tiene bugs.
 
 Sin empezar, y afuera a propósito: **que el sistema aprenda de tus descartes**.
 `State.feedback_jobs(aplicado=False, limit=15)` ya devuelve las últimas
@@ -107,6 +106,24 @@ $env:LOG_LEVEL="DEBUG"; .venv\Scripts\python.exe -m vacantia.run --profile isaia
 ```
 
 Y todo queda escrito en `vacantia.log` igual, aunque cierres la ventana.
+
+**Cómo salió la primera, el 4/9/2026** (para tener con qué comparar):
+
+```
+careers 17 · google_posts 40 · linkedin 61 · rrhh 7   = 125 recolectadas
+Dedupe:  78 nuevas de 125 (43 por URL repetida, 4 por empresa+título)
+Triaje:  puntúo las 30 más prometedoras, dejo 48 para la próxima
+Filtros: 8 pasaron, 22 descartadas
+         1 de 8 pasó el min_score de 60
+```
+
+Las cuatro fuentes anduvieron. **Ojo con el embudo**, que explica por qué de 125
+salió una sola:
+
+- **`max_new_per_run: 30`** dejó 48 sin puntuar. No se pierden: entran en la
+  corrida siguiente.
+- **20 de las 30 puntuadas se cayeron por inglés**, y la mejor de ésas puntuaba
+  90. Ese es tu cuello de botella, no la cantidad de ofertas.
 
 ## 2.4. Los mensajes al reclutador
 
