@@ -98,6 +98,26 @@ de qué sitios traer ofertas, y tus claves.
 
 Abajo de todo se crea el perfil de otra persona de la casa.
 
+### ¿La pantalla muestra lo último, o hay que buscar de nuevo?
+
+**Muestra siempre lo último que dejó la última búsqueda.** `abrir.bat` no busca:
+sólo abre la pantalla, que lee el archivo donde quedaron guardadas las ofertas.
+
+Y lo relee **en cada carga de página**. Si una búsqueda programada entra mientras
+tenés la pantalla abierta, apretás **F5** y las ofertas nuevas aparecen. No hace
+falta cerrar nada.
+
+Para buscar en el momento, sin esperar el horario, es el otro archivo:
+`buscar_ahora.bat`.
+
+> **Distinto es cuando cambia el código.** La pantalla carga el programa una sola
+> vez, al arrancar: si alguien edita el código con la pantalla abierta, los
+> cambios no se ven hasta cerrarla y volver a abrirla. Es normal, no es un error.
+> **Las búsquedas programadas no tienen ese problema**: cada corrida arranca un
+> proceso nuevo, así que siempre usan la última versión.
+>
+> En resumen: **ofertas nuevas → F5 alcanza. Código nuevo → cerrar y abrir.**
+
 ## Cuando algo no anda
 
 **Primero, `estado.bat`.** Te dice si está programado, cuándo corrió por última
