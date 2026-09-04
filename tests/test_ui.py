@@ -416,11 +416,11 @@ def test_el_recuadro_explica_que_pagina_pegar_y_cual_no():
     html = formulario.render("ana", {"keywords": ["Python"]}, [])
 
     assert 'class="pista"' in html
-    assert "/recent-activity/all/" in html          # la forma correcta
-    assert "Búsquedas activas" in html              # dónde mirar en la consultora
+    assert "Los perfiles de LinkedIn NO funcionan" in html   # probado el 4/9/2026
+    assert "Búsquedas activas" in html              # lo que sí hay que pegar
     assert "0 publicación(es)" in html              # el síntoma de haberla errado
     # Y como ejemplo dentro del cuadro vacío, que se ve sin leer nada.
-    assert 'placeholder="https://www.linkedin.com/in/nombre-apellido' in html
+    assert 'placeholder="https://consultora.com.ar/busquedas-activas' in html
 
 
 # --- el rediseño de la pantalla -------------------------------------------
@@ -501,3 +501,111 @@ def test_el_motivo_faltante_se_avisa_al_lado_del_campo():
     assert "aria-invalid" in JS
     tarjeta = _tarjeta({"url": "https://x/1", "title": "T"}, "ana", "pendientes")
     assert 'class="error-motivo"' in tarjeta
+
+
+# --- filtro por antigüedad y el costo del inglés ---------------------------
+
+def _con_historial(tmp, entradas):
+    """Reescribe el historial del perfil de prueba."""
+    import json as _json
+    ruta = tmp / "state" / "test" / "job_history.json"
+    ruta.write_text(_json.dumps(entradas), encoding="utf-8")
+
+
+HOY_ISO = "2026-09-04T12:00:00+00:00"
+
+VARIADAS = [
+    {"url": "https://e/nueva", "title": "Recien publicada", "aplicado": None,
+     "posted_at": "2026-09-04", "found_at": HOY_ISO},
+    {"url": "https://e/semana", "title": "De esta semana", "aplicado": None,
+     "posted_at": "hace 3 dias", "found_at": HOY_ISO},
+    {"url": "https://e/mes", "title": "Del mes pasado", "aplicado": None,
+     "posted_at": "hace 1 mes", "found_at": HOY_ISO},
+    {"url": "https://e/antigua", "title": "Del ano pasado", "aplicado": None,
+     "posted_at": "hace 11 meses", "found_at": HOY_ISO},
+    {"url": "https://e/sinfecha", "title": "Sin fecha", "aplicado": None,
+     "posted_at": "", "found_at": HOY_ISO},
+]
+
+
+def test_el_filtro_de_fecha_saca_las_viejas(sitio):
+    """El caso real: 207 avisos, muchos del mes pasado y ya cubiertos."""
+    base, tmp = sitio
+    _con_historial(tmp, VARIADAS)
+
+    _, semana, _ = get(base, "/trabajos?perfil=test&desde=7d")
+    assert "Recien publicada" in semana and "De esta semana" in semana
+    assert "Del mes pasado" not in semana and "Del ano pasado" not in semana
+
+    _, todo, _ = get(base, "/trabajos?perfil=test&desde=todo")
+    assert "Del ano pasado" in todo
+
+
+def test_un_aviso_sin_fecha_no_se_esconde(sitio):
+    """No tener el dato no es lo mismo que ser viejo.
+
+    Casi la mitad de los avisos no dicen cuándo se publicaron. Si el filtro los
+    tirara, "Hoy" escondería la mitad de la lista sin explicar por qué.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, VARIADAS)
+    _, hoy, _ = get(base, "/trabajos?perfil=test&desde=hoy")
+    assert "Sin fecha" in hoy
+
+
+def test_la_tarjeta_distingue_publicado_de_visto(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, VARIADAS)
+    _, html, _ = get(base, "/trabajos?perfil=test&desde=todo")
+    assert "publicado hoy" in html          # el aviso lo dijo
+    assert "visto hoy" in html              # no lo dijo: es cuándo lo encontramos
+
+
+def test_los_dos_filtros_se_cruzan_sin_pisarse(sitio):
+    """Cambiar de estado no puede resetear el rango de fechas, ni al revés."""
+    base, tmp = sitio
+    _con_historial(tmp, VARIADAS)
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=descartadas&desde=7d")
+    assert "ver=descartadas&desde=hoy" in html or "desde=hoy" in html
+    assert "desde=7d&ver=aplicadas" in html or "ver=aplicadas" in html
+
+
+def test_marcar_una_oferta_no_te_devuelve_a_la_lista_completa(sitio):
+    """Antes cada clic reseteaba el filtro y había que volver a elegirlo."""
+    base, tmp = sitio
+    _con_historial(tmp, VARIADAS)
+    _, _, url = post(base, "/feedback", {
+        "perfil": "test", "ver": "pendientes", "desde": "7d",
+        "url": "https://e/semana", "aplicado": "si",
+    })
+    assert "desde=7d" in url
+
+
+def test_el_cartel_dice_cuantas_se_pierden_por_ingles(sitio):
+    """Pedido explícito, y el pedido incluía que incomode.
+
+    Ver sólo las ofertas en español da la impresión de que el mercado es así;
+    lo que se ve es el recorte del filtro. El número lo desarma.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/1", "title": "Con ingles", "aplicado": None, "score": 88,
+         "requires_english": True, "found_at": HOY_ISO},
+        {"url": "https://e/2", "title": "Sin ingles", "aplicado": None, "score": 60,
+         "found_at": HOY_ISO},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test&desde=todo")
+    assert 'class="duele"' in html
+    assert "piden inglés" in html
+    assert "88" in html                     # cuánto valía la mejor que se perdió
+
+
+def test_sin_ofertas_perdidas_no_hay_cartel(sitio):
+    """El cartel tiene que significar algo: en cero no se muestra."""
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/2", "title": "Sin ingles", "aplicado": None, "score": 60,
+         "found_at": HOY_ISO},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test&desde=todo")
+    assert 'class="duele"' not in html

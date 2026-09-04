@@ -1,10 +1,17 @@
 # Notas para Isaías
 
-**215 tests pasan.**
+**250 tests pasan.**
+
+**Estado al 4/9/2026.** Andando: los 3 portales argentinos, el scoring con el
+LLM (Gemini con crédito), la pantalla con filtro por fecha y modo oscuro.
+Bloqueado: seguir reclutadores por su perfil de LinkedIn, que **no se puede** y
+no es arreglable (2.5). Sin empezar: que el sistema aprenda de tus descartes,
+que lo dejaste afuera a propósito. Lo que falta hacer a vos está en la primera
+tabla.
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  215 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  250 passed
 ```
 
 ---
@@ -13,18 +20,26 @@
 
 Esta es la lista corta. Todo lo demás es contexto.
 
+## Falta hacer
+
 | # | Qué | Dónde | Cuánto te lleva |
 |---|---|---|---|
-| 1 | ~~Verificar los 3 portales argentinos~~ **HECHO el 4/9/2026** — ver 2.1 | — | — |
-| 2 | **Verificar la fuente `rrhh`** con un perfil real de LinkedIn | ver 2.1 | 5 min |
-| 3 | **Confirmar la nueva regla de ubicación** corriendo una búsqueda | ver 3.1 | 5 min |
-| 3b | **Poner crédito en la cuenta de Gemini** — sin eso no hay puntaje real | ver 2.3 | 5 min |
-| 4 | **Corregir los moldes de mensaje** contra tu experiencia | `vacantia/mensajes.py` | 10 min |
-| 5 | **Cargar más empresas** en `companies.json` | pantalla → Mis datos | tuyo |
+| 1 | **Reemplazar la URL de LinkedIn de RRHH** por la página de la consultora. La que cargaste no puede funcionar | ver 2.1 | 5 min |
+| 2 | **Corregir los moldes de mensaje** contra tu experiencia | `vacantia/mensajes.py` | 10 min |
+| 3 | **Cargar más empresas** en `companies.json` | pantalla → Mis datos | tuyo |
+| 4 | Mirar cómo queda **tu CV en PDF** | pantalla → Trabajos | 1 min |
+| 5 | Una **corrida real** de punta a punta con todo prendido | `--dry-run` primero | 10 min |
 | 6 | **Cargar el chat de Telegram de cada persona** cuando armes sus carpetas | ver 3.2 | 1 min c/u |
 | 7 | **Correr `instalar.bat` de nuevo** cuando haya más de un perfil | — | 5 min |
-| 8 | Mirar cómo queda **tu CV en PDF** | pantalla → Trabajos | 1 min |
-| 9 | Una **corrida real** de punta a punta con todo prendido | `--dry-run` primero | 10 min |
+
+## Ya hecho
+
+| Qué | Cuándo |
+|---|---|
+| ~~Verificar los 3 portales argentinos~~ | 4/9/2026, ver 2.1 |
+| ~~Verificar la fuente `rrhh`~~ probada: LinkedIn la bloquea, ver 2.5 | 4/9/2026 |
+| ~~Poner crédito en la cuenta de Gemini~~ los 3 modelos responden | 4/9/2026 |
+| ~~Confirmar la regla de ubicación~~ corrió con puntajes reales del LLM | 4/9/2026 |
 
 ---
 
@@ -35,7 +50,7 @@ Esta es la lista corta. Todo lo demás es contexto.
 | Qué | Por qué | Cómo lo verificás |
 |---|---|---|
 | ~~**Bumeran, Zonajobs, Computrabajo**~~ ✅ **verificados el 4/9/2026** | Se probaron los tres contra los sitios reales, uno por vez | Bumeran 12 avisos, Zonajobs 5, Computrabajo 20. Ninguno dio "0 aviso(s)": las direcciones y los patrones andan. Lo que sí apareció está en 2.4 |
-| **La fuente `rrhh`** | Probada con páginas de ejemplo, no con un perfil real. LinkedIn puede devolver una pantalla de login en vez del contenido | Cargá una URL en Mis datos → "Perfiles de reclutadores", corré, mirá el log |
+| ~~**La fuente `rrhh`**~~ ⚠️ **probada el 4/9/2026: LinkedIn la bloquea** | El código anda; LinkedIn devuelve la página vacía a quien no tiene sesión | Ver 2.5. Sirve con páginas de consultoras, no con perfiles de LinkedIn |
 | **El instalador multi-perfil** | Registra tareas programadas de verdad en Windows; no lo corrí | Corré `instalar.bat` con dos perfiles y fijate que aparezcan dos tareas en `estado.bat` |
 | **El PDF con tu CV real** | Se genera bien (59 KB, Arial, con `—`, `“”`, `€`) pero no juzgué cómo se ve | Pantalla → Trabajos → "Descargar CV en PDF" |
 
@@ -58,9 +73,15 @@ reemplazá el término buscado por `{query}`. Después abrí dos o tres avisos y
 mirá qué tienen en común sus direcciones: eso va en `job_url_pattern`.
 
 
-## 2.3. ⚠️ La cuenta de Gemini se quedó sin crédito — esto es lo urgente
+## 2.3. ~~La cuenta de Gemini sin crédito~~ ✅ RESUELTO el 4/9/2026
 
-Al verificar los portales salió que **el scoring con LLM no está corriendo**.
+> **Ya está arreglado.** Cargaste crédito y los tres modelos responden. La
+> corrida siguiente trajo puntajes reales del LLM, con razones escritas y
+> despegados entre sí (40, 50, 75, 88) en vez de todos apelotonados en 61-79.
+> Queda escrito abajo por si vuelve a pasar, porque el mensaje de error
+> apuntaba al lado equivocado.
+
+Al verificar los portales salió que **el scoring con LLM no estaba corriendo**.
 Falló en las tres corridas, con los tres modelos, siempre igual.
 
 Son dos problemas encadenados, y el segundo es el que importa:
@@ -158,6 +179,42 @@ Zonajobs, esa página viene recortada y no trae ni la empresa ni la ubicación.
 Sin empresa, el dedupe por empresa+título no puede juntarlo con el original.
 Juntarlos pedía tocar `Job.dedupe_key`, que es una decisión de diseño con su
 motivo escrito, y el aviso en pantalla resuelve el caso real. Queda dicho acá.
+
+## 2.5. ⚠️ Los perfiles de LinkedIn no se pueden seguir. Probado.
+
+Cargaste el perfil de un reclutador peruano y **la URL estaba perfecta**, con
+`/recent-activity/all/` y todo. El tilde también. No corriste la búsqueda
+todavía, así que lo probé directo contra la página.
+
+**Devuelve cero, y la culpa no es tuya ni del programa.** Lo comparé:
+
+| Qué pedí | Qué volvió |
+|---|---|
+| `linkedin.com/in/<el-perfil>/recent-activity/all/` | **nada** |
+| `linkedin.com/in/<el-perfil>/` (el perfil pelado) | **nada** |
+| una página cualquiera de Computrabajo (control) | 9959 caracteres, 85 links |
+
+O sea que no es el formato de la URL ni el lector: **LinkedIn devuelve la página
+vacía a cualquiera que no tenga la sesión iniciada.** Y no hay forma de
+arreglarlo desde acá sin entrar con usuario y contraseña, que es justamente lo
+que este proyecto no hace: es lo que te haría bloquear la cuenta.
+
+**Qué sí funciona:** cualquier página pública que liste búsquedas. La página de
+la consultora del reclutador, el blog de empleos de una cámara, la bolsa de
+trabajo de una universidad. Esas se leen enteras.
+
+**Qué hacer con tu peruano:** buscalo en Google con el nombre de su consultora y
+pegá la página donde ella lista los puestos, no la de inicio. Si trabaja por su
+cuenta y sólo publica en LinkedIn, esa persona no se puede seguir con esta
+herramienta.
+
+**Ya está avisado en la pantalla**, en el recuadro debajo del campo, en rojo y
+arriba de todo. Y el log ahora lo dice con todas las letras en vez del escueto
+"sin contenido", que se leía igual que un error de configuración.
+
+> Ojo con no confundirse: la fuente **`google_posts` sí trae publicaciones de
+> LinkedIn** y sigue andando, porque las busca por el buscador y nunca toca
+> LinkedIn. Lo que no se puede es seguir a una persona puntual.
 
 ---
 
@@ -285,6 +342,45 @@ Lo que está entre llaves lo completa el modelo leyendo el aviso y tu CV, con un
 botón. Sin credenciales, los huecos quedan a la vista a propósito: es más
 honesto que un mensaje genérico disfrazado de personalizado.
 
+## 3.6. Filtro por antigüedad y el cartel del inglés
+
+**El problema**: 207 avisos en la lista, muchos del mes pasado y ya cubiertos.
+
+**Filtro nuevo**, arriba de la lista: *Hoy · Últimos 7 días · Últimos 30 días ·
+Sin filtro*. Cada botón trae el número al lado, así se ve qué va a pasar antes
+de apretarlo. Con tus datos de hoy: 44 / 66 / 170 / 207. **Siete días te corta
+de 207 a 66.**
+
+Se cruza con el filtro de estado sin pisarlo, y el rango sobrevive a marcar una
+oferta: antes cada clic te devolvía a la lista completa.
+
+**El dato de la fecha era un lío** y por eso esto no era trivial. `posted_at`
+viene en cuatro formatos (`2026-08-21`, `hace 2 semanas`, `9 jun 2026`) y
+**falta en el 44% de los avisos**. Se parsea todo en `vacantia/fechas.py`, con
+tests para cada forma: si un portal cambia el formato, falla un test y no el
+filtro en silencio.
+
+Dos decisiones que conviene conocer:
+
+1. **Un aviso sin fecha no se esconde nunca.** No tener el dato no es lo mismo
+   que ser viejo. Si los tirara, "Hoy" te escondería media lista sin decir por
+   qué.
+2. **La tarjeta distingue "publicado" de "visto".** Cuando el aviso dice cuándo
+   se publicó, dice *publicado hace 5 d*. Cuando no lo dice, cae a la fecha en
+   que lo encontramos y dice *visto hace 5 d*, porque el aviso puede ser mucho
+   más viejo. Pasale el mouse por arriba y te dice la fecha exacta.
+
+**El cartel del inglés** también está, arriba de todo y sin botón de cerrar,
+como lo pediste. Hoy dice:
+
+> **103** ofertas que no podés tomar porque piden inglés. La mejor puntuaba
+> **88**, *Senior Python AI Engineer*.
+
+Se recalcula contra el historial cada vez que se abre la pantalla, no se guarda:
+si subís tu nivel de inglés en *Mis datos*, el número baja solo. Y respeta el
+filtro de fechas, así que con "Últimos 7 días" te dice cuántas perdiste esta
+semana, no en total.
+
 ---
 
 # 4. QUÉ HAY CONSTRUIDO
@@ -359,6 +455,8 @@ test.
 
 ## Bloque 3 — Documentos para postularse ✅ COMPLETO
 
+(Falta que mires el PDF y corrijas los moldes: es criterio tuyo, no código.)
+
 - [x] CV en PDF con botón de descarga
 - [x] Mensaje corto para DM y para mail — *borradores, corregilos*
 - [x] Modo "consejo" en vez de generación
@@ -366,7 +464,8 @@ test.
 ## Bloque 4 — Que la familia lo pueda usar 🟡
 
 - [x] Fuentes para rubros no técnicos — **verificadas contra los sitios el 4/9/2026** (2.4)
-- [x] Seguir perfiles de RRHH por URL — **hecha, sin verificar**
+- [x] Seguir perfiles de RRHH por URL — **probada: sirve para consultoras,
+      NO para perfiles de LinkedIn** (2.5)
 - [x] Que cada uno pueda armar su perfil y su Telegram por separado
 - [ ] **Cargarle el `chat_id` a cada persona** cuando les pases la carpeta (3.2)
 
@@ -381,16 +480,25 @@ test.
 - [x] Empresa, ciudad y modalidad en los portales — sin eso la regla de
       ubicación no corría en ninguno de los tres (2.4)
 - [x] El mismo aviso repetido dentro de Computrabajo (2.4)
-- [ ] **Poner crédito en Gemini o pasar a OpenRouter** — mientras tanto todo
-      puntúa por heurística y el orden de las ofertas no significa nada (2.3)
+- [x] ~~Poner crédito en Gemini~~ — hecho el 4/9/2026, los 3 modelos responden
+      y el scoring volvió a ser real (2.3)
+- [x] Nombres de modelo actualizados: Google dio de baja los `gemini-2.5-*` (2.3)
 
-## Bloque 6 — Vigilar 🟡
+## Bloque 6 — Vigilar ✅ COMPLETO
 
 - [x] Ruido de posts de opinión en `google_posts`
 - [x] País vacío en `google_posts`
 - [x] Rareza geográfica de LinkedIn
 - [x] La "pestaña de jobs" — es la pestaña Trabajos, ya está
 - [x] ~~Recolección compartida~~ — **descartada**: todo aislado, cada uno en su compu
+
+## Bloque 7 — La pantalla, segunda vuelta ✅ COMPLETO (4/9/2026)
+
+- [x] Modo oscuro, foco visible con teclado, botones de dedo en el celular
+- [x] Barra de guardar pegada abajo: el botón quedaba fuera de pantalla
+- [x] El error de "falta el motivo" al lado del campo, no en un cartel que tapa todo
+- [x] **Filtro por antigüedad del aviso** (3.6) — 7 días te corta de 207 a 66
+- [x] **Cartel de cuántas se pierden por inglés** (3.6)
 
 ## Ideas, no pendientes
 

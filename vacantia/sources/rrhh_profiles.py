@@ -115,6 +115,21 @@ def _hash(texto: str) -> str:
     return hashlib.sha1(texto.encode("utf-8")).hexdigest()[:10]
 
 
+def es_perfil_de_linkedin(url: str) -> bool:
+    """Un perfil de persona en LinkedIn (`/in/algo`), que es el caso que falla.
+
+    Probado el 4/9/2026 con un perfil real: LinkedIn devuelve la página vacía
+    tanto en `/in/fulano/` como en `/in/fulano/recent-activity/all/`, mientras
+    que una página cualquiera de otro sitio devuelve el contenido completo. No
+    es el patrón de URL ni el lector: LinkedIn no deja leer perfiles sin sesión.
+
+    Los links a publicaciones sueltas (`/posts/...`) y las páginas de empresa
+    (`/company/...`) no entran acá: esos se comportan distinto y no se probaron.
+    """
+    return bool(re.search(r"linkedin\.com/in/", str(url or ""), re.I))
+
+
+
 class RRHHProfilesSource(Source):
     name = "rrhh"
 
@@ -221,6 +236,7 @@ class RRHHProfilesSource(Source):
             )
         return jobs
 
+
     # --- interfaz Source ------------------------------------------------
 
     def fetch(self) -> list[Job]:
@@ -232,7 +248,15 @@ class RRHHProfilesSource(Source):
         for url in self.urls:
             texto, links = paginas.get(url, ("", []))
             if not texto and not links:
-                logger.info(f"[rrhh]   sin contenido en {url}")
+                logger.warning(f"[rrhh]   sin contenido en {url}")
+                if es_perfil_de_linkedin(url):
+                    logger.warning(
+                        "[rrhh]   LinkedIn no deja leer los perfiles desde afuera: "
+                        "devuelve la página vacía, con o sin /recent-activity/all/. "
+                        "No es tu URL ni un error del programa. Para seguir a esta "
+                        "persona, usá la página de su consultora, que sí se puede "
+                        "leer. Verificado el 4/9/2026."
+                    )
                 continue
             nuevas = self._jobs_de_pagina(url, texto, links, terminos)
             jobs.extend(nuevas)

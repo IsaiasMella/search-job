@@ -17,31 +17,36 @@ NIVELES = ("A1", "A2", "B1", "B2", "C1", "C2")
 
 #: Fuentes que se pueden prender y apagar desde la UI. Agregar una fuente nueva
 #: al sistema es agregar una línea acá.
-# Lo que no se recuerda de una vez para siempre: qué página de cada sitio hay
-# que pegar. Del perfil de alguien no sale nada —hay que ir a su actividad— y
-# de la home de una consultora tampoco: va la página que lista las búsquedas.
+# Lo que no se recuerda de una vez para siempre: qué página sirve y cuál no.
+# Probado contra un perfil real el 4/9/2026: LinkedIn devuelve la página vacía
+# a quien no tiene sesión, así que seguir a una persona por su perfil no anda y
+# no hay forma de arreglarlo desde acá. Lo que sí anda es la página de la
+# consultora, y ahí tampoco sirve la de inicio: va la que lista los puestos.
 # Se equivoca cualquiera, y el error es mudo: la fuente devuelve 0 y parece rota.
-EJEMPLO_RRHH = """https://www.linkedin.com/in/nombre-apellido/recent-activity/all/
-https://consultora.com.ar/busquedas-activas"""
+EJEMPLO_RRHH = """https://consultora.com.ar/busquedas-activas
+https://otraconsultora.com/trabaja-con-nosotros"""
 
-PISTA_RRHH = """<b>&#9888; Ojo con QUÉ página pegás: no alcanza con el perfil</b>
+PISTA_RRHH = """<b>&#9888; Los perfiles de LinkedIn NO funcionan. Probado.</b>
 <ul>
-  <li><b>Persona de LinkedIn:</b> entrá a su perfil, tocá <b>&#8220;Actividad&#8221;</b>
-      y de ahí <b>&#8220;Ver todas las publicaciones&#8221;</b>. La dirección tiene que
-      terminar en <code>/recent-activity/all/</code>.<br>
-      <span class="bien">SÍ</span> <code>linkedin.com/in/ana-perez/recent-activity/all/</code><br>
-      <span class="mal">NO</span> <code>linkedin.com/in/ana-perez/</code>. El perfil
-      pelado no lista las publicaciones y no va a traer nada.</li>
-  <li><b>Consultora o empresa:</b> la página donde lista los puestos, no la de inicio.
-      Suele llamarse <b>&#8220;Búsquedas activas&#8221;</b>, &#8220;Trabajá con nosotros&#8221;
-      o &#8220;Empleos&#8221;.<br>
+  <li><span class="mal">NO</span> <code>linkedin.com/in/quien-sea/</code>, ni con
+      <code>/recent-activity/all/</code> al final. LinkedIn devuelve la página vacía
+      a cualquiera que no tenga sesión iniciada, así que no llega nada.
+      <b>No es tu URL ni un error del programa</b>, y no hay forma de arreglarlo
+      desde acá.</li>
+  <li><span class="bien">SÍ</span> <b>la página propia de la consultora</b>, que es
+      la que sí se puede leer. Buscá al reclutador en Google con el nombre de su
+      consultora y pegá la página donde lista los puestos, no la de inicio. Suele
+      llamarse <b>&#8220;Búsquedas activas&#8221;</b>, &#8220;Trabajá con
+      nosotros&#8221; o &#8220;Empleos&#8221;.<br>
       <span class="bien">SÍ</span> <code>consultora.com.ar/busquedas-activas</code><br>
       <span class="mal">NO</span> <code>consultora.com.ar</code></li>
+  <li>También sirve cualquier otra página pública que liste búsquedas: el blog de
+      empleos de una cámara, una bolsa de trabajo de universidad.</li>
 </ul>
 <p style="margin:8px 0 0">Una por línea. Y arriba tiene que estar tildado
 <b>&#8220;Perfiles de reclutadores que sigo&#8221;</b>, si no no se usan.</p>
-<p style="margin:6px 0 0">Si el log dice <code>0 publicación(es)</code>, casi siempre es
-esto: pegaste la página de entrada en vez de la que lista.</p>"""
+<p style="margin:6px 0 0">Si el log dice <code>0 publicación(es)</code>: o pegaste una
+de LinkedIn, o pegaste la página de entrada en vez de la que lista los puestos.</p>"""
 
 
 # (clave, etiqueta, nota). La nota se muestra abajo del tilde: es donde mira

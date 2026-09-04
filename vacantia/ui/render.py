@@ -8,6 +8,8 @@ azul). El verde y el rojo no decoran: significan "apliqué" y "descarté".
 from html import escape
 from urllib.parse import quote
 
+from vacantia.fechas import dias_desde, fecha_de
+
 CSS = """
 /* Tokens. Un solo juego de nombres semánticos, con su equivalente oscuro más
    abajo: nunca se escribe un color suelto en una regla, así el modo oscuro no
@@ -132,6 +134,21 @@ h3 { letter-spacing: -.01em; }
 .filtros a:hover { border-color: var(--borde-2); color: var(--texto); }
 .filtros a.activa { background: var(--acento); color: #fff; border-color: var(--acento); }
 .filtros .cuenta { font-variant-numeric: tabular-nums; opacity: .75; }
+.filtros.fechas { align-items: center; margin-bottom: 20px; }
+.filtros .rotulo { font-size: 12px; color: var(--gris); text-transform: uppercase;
+                   letter-spacing: .06em; margin-right: 4px; }
+
+/* El costo de no saber inglés. Se pidió que incomode, así que el número va
+   grande y el cartel no se puede cerrar. */
+.duele { display: flex; align-items: center; gap: 16px; margin: 0 0 18px;
+         background: var(--ambar-luz); border: 1px solid var(--ambar-bde);
+         border-left: 4px solid var(--ambar); border-radius: var(--r-caja);
+         padding: 14px 18px; }
+.duele .numero { font-size: 34px; font-weight: 800; line-height: 1;
+                 color: var(--ambar); font-variant-numeric: tabular-nums; }
+.duele .dice { font-size: 13.5px; line-height: 1.5; }
+@media (max-width: 560px) { .duele { flex-direction: column; align-items: flex-start;
+                                     gap: 8px; } }
 
 .oferta { display: grid; grid-template-columns: 60px 1fr 260px; gap: 16px;
           background: var(--papel); border: 1px solid var(--borde);
@@ -153,6 +170,8 @@ h3 { letter-spacing: -.01em; }
 .datos-meta li { font-size: 12px; color: var(--gris); background: var(--papel-2);
                  border-radius: 999px; padding: 3px 9px; }
 .datos-meta li.fuente { font-variant-numeric: tabular-nums; }
+.datos-meta li.cuando { font-variant-numeric: tabular-nums; cursor: help;
+                        border: 1px solid var(--borde); }
 .razon { font-size: 13.5px; margin: 8px 0 0; color: var(--texto); }
 .enlaces { margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 14px; }
 
@@ -349,8 +368,37 @@ FILTROS = (
     ("todas", "Todas"),
 )
 
+#: El otro eje: qué tan viejo es el aviso. Se cruza con FILTROS, no lo reemplaza.
+RANGOS = (
+    ("hoy", "Hoy"),
+    ("7d", "Últimos 7 días"),
+    ("30d", "Últimos 30 días"),
+    ("todo", "Sin filtro"),
+)
 
-def _tarjeta(oferta: dict, perfil: str, ver: str) -> str:
+
+def _cuando(oferta: dict) -> tuple[str, str]:
+    """(texto, título) del chip de fecha.
+
+    Distingue "publicado" de "visto" a propósito. Casi la mitad de los avisos no
+    dicen cuándo se publicaron y ahí se cae a la fecha en que lo encontramos,
+    que puede ser mucho más nueva: un aviso de hace tres meses encontrado ayer
+    parecería de ayer. Decir cuál de las dos es cuesta una palabra.
+    """
+    momento, publicada = fecha_de(oferta)
+    if momento is None:
+        return "sin fecha", "El aviso no dice cuándo se publicó."
+    dias = dias_desde(momento) or 0
+    if publicada:
+        cuando = "publicado hoy" if dias <= 0 else f"publicado hace {dias} d"
+        return cuando, f"El aviso dice que se publicó el {momento.isoformat()}."
+    visto = "visto hoy" if dias <= 0 else f"visto hace {dias} d"
+    return visto, ("El aviso no dice cuándo se publicó. Esta es la fecha en que "
+                   f"lo encontramos ({momento.isoformat()}): el aviso puede ser "
+                   "bastante más viejo.")
+
+
+def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo") -> str:
     score = oferta.get("score")
     clase = "puntaje alto" if isinstance(score, int) and score >= 70 else "puntaje"
     titulo = oferta.get("scored_title") or oferta.get("title") or "(sin título)"
@@ -360,17 +408,18 @@ def _tarjeta(oferta: dict, perfil: str, ver: str) -> str:
     # Cada dato en su propia etiqueta, en vez de una tira separada por puntos.
     # Con cuatro datos la tira quedaba "ACME · Remoto · linkedin · 2026-09-04",
     # que se lee como una sola frase larga y no deja distinguir qué es cada cosa.
-    fecha = (oferta.get("found_at") or "")[:10]
+    cuando, detalle_fecha = _cuando(oferta)
     etiquetas = "".join(
         f'<li class="{cls}">{esc(valor)}</li>'
         for valor, cls in (
             (oferta.get("company"), "empresa"),
             (lugar, "lugar"),
             (oferta.get("source"), "origen"),
-            (fecha, "fuente"),          # `fuente` = numeración tabular, por la fecha
         )
         if valor
     )
+    etiquetas += (f'<li class="cuando" title="{esc(detalle_fecha)}">'
+                  f'{esc(cuando)}</li>')
 
     aplicado = oferta.get("aplicado")
     if aplicado is True:
@@ -382,6 +431,7 @@ def _tarjeta(oferta: dict, perfil: str, ver: str) -> str:
         acciones = f"""<form class="acciones" method="post" action="/feedback">
       <input type="hidden" name="perfil" value="{esc(perfil)}">
       <input type="hidden" name="ver" value="{esc(ver)}">
+      <input type="hidden" name="desde" value="{esc(desde)}">
       <input type="hidden" name="url" value="{esc(url)}">
       <div class="fila">
         <button class="verde" name="aplicado" value="si">Apliqué</button>
@@ -430,25 +480,65 @@ VACIO = {
 }
 
 
+def _ingles(pena: dict) -> str:
+    """El cartel de lo que cuesta no saber inglés.
+
+    Va arriba de la lista y no se puede cerrar, por pedido: la idea es
+    justamente que moleste. Sin esto, la lista filtrada da la impresión de que
+    el mercado no pide inglés, cuando lo que se ve es el recorte del filtro.
+    """
+    cuantas = (pena or {}).get("cuantas") or 0
+    if not cuantas:
+        return ""
+    mejor, titulo = pena.get("mejor"), pena.get("mejor_titulo") or ""
+    detalle = ""
+    if mejor is not None:
+        detalle = (f' La mejor puntuaba <b>{esc(mejor)}</b>'
+                   f'{f", <i>{esc(titulo)}</i>" if titulo else ""}.')
+    return f"""<div class="duele">
+  <span class="numero">{esc(cuantas)}</span>
+  <span class="dice">ofertas que no podés tomar porque piden inglés.{detalle}
+  <br>No están filtradas por gusto: es lo que hoy te queda afuera.</span>
+</div>"""
+
+
 def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
-             mensajes: list[tuple[str, str]]) -> str:
-    filtros = "".join(
-        f'<a href="/trabajos?perfil={esc(perfil)}&ver={clave}"'
-        f'{" class=activa" if clave == ver else ""}>{etiqueta} '
-        f'<span class="cuenta">{conteo.get(clave, 0)}</span></a>'
-        for clave, etiqueta in FILTROS
-    )
+             mensajes: list[tuple[str, str]], desde: str = "todo",
+             conteo_fecha: dict | None = None, pena: dict | None = None) -> str:
+    def chips(opciones, activo, param, cuentas, otro_param, otro_valor):
+        return "".join(
+            f'<a href="/trabajos?perfil={esc(perfil)}&{otro_param}={esc(otro_valor)}'
+            f'&{param}={clave}"{" class=activa" if clave == activo else ""}>{etiqueta} '
+            f'<span class="cuenta">{(cuentas or {}).get(clave, 0)}</span></a>'
+            for clave, etiqueta in opciones
+        )
+
+    # Cada botón conserva el valor del otro eje: cambiar de "Sin marcar" a
+    # "Descarté" no tiene por qué devolverte a ver los avisos de hace un año.
+    por_estado = chips(FILTROS, ver, "ver", conteo, "desde", desde)
+    por_fecha = chips(RANGOS, desde, "desde", conteo_fecha, "ver", ver)
+
     if ofertas:
-        listado = "".join(_tarjeta(o, perfil, ver) for o in ofertas)
+        listado = "".join(_tarjeta(o, perfil, ver, desde) for o in ofertas)
+    elif desde != "todo":
+        listado = (
+            '<div class="vacio"><b>Ninguna en ese rango de fechas.</b><br>'
+            'Probá con <b>Sin filtro</b> para ver también las más viejas.</div>'
+        )
     else:
         titulo, detalle = VACIO.get(ver, VACIO["todas"])
         listado = f'<div class="vacio"><b>{titulo}</b><br>{detalle}</div>'
+
     return f"""{avisos(mensajes)}
 <h2>Trabajos</h2>
 <p class="herramientas">
   <a class="boton" href="/cv.pdf?perfil={esc(perfil)}">Descargar CV en PDF</a>
 </p>
-<div class="filtros">{filtros}</div>
+{_ingles(pena)}
+<div class="filtros">{por_estado}</div>
+<div class="filtros fechas">
+  <span class="rotulo">Antigüedad del aviso</span>{por_fecha}
+</div>
 {listado}"""
 
 

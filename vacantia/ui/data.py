@@ -11,10 +11,12 @@ import json
 import os
 import re
 import shutil
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from vacantia.config import PROFILES_DIR, load_profile, load_resume, profile_path
+from vacantia.fechas import dias_desde, fecha_de
+from vacantia.filters import passes_language
 from vacantia.log import get_logger
 from vacantia.models import Job
 from vacantia.state import State
@@ -283,31 +285,106 @@ def fuente_o_crear(perfil: dict, tipo: str, defaults: dict | None = None) -> dic
 #: nuevas diarias, 300 son unas dos semanas de historial.
 MAX_OFERTAS = 300
 
+#: Para ordenar: las que no tienen fecha van al fondo, no arriba de todo.
+_SIN_FECHA = date.min
 
-def ofertas(nombre_perfil: str, ver: str = "pendientes") -> list[dict]:
+
+#: Antigüedad máxima en días de cada rango. None = sin límite.
+#: Un aviso del mes pasado casi siempre está cubierto: se sigue pudiendo ver,
+#: pero deja de ser lo primero que aparece.
+RANGOS: dict[str, int | None] = {"hoy": 0, "7d": 7, "30d": 30, "todo": None}
+
+
+def _entra_por_fecha(oferta: dict, desde: str, hoy=None) -> bool:
+    tope = RANGOS.get(desde)
+    if tope is None:
+        return True
+    momento, _ = fecha_de(oferta, hoy)
+    dias = dias_desde(momento, hoy)
+    # Sin fecha no se descarta: el aviso puede ser de hoy y no tenemos con qué
+    # decir que no. Esconderlo sería peor que mostrarlo de más.
+    return dias is None or dias <= tope
+
+
+def _por_estado(historial: list[dict], ver: str) -> list[dict]:
+    if ver == "aplicadas":
+        return [h for h in historial if h.get("aplicado") is True]
+    if ver == "descartadas":
+        return [h for h in historial if h.get("aplicado") is False]
+    if ver == "pendientes":
+        return [h for h in historial if h.get("aplicado") is None]
+    return historial
+
+
+def ofertas(nombre_perfil: str, ver: str = "pendientes",
+            desde: str = "todo") -> list[dict]:
     """Las ofertas del historial, de la más nueva a la más vieja.
 
-    `ver`: pendientes (sin marcar) | aplicadas | descartadas | todas.
+    `ver`:   pendientes (sin marcar) | aplicadas | descartadas | todas.
+    `desde`: hoy | 7d | 30d | todo, por antigüedad del aviso.
+
+    Se ordena por la fecha del aviso, no por `found_at`: dos corridas distintas
+    traen avisos viejos y nuevos mezclados, y ordenar por cuándo los vimos
+    dejaba arriba uno de hace nueve meses sólo porque se encontró ayer.
     """
     historial = State(nombre_perfil).load_history()
-    historial.sort(key=lambda h: h.get("found_at", ""), reverse=True)
-
-    if ver == "aplicadas":
-        historial = [h for h in historial if h.get("aplicado") is True]
-    elif ver == "descartadas":
-        historial = [h for h in historial if h.get("aplicado") is False]
-    elif ver == "pendientes":
-        historial = [h for h in historial if h.get("aplicado") is None]
+    historial.sort(
+        key=lambda h: (fecha_de(h)[0] or _SIN_FECHA, h.get("found_at", "")),
+        reverse=True,
+    )
+    historial = _por_estado(historial, ver)
+    historial = [h for h in historial if _entra_por_fecha(h, desde)]
     return historial[:MAX_OFERTAS]
 
 
-def contar_ofertas(nombre_perfil: str) -> dict[str, int]:
-    historial = State(nombre_perfil).load_history()
+def contar_ofertas(nombre_perfil: str, desde: str = "todo") -> dict[str, int]:
+    """Cuántas hay de cada estado, dentro del rango de fechas elegido."""
+    historial = [h for h in State(nombre_perfil).load_history()
+                 if _entra_por_fecha(h, desde)]
     return {
         "todas": len(historial),
         "pendientes": sum(1 for h in historial if h.get("aplicado") is None),
         "aplicadas": sum(1 for h in historial if h.get("aplicado") is True),
         "descartadas": sum(1 for h in historial if h.get("aplicado") is False),
+    }
+
+
+def contar_por_fecha(nombre_perfil: str, ver: str = "pendientes") -> dict[str, int]:
+    """Cuántas hay en cada rango, dentro del estado elegido.
+
+    Los dos contadores se cruzan a propósito: el número de cada botón dice qué
+    va a pasar si se lo aprieta, no cuántas hay en total.
+    """
+    historial = _por_estado(State(nombre_perfil).load_history(), ver)
+    return {rango: sum(1 for h in historial if _entra_por_fecha(h, rango))
+            for rango in RANGOS}
+
+
+def pena_de_ingles(nombre_perfil: str, desde: str = "todo") -> dict:
+    """Qué se perdió por no saber inglés: cuántas y cuánto puntuaba la mejor.
+
+    Existe por pedido explícito, y el pedido incluía que incomode: ver sólo las
+    ofertas en español da la impresión de que el mercado es así, cuando lo que
+    se ve es el recorte que deja el filtro. El número adelante lo desarma.
+
+    Se recalcula sobre el historial en vez de guardarse: el nivel de inglés del
+    perfil se puede cambiar desde la pantalla, y el cartel tiene que responder a
+    lo que dice el perfil hoy, no a lo que decía cuando corrió la búsqueda.
+    """
+    perfil = leer_perfil(nombre_perfil)
+    cfg = ((perfil.get("filters") or {}).get("language")) or {}
+    historial = [h for h in State(nombre_perfil).load_history()
+                 if _entra_por_fecha(h, desde)]
+
+    perdidas = [h for h in historial if not passes_language(Job.from_dict(h), cfg)[0]]
+    if not perdidas:
+        return {"cuantas": 0, "mejor": None, "mejor_titulo": ""}
+
+    mejor = max(perdidas, key=lambda h: h.get("score") or 0)
+    return {
+        "cuantas": len(perdidas),
+        "mejor": mejor.get("score"),
+        "mejor_titulo": mejor.get("scored_title") or mejor.get("title") or "",
     }
 
 

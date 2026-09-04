@@ -145,3 +145,33 @@ def test_sin_api_key_la_fuente_se_saltea(monkeypatch):
 def test_max_profiles_acota_cuantas_paginas_se_bajan():
     src = fuente([f"https://a.com/{i}" for i in range(20)], {"max_profiles": 5})
     assert len(src.urls) == 5
+
+
+def test_reconoce_un_perfil_de_persona_de_linkedin():
+    """Probado el 4/9/2026: LinkedIn devuelve la página vacía sin sesión.
+
+    Da igual el formato de la URL. Como el síntoma es "0 publicaciones", que se
+    lee igual que un error de configuración, el log tiene que decir que la culpa
+    no es de quien la pegó.
+    """
+    from vacantia.sources.rrhh_profiles import es_perfil_de_linkedin
+
+    assert es_perfil_de_linkedin("https://www.linkedin.com/in/ana/recent-activity/all/")
+    assert es_perfil_de_linkedin("https://linkedin.com/in/ana-perez-2472/")
+    # Una consultora sí se puede leer, y una página de empresa no se probó.
+    assert not es_perfil_de_linkedin("https://consultora.com.ar/busquedas")
+    assert not es_perfil_de_linkedin("https://www.linkedin.com/company/acme/")
+    assert not es_perfil_de_linkedin("")
+
+
+def test_avisa_por_que_un_perfil_de_linkedin_no_trae_nada(monkeypatch, caplog):
+    import logging
+
+    src = fuente(["https://www.linkedin.com/in/ana-perez/recent-activity/all/"])
+    con_paginas(monkeypatch, src, {})            # LinkedIn no devuelve nada
+
+    with caplog.at_level(logging.WARNING):
+        assert src.fetch() == []
+    texto = caplog.text
+    assert "LinkedIn no deja leer los perfiles" in texto
+    assert "No es tu URL" in texto
