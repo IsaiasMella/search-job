@@ -1,71 +1,130 @@
-"""Moldes de mensaje para el reclutador. Son borradores a corregir."""
+"""Los mensajes para el reclutador.
+
+Están calcados de los que Isaías mandó de verdad y con los que lo contactaron,
+así que estos tests fijan ESA forma. Antes el módulo imponía "máximo 4 líneas",
+que era una opinión de quien lo escribió y no lo que funciona en la práctica.
+"""
+
+from datetime import date
 
 from vacantia import mensajes
 from vacantia.models import Job
 
 PERFIL = {
-    "candidate": {"name": "Isaías Mella", "phone": "291-4000000",
-                  "profile": "Data scientist"},
+    "candidate": {"name": "Isaías Mella", "profile": "AI Engineer"},
     "llm": {},
 }
-JOB = Job(url="https://x.com/1", title="Data Scientist Senior", company="Ana Perez",
-          description="Buscamos Data Scientist con Python y SQL.")
+JOB = Job(url="https://x.com/1", title="AI Agent Engineer", company="Jazmín Pérez",
+          description="Buscamos AI Agent Engineer con Python, LangChain y LLMs.")
+
+LUNES = date(2026, 9, 7)
+MIERCOLES = date(2026, 9, 9)
+VIERNES = date(2026, 9, 11)
+SABADO = date(2026, 9, 12)
 
 
-def test_el_dm_no_pasa_de_cuatro_lineas():
-    """Lo leen en el celular entre 200 mensajes."""
-    texto = mensajes.molde(JOB, PERFIL, "dm")
-    assert len([l for l in texto.splitlines() if l.strip()]) <= 4
+# --- el cierre según el día ------------------------------------------------
+
+def test_el_cierre_cambia_con_el_dia_de_la_semana():
+    """Es lo que Isaías escribe a mano según cuándo manda el mensaje."""
+    assert mensajes.cierre_del_dia(LUNES) == "buen comienzo de semana"
+    assert mensajes.cierre_del_dia(MIERCOLES) == "buen transcurso de semana"
+    assert mensajes.cierre_del_dia(VIERNES) == "buen último sprint de la semana"
+    assert mensajes.cierre_del_dia(SABADO) == "buen fin de semana"
 
 
-def test_el_dm_pone_a_quien_hay_que_escribirle_y_el_puesto():
-    texto = mensajes.molde(JOB, PERFIL, "dm")
-    assert "Ana Perez" in texto and "Data Scientist Senior" in texto
+def test_el_cierre_lo_calcula_el_codigo_y_no_el_modelo(monkeypatch):
+    """Un modelo no sabe qué día es hoy: lo inventa y queda mal.
 
-
-def test_el_mail_lleva_asunto_nombre_y_telefono():
-    texto = mensajes.molde(JOB, PERFIL, "mail")
-    assert texto.startswith("Asunto:")
-    assert "Isaías Mella" in texto and "291-4000000" in texto
-
-
-def test_sin_telefono_no_queda_un_guion_colgado():
-    texto = mensajes.molde(JOB, {"candidate": {"name": "Ana"}}, "mail")
-    assert not texto.rstrip().endswith("—")
-
-
-def test_los_huecos_que_completa_el_llm_quedan_marcados():
-    """Sin credenciales el molde sale con las llaves puestas: deja claro qué
-    falta, que es mejor que un mensaje genérico disfrazado de personalizado."""
-    texto, con_llm = mensajes.generar(JOB, "CV", PERFIL, "dm")
-    assert con_llm is False
-    assert "{" in texto and "}" in texto
-
-
-def test_si_el_llm_falla_devuelve_el_molde(monkeypatch):
-    monkeypatch.setattr(mensajes, "has_llm_credentials", lambda cfg: True)
-    def explota(*a, **k):
-        raise RuntimeError("sin cuota")
-    monkeypatch.setattr(mensajes, "chat_with_llm", explota)
-    texto, con_llm = mensajes.generar(JOB, "CV", PERFIL, "dm")
-    assert con_llm is False and "Ana Perez" in texto
-
-
-def test_usa_el_llm_cuando_hay_credenciales(monkeypatch):
-    monkeypatch.setattr(mensajes, "has_llm_credentials", lambda cfg: True)
-    monkeypatch.setattr(mensajes, "chat_with_llm",
-                        lambda cfg, **k: "Hola Ana, vi la búsqueda.")
-    texto, con_llm = mensajes.generar(JOB, "CV", PERFIL, "dm")
-    assert con_llm is True and texto == "Hola Ana, vi la búsqueda."
-
-
-def test_el_prompt_lleva_las_tres_reglas_y_el_aviso(monkeypatch):
+    Por eso el cierre se resuelve antes y se le pasa hecho dentro del prompt.
+    """
     capturado = {}
     monkeypatch.setattr(mensajes, "has_llm_credentials", lambda cfg: True)
     monkeypatch.setattr(mensajes, "chat_with_llm",
                         lambda cfg, messages, **k: capturado.setdefault(
                             "p", messages[0]["content"]) and "ok")
-    mensajes.generar(JOB, "CV con Python", PERFIL, "mail")
+    mensajes.generar(JOB, "CV", PERFIL, "dm", hoy=LUNES)
+    assert "cierre: buen comienzo de semana" in capturado["p"]
+
+
+# --- la forma del mensaje --------------------------------------------------
+
+def test_el_dm_tiene_la_lista_de_requisitos_con_tildes():
+    """Es el corazón del mensaje: se ve de un vistazo que el candidato encaja."""
+    texto = mensajes.molde(JOB, PERFIL, "dm", hoy=MIERCOLES)
+    assert texto.count("✔️") >= 3
+    assert "cumplo con los requisitos" in texto
+
+
+def test_el_dm_trae_a_quien_escribirle_el_puesto_y_como_te_presentas():
+    texto = mensajes.molde(JOB, PERFIL, "dm", hoy=MIERCOLES)
+    assert "Hola Jazmín!!" in texto
+    assert "AI Agent Engineer" in texto          # el puesto del aviso
+    assert "soy AI Engineer" in texto            # cómo se presenta el candidato
+    assert "buen transcurso de semana" in texto
+
+
+def test_usa_el_nombre_de_pila_y_no_el_apellido():
+    """En un DM, "Hola Jazmín Pérez" suena a formulario."""
+    texto = mensajes.molde(JOB, PERFIL, "dm")
+    assert "Jazmín Pérez" not in texto
+
+
+def test_sin_saber_quien_publico_no_queda_un_hueco_raro():
+    anonimo = Job(url="https://x.com/2", title="Data Scientist", company="")
+    texto = mensajes.molde(anonimo, PERFIL, "dm")
+    assert "quién publicó" in texto or "nombre de quien" in texto
+
+
+def test_el_mail_lleva_asunto():
+    texto = mensajes.molde(JOB, PERFIL, "mail", hoy=MIERCOLES)
+    assert texto.startswith("Asunto: AI Agent Engineer - Isaías Mella")
+    assert "CV adjunto" in texto
+
+
+# --- cuando el modelo no está ----------------------------------------------
+
+def test_los_huecos_que_completa_el_modelo_quedan_marcados():
+    """Sin credenciales el molde sale con las llaves puestas: deja claro qué
+    falta, que es mejor que un mensaje genérico disfrazado de escrito a mano."""
+    texto, con_modelo = mensajes.generar(JOB, "CV", PERFIL, "dm")
+    assert con_modelo is False
+    assert "{" in texto and "}" in texto
+
+
+def test_si_el_modelo_falla_devuelve_el_molde(monkeypatch):
+    monkeypatch.setattr(mensajes, "has_llm_credentials", lambda cfg: True)
+
+    def explota(*a, **k):
+        raise RuntimeError("sin cuota")
+
+    monkeypatch.setattr(mensajes, "chat_with_llm", explota)
+    texto, con_modelo = mensajes.generar(JOB, "CV", PERFIL, "dm")
+    assert con_modelo is False and "Jazmín" in texto
+
+
+def test_usa_el_modelo_cuando_hay_credenciales(monkeypatch):
+    monkeypatch.setattr(mensajes, "has_llm_credentials", lambda cfg: True)
+    monkeypatch.setattr(mensajes, "chat_with_llm",
+                        lambda cfg, **k: "Hola Jazmín!!")
+    texto, con_modelo = mensajes.generar(JOB, "CV", PERFIL, "dm")
+    assert con_modelo is True and texto == "Hola Jazmín!!"
+
+
+# --- el prompt --------------------------------------------------------------
+
+def test_el_prompt_prohibe_listar_lo_que_el_cv_no_dice(monkeypatch):
+    """La regla que más importa: un requisito inventado se cae en la primera
+    entrevista y quema el contacto."""
+    capturado = {}
+    monkeypatch.setattr(mensajes, "has_llm_credentials", lambda cfg: True)
+    monkeypatch.setattr(mensajes, "chat_with_llm",
+                        lambda cfg, messages, **k: capturado.setdefault(
+                            "p", messages[0]["content"]) and "ok")
+    mensajes.generar(JOB, "CV con Python y LangChain", PERFIL, "mail")
     prompt = capturado["p"]
-    assert "Cero adjetivos" in prompt and "4 líneas" in prompt
-    assert "Buscamos Data Scientist" in prompt and "CV con Python" in prompt
+
+    assert "Prohibido listar algo que el CV no diga" in prompt
+    assert "Cero adjetivos" in prompt
+    assert "Buscamos AI Agent Engineer" in prompt      # el aviso
+    assert "CV con Python y LangChain" in prompt       # el CV

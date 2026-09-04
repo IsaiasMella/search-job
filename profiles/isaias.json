@@ -33,7 +33,8 @@
     "not_suitable": "Puestos junior, roles no técnicos, puestos presenciales o híbridos fuera de Bahía Blanca, y cualquier puesto que requiera inglés",
     "relocation_note": "No se reubica ni viaja. Bahía Blanca o remoto.",
     "search_seniority": "",
-    "search_keywords": ""
+    "search_keywords": "",
+    "headline": "AI Engineer"
   },
   "llm": {
     "provider": "gemini",

@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**242 tests pasan.**
+**246 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  242 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  246 passed
 ```
 
 Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
@@ -16,10 +16,13 @@ las empresas, seguir reclutadores, el scoring con Gemini y la pantalla.
 
 | # | Qué | Dónde | Cuánto lleva |
 |---|---|---|---|
-| 1 | **Corregir los moldes de mensaje** con tu experiencia | `vacantia/mensajes.py`, ver 2.3 | 10 min |
-| 2 | Una **corrida real** de punta a punta con todo prendido | `--dry-run` primero | 10 min |
-| 3 | **Cargar el chat de Telegram de cada persona** cuando armes sus carpetas | ver 2.2 | 1 min c/u |
-| 4 | **Correr `instalar.bat` de nuevo** cuando haya más de un perfil | — | 5 min |
+| 1 | Una **corrida real** de punta a punta con todo prendido | ver 2.3 | 10 min |
+| 2 | **Usarlo una semana** y anotar qué falla antes de pasárselo a nadie | — | tuyo |
+
+Los moldes de mensaje ya están corregidos con los tuyos (2.4). Lo de armarle la
+carpeta a cada persona (su perfil, su chat de Telegram, correr `instalar.bat` de
+nuevo) queda para cuando termines la semana de prueba: no tiene sentido repartir
+algo que todavía no sabés si tiene bugs.
 
 Sin empezar, y afuera a propósito: **que el sistema aprenda de tus descartes**.
 `State.feedback_jobs(aplicado=False, limit=15)` ya devuelve las últimas
@@ -71,22 +74,65 @@ Por persona:
 
 Vacío = usa el `TELEGRAM_CHAT_ID` del `.env`, o sea el tuyo.
 
-## 2.3. Los moldes de mensaje son borradores
+## 2.3. Cómo hacer una corrida de prueba
 
-Están en `vacantia/mensajes.py`. **Ajustalos**: tu experiencia es más fresca que
-la de quien los escribió.
+`--dry-run` es el ensayo: **corre todo** (busca en las fuentes, saca duplicados,
+puntúa con el modelo, aplica los filtros), **imprime el resultado por consola**
+y **no manda nada por Telegram ni escribe el historial**.
+
+Abrí PowerShell en la carpeta del proyecto y pegá esto:
 
 ```
-Hola {nombre}, vi la búsqueda de {puesto}.
-Trabajo con {área} hace {X} años; lo último fue {logro}.
-¿Te sirve que te pase el CV?
+.venv\Scripts\python.exe -m vacantia.run --profile isaias --dry-run
 ```
 
-Lo de las llaves lo completa el modelo leyendo el aviso y tu CV, con un botón.
-Sin usar el modelo los huecos quedan a la vista a propósito: es más honesto que
-un mensaje genérico disfrazado de personalizado.
+Vas a ver el detalle por consola. Cuando el resultado te convenza, la de verdad
+es la misma línea sin `--dry-run`:
 
-## 2.4. Si un portal deja de traer nada
+```
+.venv\Scripts\python.exe -m vacantia.run --profile isaias
+```
+
+O directamente doble clic en `buscar_ahora.bat`, que hace eso mismo para todos
+los perfiles.
+
+**Ojo con una cosa**: `--dry-run` no ahorra plata. Sí gasta llamadas al modelo y
+a TinyFish, porque para saber qué te traería hay que traerlo. Lo único que evita
+es la notificación y ensuciar el historial.
+
+Si querés ver el detalle de por qué descartó cada oferta:
+
+```
+$env:LOG_LEVEL="DEBUG"; .venv\Scripts\python.exe -m vacantia.run --profile isaias --dry-run
+```
+
+Y todo queda escrito en `vacantia.log` igual, aunque cierres la ventana.
+
+## 2.4. Los mensajes al reclutador
+
+Son los tuyos, los que ya usabas y con los que te contactaron. Están en
+`vacantia/mensajes.py` y salen desde la pantalla, en cada oferta, con el link
+*"Mensaje para escribirle"*.
+
+Lo que **escribe el modelo** leyendo el aviso y tu CV: la lista de requisitos
+con ✔️ (los del aviso que tu CV respalda, entre 3 y 6) y el nombre limpio del
+puesto. Tiene prohibido listar algo que el CV no diga, porque eso se cae en la
+primera entrevista y quema el contacto.
+
+Lo que **decide el código y no el modelo**:
+
+- **El cierre según el día.** Lunes "buen comienzo de semana", martes y
+  miércoles "buen transcurso de semana", jueves y viernes "buen último sprint de
+  la semana". Un modelo no sabe qué día es hoy: lo inventa.
+- **Tu nombre y cómo te presentás**, del perfil.
+- **El nombre de pila de quien publicó**, del aviso.
+
+**Campo nuevo en la pantalla: "Cómo me presento".** Va tal cual en la frase
+*"Mi nombre es Isaías, soy AI Engineer"*. Es aparte del "en una línea, qué hago"
+porque ahí tenías cargado el stack entero y en el mensaje tiene que entrar en
+media frase. Te lo dejé en `AI Engineer`.
+
+## 2.5. Si un portal deja de traer nada
 
 Los portales cambian sus direcciones sin avisar. Se arregla sin programar, en
 `profiles/isaias.json`, en el bloque de esa fuente:
@@ -106,7 +152,7 @@ tienen en común sus direcciones: eso va en `job_url_pattern`.
 
 El síntoma es `0 aviso(s)` en `vacantia.log`.
 
-## 2.5. LinkedIn: cómo se lo esquiva
+## 2.6. LinkedIn: cómo se lo esquiva
 
 Probado el 4/9/2026 contra un perfil real:
 
@@ -136,7 +182,7 @@ LinkedIn, pero busca por puesto ("AI Engineer" y señales de que contratan), de
 cualquiera. Esto otro busca por persona, la que vos elegiste seguir. Son
 complementarias.
 
-## 2.6. La cuenta de Gemini
+## 2.7. La cuenta de Gemini
 
 Si un día el log dice que fallaron los modelos, son dos causas distintas:
 
@@ -155,6 +201,35 @@ cuenta keywords en el título. **Los puntajes de esas corridas no significan
 nada** y se reconocen porque salen todos apelotonados y el log dice
 `[heurística, sin LLM]`.
 
+## 2.8. Qué pasa cuando corrés `instalar.bat`
+
+**No queda ningún proceso corriendo, y no tenés que prender nada a mano.**
+
+`instalar.bat` registra una **tarea programada de Windows** por perfil, llamada
+`Vacantia - <nombre>`. Windows la despierta sola, ella busca, avisa por Telegram
+y se cierra. Entre corrida y corrida no hay nada en memoria.
+
+Se despierta:
+
+- **Cuando iniciás sesión en Windows**, con 3 minutos de retraso (13 para el
+  segundo perfil, para que no arranquen juntos).
+- **En sus tres horarios del día.** Con un solo perfil son 12:00, 16:30 y 23:59.
+
+Prendés la compu y a los 3 minutos ya está trabajando. **No es como tu otro
+proyecto**: ahí hay que levantar el proceso a mano; acá no.
+
+Tres detalles que están resueltos y conviene saber:
+
+- **Si la compu estaba apagada a las 12:00**, la corrida no se pierde: se ejecuta
+  cuando la prendés (`StartWhenAvailable`).
+- **No abre ventana negra.** Usa `pythonw.exe`. El log igual se escribe en
+  `vacantia.log`, así que no se pierde nada.
+- **No se pisan entre sí**: si una corrida todavía no terminó, la siguiente se
+  saltea en vez de encimarse.
+
+Para ver si está programada, cuándo corrió y cómo le fue: doble clic en
+`estado.bat`. Para que deje de correr: `desinstalar.bat`.
+
 ---
 
 # 3. LO QUE YA ESTÁ HECHO
@@ -172,7 +247,7 @@ Sin detalle, para no volver a discutirlo:
   LinkedIn vía buscador, Bumeran, Zonajobs, Computrabajo, y reclutadores que
   seguís. Los tres portales argentinos verificados contra los sitios.
 - **Seguir a un reclutador de LinkedIn** aunque LinkedIn no deje leer su perfil:
-  se buscan sus publicaciones en Google y se leen ésas (2.5).
+  se buscan sus publicaciones en Google y se leen ésas (2.6).
 - **Scoring con Gemini** leyendo tu CV contra cada aviso, con cadena de modelos
   de respaldo.
 - **Regla de ubicación** (2.1) y filtro de idioma.
@@ -181,7 +256,9 @@ Sin detalle, para no volver a discutirlo:
 - **Multi-perfil**: cada persona su perfil, su CV, su Telegram y su horario.
   `instalar.bat` reparte los horarios y programa las tareas de Windows.
 - **Modo consejo**: qué reordenar del CV para un aviso. No lo reescribe nunca.
-- **Moldes de mensaje** para DM y mail (borradores, ver 2.3).
+- **Mensajes para el reclutador**, DM y mail, calcados de los que ya funcionaban:
+  el modelo arma la lista de requisitos leyendo el aviso contra el CV, y el
+  cierre sale del día de la semana (2.4).
 - **Notificación por Telegram**, con aviso opcional cuando no hubo nada.
 
 **Descartado a propósito:**

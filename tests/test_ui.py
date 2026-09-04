@@ -237,7 +237,7 @@ def test_la_pagina_de_mensajes_trae_los_dos_moldes(sitio):
     assert "DM por LinkedIn" in html and "Mail a RRHH" in html
     assert "Data Scientist" in html and "ACME" in html
     # Sin credenciales de LLM, los huecos quedan a la vista para completar.
-    assert "{tu logro" in html or "logro" in html
+    assert "un requisito del aviso que tu CV respalde" in html
 
 
 def test_una_url_que_no_esta_vuelve_a_trabajos(sitio):
@@ -590,3 +590,16 @@ def test_sin_ofertas_perdidas_no_hay_cartel(sitio):
     ])
     _, html, _ = get(base, "/trabajos?perfil=test&desde=todo")
     assert 'class="duele"' not in html
+
+
+def test_como_me_presento_es_un_campo_aparte_del_perfil_largo():
+    """En "en una línea, qué hago" la gente escribe un párrafo con el stack.
+
+    En el mensaje al reclutador eso tiene que entrar en media frase ("soy AI
+    Engineer"), así que va en su propio campo.
+    """
+    from vacantia.ui import formulario
+
+    html = formulario.render("ana", {"candidate": {"headline": "AI Engineer"}}, [])
+    assert '<label for="cand_headline">Cómo me presento</label>' in html
+    assert 'value="AI Engineer"' in html

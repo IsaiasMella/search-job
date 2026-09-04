@@ -218,6 +218,10 @@ Se guardan en el archivo .env de esta carpeta, no en internet.</p>
 <h2>Datos personales</h2>
 <div class="grilla">
   {_campo("cand_name", "Mi nombre", cand.get("name", ""))}
+  {_campo("cand_headline", "Cómo me presento", cand.get("headline", ""),
+          placeholder="AI Engineer",
+          ayuda="Dos o tres palabras. Va tal cual en el mensaje al reclutador: "
+                "“Mi nombre es Isaías, soy AI Engineer”.")}
   {_campo("cand_profile", "En una línea, qué hago", cand.get("profile", ""))}
   {_campo("cand_seeking", "Qué estoy buscando", cand.get("seeking", ""))}
   {_campo("cand_not_suitable", "Qué NO me sirve", cand.get("not_suitable", ""),
@@ -299,7 +303,7 @@ def aplicar(nombre: str, form: dict) -> list[tuple[str, str]]:
     idioma["max_english_level"] = form.get("max_english_level", "A2").strip().upper()[:2]
 
     cand = perfil.setdefault("candidate", {})
-    for campo in ("name", "profile", "seeking", "not_suitable"):
+    for campo in ("name", "headline", "profile", "seeking", "not_suitable"):
         cand[campo] = form.get(f"cand_{campo}", "").strip()
 
     # Fuentes: prender/apagar sin perder la configuración que ya tenían.

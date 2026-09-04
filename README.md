@@ -206,13 +206,22 @@ buscan dos personas, cada una recibe sólo sus ofertas. Vacío = usa el
 python -m vacantia.run --profile isaias              # corrida completa
 python -m vacantia.run --profile isaias --dry-run    # imprime, no notifica ni guarda estado
 python -m vacantia.run --profile isaias --min-score 70 --top-n 10
+python -m vacantia.run --all                         # todos los perfiles
 python -m vacantia.run --list-profiles
-
-python -m vacantia.drafter --profile isaias --job 1  # CV + carta a medida de la oferta #1
-python -m vacantia.drafter --profile isaias --job https://...
 
 LOG_LEVEL=DEBUG python -m vacantia.run --profile isaias   # detalle por oferta
 ```
+
+**`--dry-run` es el ensayo**: corre todo (fuentes, dedupe, scoring, filtros),
+imprime el resultado por consola y **no manda Telegram ni escribe el historial**.
+Sirve para ver qué haría sin ensuciar los datos ni gastar una notificación.
+Ojo: sí gasta llamadas al LLM y a TinyFish, porque para saber qué traería hay
+que traerlo.
+
+> `python -m vacantia.drafter` todavía existe y genera un CV a medida de una
+> oferta, pero **quedó fuera del camino principal**: la decisión fue no tocar el
+> CV y usar el modo consejo de la pantalla. No lo llama ningún `.bat` ni la
+> pantalla. Es candidato a borrarse.
 
 El log completo siempre queda en `vacantia.log`, más allá de lo que se vea en consola.
 
@@ -322,24 +331,47 @@ apaga con `"solo_ofertas": false`. El país sale del texto del post cuando lo
 nombra; si no lo nombra queda vacío, salvo que se cargue `"default_country"`.
 
 **`rrhh`** vigila **personas**, no palabras clave: se le carga una lista de URLs
-(el perfil de actividad de alguien de RRHH, la página de búsquedas de una
-consultora) y de cada una saca los links a publicaciones, los links con pinta de
-aviso, o —si no hay ninguno— los párrafos del texto que anuncian una búsqueda.
-Esos párrafos se identifican con la URL de la página más un hash del texto: por
-eso una página cuya dirección nunca cambia igual genera una oferta nueva cuando
-publica algo nuevo. Para nichos chicos suele rendir más que buscar por keyword.
+y de cada una saca las búsquedas que publicó. Para nichos chicos suele rendir
+más que buscar por keyword.
+
+Sirven dos tipos de URL:
+
+- **El perfil de LinkedIn de la persona** (`linkedin.com/in/nombre`). LinkedIn
+  **no deja leer un perfil** sin sesión: devuelve la página vacía, y desde una
+  IP común responde `HTTP 999`. Pero sus **posts sueltos sí se leen** y Google
+  los indexa, así que la fuente no entra al perfil: busca
+  `site:linkedin.com/posts "Nombre Apellido"` y lee esos posts. Los resultados
+  se filtran por el identificador del perfil y no por el nombre, porque hay
+  homónimos. Cuesta una búsqueda por persona y por corrida; se apaga con
+  `"buscar_posts": false`.
+- **La página de una consultora**, la que lista los puestos y no la de inicio.
+  De ahí salen los links a publicaciones, los links con pinta de aviso, o —si no
+  hay ninguno— los párrafos del texto que anuncian una búsqueda. Esos párrafos
+  se identifican con la URL de la página más un hash del texto: por eso una
+  página cuya dirección nunca cambia igual genera una oferta nueva cuando
+  publica algo nuevo.
 
 **Los tres portales argentinos** (`bumeran`, `zonajobs`, `computrabajo`) son los
 que importan para los rubros no técnicos: ahí no hay careers pages ni posts de
-LinkedIn, hay portal. ⚠️ **Están sin verificar contra los sitios reales.** Por
-eso lo frágil —la dirección de búsqueda y el patrón de URL de aviso— se puede
-pisar desde el perfil con `search_url` y `job_url_pattern`, sin tocar código:
+LinkedIn, hay portal. **Verificados contra los sitios el 4/9/2026**: Bumeran 12
+avisos, Zonajobs 5, Computrabajo 20. Igual cambian sin avisar, así que lo frágil
+—la dirección de búsqueda y el patrón de URL de aviso— se puede pisar desde el
+perfil con `search_url` y `job_url_pattern`, sin tocar código:
 
 ```jsonc
 { "type": "bumeran", "enabled": true, "location": "bahia-blanca",
   "search_url": "https://www.bumeran.com.ar/empleos-busqueda-{query}.html",
   "job_url_pattern": "/empleos/.+-\d+\.html" }
 ```
+
+⚠️ **Bumeran y Zonajobs son la misma base de avisos** (los dos son de Navent) y
+devuelven exactamente los mismos puestos con el mismo id. Prendé uno de los dos.
+La pantalla lo avisa abajo del tilde de cada uno.
+
+De cada aviso se leen **empresa, ciudad y modalidad** de la página del detalle,
+que se baja igual para la descripción. Normalmente esos campos los completa el
+LLM al puntuar; leerlos también en la fuente es lo que mantiene viva la regla de
+ubicación cuando el modelo se cae.
 
 **`linkedin`** sí scrapea LinkedIn, sin login. Rate-limitea por IP y se corta
 cerca de la página 10, así que conviene `results_wanted` moderado y acotar con
