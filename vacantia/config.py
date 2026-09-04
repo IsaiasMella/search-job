@@ -144,7 +144,7 @@ def _build_llm_config(llm: dict) -> dict:
         # Con provider="gemini", el campo "model" del perfil es el modelo de
         # Gemini. Se lee de ahí para que el perfil tenga una sola forma de
         # nombrar el modelo, sea cual sea el proveedor.
-        "gemini_model": llm.get("model") or os.getenv("GEMINI_MODEL") or "gemini-2.5-flash-lite",
+        "gemini_model": llm.get("model") or os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite",
         "gemini_fallback_models": llm.get("fallback_models") or [],
     }
 

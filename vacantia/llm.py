@@ -176,7 +176,7 @@ def chat_with_llm(
 
     if provider == "gemini":
         client = _make_gemini_client(config)
-        primary = config.get("gemini_model") or "gemini-2.5-flash-lite"
+        primary = config.get("gemini_model") or "gemini-3.5-flash-lite"
         fallbacks = config.get("gemini_fallback_models") or []
     else:
         client = _make_openrouter_client(config)
@@ -185,6 +185,27 @@ def chat_with_llm(
 
     models = [primary] + [m for m in fallbacks if m != primary]
     return chat_with_fallback(client, models, messages, temperature, max_tokens)
+
+
+# Errores que no son del modelo sino de la cuenta: no los arregla probar el
+# modelo siguiente, así que la cadena se corta ahí. El caso que nos mordió fue
+# `prepayment credits are depleted`, que llega como 429 y se leía igual que un
+# rate-limit: el log decía "cuota agotada" y mandaba a revisar el límite diario,
+# cuando lo que pasaba era que la cuenta de Gemini se había quedado sin crédito.
+_FALLAS_DE_CUENTA = (
+    "prepayment credits",
+    "credits are depleted",
+    "billing",
+    "api key not valid",
+    "invalid api key",
+    "api_key_invalid",
+    "permission_denied",
+)
+
+
+def _es_falla_de_cuenta(e: Exception) -> bool:
+    texto = str(e).lower()
+    return any(marca in texto for marca in _FALLAS_DE_CUENTA)
 
 
 def chat_with_fallback(
@@ -198,8 +219,10 @@ def chat_with_fallback(
 
     Sirve igual para OpenRouter y para Gemini: los dos hablan el protocolo de
     OpenAI. La cadena cubre dos casos distintos — que un modelo esté caído o
-    saturado, y que lo retiren (Gemini 2.5 Flash-Lite se retira el 16/10/2026 y
-    ahí el fallback entra solo, sin que haya que tocar nada).
+    saturado, y que lo retiren. Gemini 2.5 Flash-Lite y 2.5 Flash ya fueron
+    dados de baja para las cuentas nuevas (404), y el fallback fue justamente lo
+    que evitó que la corrida se cayera: sirve, pero los nombres hay que
+    actualizarlos igual.
     """
     from openai import RateLimitError
 
@@ -236,7 +259,11 @@ def chat_with_fallback(
                 else:
                     logger.debug(f"LLM response: {len(text)} chars in {elapsed:.1f}s via {model}")
                 return text
-            except RateLimitError:
+            except RateLimitError as e:
+                if _es_falla_de_cuenta(e):
+                    raise RuntimeError(
+                        f"La cuenta del proveedor no puede responder: {e}"
+                    ) from e
                 if attempt == 0:
                     logger.warning(f"Rate-limit en {model} — reintentando en 3s...")
                     time.sleep(3)
@@ -244,10 +271,16 @@ def chat_with_fallback(
                 logger.warning(f"Rate-limit en {model} (cuota agotada) — probando el siguiente...")
                 break
             except Exception as e:
+                if _es_falla_de_cuenta(e):
+                    raise RuntimeError(
+                        f"La cuenta del proveedor no puede responder: {e}"
+                    ) from e
                 logger.error(f"Error de LLM ({model}): {e}")
                 break
 
     raise RuntimeError(
         f"Fallaron los {len(models)} modelos configurados ({', '.join(models)}). "
-        "Revisá la API key del proveedor y su cuota diaria."
+        "Puede ser el límite diario, o que esos nombres de modelo ya no existan: "
+        "Google da de baja los viejos y responde 404. Los nombres vigentes salen de "
+        "https://generativelanguage.googleapis.com/v1beta/models?key=TU_API_KEY"
     )

@@ -11,6 +11,9 @@ from vacantia.sources.portales_ar import (
     BumeranSource,
     ComputrabajoSource,
     ZonajobsSource,
+    _modo,
+    extraer_computrabajo,
+    extraer_navent,
     slug,
 )
 
@@ -173,3 +176,123 @@ def test_sin_api_key_se_saltea(monkeypatch):
 def test_sin_keywords_se_saltea():
     ok, motivo = fuente(BumeranSource, profile={"keywords": []}).is_available()
     assert not ok and "keywords" in motivo
+
+
+# --- empresa, ciudad y modalidad --------------------------------------------
+#
+# Recortes de páginas reales de aviso (agosto 2026). `city` y `work_mode` los
+# llena normalmente el LLM al puntuar; sacarlos también acá es lo que mantiene
+# viva la regla de ubicación cuando el modelo se cae, que fue exactamente lo
+# que pasó: sin esto entró un presencial de Jujuy con el perfil en Bahía Blanca.
+
+DETALLE_NAVENT = """# AI Engineer - Híbrido - 1878
+
+### Descripción del puesto
+
+Importante Banco Nacional busca perfil técnico.
+
+* Híbrido
+* Data Warehousing
+* Full-time, Indeterminado
+
+Publicado el 20/08/2026
+
+Industria
+
+Consultoría
+
+Ubicación
+
+Capital Federal, Capital Federal
+
+Tamaño de la empresa
+
+Entre 1 y 10 empleados
+
+Ver más avisos de la empresa
+
+Aliantec
+"""
+
+DETALLE_COMPUTRABAJO = """# ML / AI Engineer // Proyectos Bancarios
+
+Kaizen Recursos Humanos - Monserrat, Capital Federal
+
+## Descripción de la oferta
+
+Zona y horario Laboral: REMOTO, de Lunes a Viernes de 09 a 18 hs.
+"""
+
+
+def test_navent_saca_empresa_ciudad_y_modalidad():
+    assert extraer_navent(DETALLE_NAVENT) == {
+        "title": "AI Engineer - Híbrido - 1878",
+        "city": "Capital Federal",
+        "company": "Aliantec",
+        "work_mode": "hybrid",
+    }
+
+
+def test_computrabajo_saca_empresa_y_ciudad_de_la_linea_del_titulo():
+    datos = extraer_computrabajo(DETALLE_COMPUTRABAJO)
+    assert datos["company"] == "Kaizen Recursos Humanos"
+    assert datos["city"] == "Monserrat"          # el barrio, no la provincia
+    assert datos["work_mode"] == "remote"
+
+
+def test_un_aviso_cross_posteado_no_rompe_la_lectura():
+    """Bumeran republica avisos de Zonajobs con media página menos.
+
+    No trae ni Ubicación ni la empresa; lo que se pueda leer se lee y el resto
+    queda vacío, que es lo que hace que después no filtre de más.
+    """
+    cross = DETALLE_NAVENT.split("Industria")[0] + (
+        "Este aviso fue publicado por ZonaJobs.\n"
+    )
+    datos = extraer_navent(cross)
+    assert datos["work_mode"] == "hybrid"
+    assert "city" not in datos and "company" not in datos
+
+
+def test_la_modalidad_ambigua_queda_vacia_en_vez_de_adivinar():
+    """Un aviso decía "remoto" arriba y "días presenciales (3)" abajo.
+
+    Con "el primero que aparece gana" quedaba como remoto y se colaba un
+    híbrido de Capital. Vacío no filtra, y la decisión queda para el LLM.
+    """
+    assert _modo("ubicación: caba. remoto. días presenciales (3)", estricto=True) == ""
+    assert _modo("trabajo 100% remoto desde casa", estricto=True) == "remote"
+    # Sin `estricto` —una etiqueta corta del portal— sí se queda con la primera.
+    assert _modo("Híbrido") == "hybrid"
+
+
+def test_el_titulo_del_aviso_pisa_al_del_slug(monkeypatch):
+    """El del slug trae pegado el id y rompía el dedupe por empresa+título."""
+    src = fuente(ComputrabajoSource, {"max_queries": 1})
+    url = src.url_de_busqueda(src.terminos()[0])
+    aviso = ("https://ar.computrabajo.com/ofertas-de-trabajo/"
+             "oferta-de-trabajo-de-ml-ai-engineer-en-monserrat-B4D6A5C13906829B")
+    con_paginas(
+        monkeypatch, src,
+        listados={url: ("", [aviso + "#lc=ListOffers-Score4-0"])},
+        detalles={aviso: (DETALLE_COMPUTRABAJO, [])},
+    )
+    job = src.fetch()[0]
+    assert job.title == "ML / AI Engineer // Proyectos Bancarios"
+    assert job.company == "Kaizen Recursos Humanos"
+    assert job.city == "Monserrat"
+    assert job.work_mode == "remote"
+    assert job.dedupe_key                       # ahora sí tiene con qué deduplicar
+
+
+def test_el_mismo_aviso_en_dos_posiciones_de_la_lista_es_uno_solo(monkeypatch):
+    """Computrabajo cuelga la posición en el fragmento: `#lc=ListOffers-Score4-N`."""
+    src = fuente(ComputrabajoSource, {"max_queries": 1, "fetch_description": False})
+    url = src.url_de_busqueda(src.terminos()[0])
+    aviso = ("https://ar.computrabajo.com/ofertas-de-trabajo/"
+             "oferta-de-trabajo-de-ml-ai-engineer-en-monserrat-B4D6A5C13906829B")
+    con_paginas(monkeypatch, src, {url: ("", [
+        aviso + "#lc=ListOffers-Score4-0",
+        aviso + "#lc=ListOffers-Score4-7",
+    ])})
+    assert len(src.fetch()) == 1

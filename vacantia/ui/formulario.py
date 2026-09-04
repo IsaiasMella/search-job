@@ -17,14 +17,18 @@ NIVELES = ("A1", "A2", "B1", "B2", "C1", "C2")
 
 #: Fuentes que se pueden prender y apagar desde la UI. Agregar una fuente nueva
 #: al sistema es agregar una línea acá.
+# (clave, etiqueta, nota). La nota se muestra abajo del tilde: es donde mira
+# quien no programa, y hay cosas que no se pueden adivinar desde el nombre.
 FUENTES = (
-    ("careers", "Páginas de empleo de las empresas que sigo"),
-    ("google_posts", "Publicaciones de LinkedIn (vía buscador, no toca LinkedIn)"),
-    ("linkedin", "LinkedIn Jobs"),
-    ("rrhh", "Perfiles de reclutadores que sigo"),
-    ("bumeran", "Bumeran"),
-    ("zonajobs", "Zonajobs"),
-    ("computrabajo", "Computrabajo"),
+    ("careers", "Páginas de empleo de las empresas que sigo", ""),
+    ("google_posts", "Publicaciones de LinkedIn (vía buscador, no toca LinkedIn)", ""),
+    ("linkedin", "LinkedIn Jobs", ""),
+    ("rrhh", "Perfiles de reclutadores que sigo", ""),
+    ("bumeran", "Bumeran", "Misma base de avisos que Zonajobs."),
+    ("zonajobs", "Zonajobs",
+     "Misma base de avisos que Bumeran: prendé uno de los dos, o vas a recibir "
+     "todo duplicado."),
+    ("computrabajo", "Computrabajo", ""),
 )
 
 
@@ -45,9 +49,12 @@ def _area(nombre, etiqueta, valor, filas=8, ayuda="") -> str:
 </div>"""
 
 
-def _check(nombre, etiqueta, marcado) -> str:
-    return (f'<label><input type="checkbox" name="{nombre}" value="1"'
-            f'{" checked" if marcado else ""}> {esc(etiqueta)}</label>')
+def _check(nombre, etiqueta, marcado, nota="") -> str:
+    tilde = (f'<label><input type="checkbox" name="{nombre}" value="1"'
+             f'{" checked" if marcado else ""}> {esc(etiqueta)}</label>')
+    if not nota:
+        return tilde
+    return f'<span class="tilde">{tilde}<span class="nota">{esc(nota)}</span></span>'
 
 
 def _lista(valor) -> str:
@@ -146,7 +153,7 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
 <div class="grilla">
   <div class="campo ancho">
     <div class="checks">
-      {"".join(_check(f"fuente_{t}", etiqueta, activas.get(t, False)) for t, etiqueta in FUENTES)}
+      {"".join(_check(f"fuente_{t}", etiqueta, activas.get(t, False), nota) for t, etiqueta, nota in FUENTES)}
     </div>
   </div>
   {_area("empresas", "Empresas que sigo", data.companies_a_texto(data.leer_companies(perfil)), 8,
@@ -257,7 +264,7 @@ def aplicar(nombre: str, form: dict) -> list[tuple[str, str]]:
         cand[campo] = form.get(f"cand_{campo}", "").strip()
 
     # Fuentes: prender/apagar sin perder la configuración que ya tenían.
-    for tipo, _ in FUENTES:
+    for tipo, _, _nota in FUENTES:
         bloque = data.fuente_o_crear(perfil, tipo)
         bloque["enabled"] = f"fuente_{tipo}" in form
     rrhh = data.fuente_o_crear(perfil, "rrhh")

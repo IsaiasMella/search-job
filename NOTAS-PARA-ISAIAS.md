@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**200 tests pasan.**
+**215 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  200 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  215 passed
 ```
 
 ---
@@ -15,9 +15,10 @@ Esta es la lista corta. Todo lo demás es contexto.
 
 | # | Qué | Dónde | Cuánto te lleva |
 |---|---|---|---|
-| 1 | **Verificar los 3 portales argentinos** contra los sitios reales | ver 2.1 | 15 min |
+| 1 | ~~Verificar los 3 portales argentinos~~ **HECHO el 4/9/2026** — ver 2.1 | — | — |
 | 2 | **Verificar la fuente `rrhh`** con un perfil real de LinkedIn | ver 2.1 | 5 min |
 | 3 | **Confirmar la nueva regla de ubicación** corriendo una búsqueda | ver 3.1 | 5 min |
+| 3b | **Poner crédito en la cuenta de Gemini** — sin eso no hay puntaje real | ver 2.3 | 5 min |
 | 4 | **Corregir los moldes de mensaje** contra tu experiencia | `vacantia/mensajes.py` | 10 min |
 | 5 | **Cargar más empresas** en `companies.json` | pantalla → Mis datos | tuyo |
 | 6 | **Cargar el chat de Telegram de cada persona** cuando armes sus carpetas | ver 3.2 | 1 min c/u |
@@ -33,7 +34,7 @@ Esta es la lista corta. Todo lo demás es contexto.
 
 | Qué | Por qué | Cómo lo verificás |
 |---|---|---|
-| **Bumeran, Zonajobs, Computrabajo** | Escribí el código sin poder probarlo contra los sitios. Las direcciones y los patrones de URL son los que usan hoy según su estructura conocida, pero cambian sin avisar | Prendé una sola en la pantalla, corré `buscar_ahora.bat` y mirá `vacantia.log`. Si dice "0 aviso(s)", el patrón cambió → 2.2 |
+| ~~**Bumeran, Zonajobs, Computrabajo**~~ ✅ **verificados el 4/9/2026** | Se probaron los tres contra los sitios reales, uno por vez | Bumeran 12 avisos, Zonajobs 5, Computrabajo 20. Ninguno dio "0 aviso(s)": las direcciones y los patrones andan. Lo que sí apareció está en 2.4 |
 | **La fuente `rrhh`** | Probada con páginas de ejemplo, no con un perfil real. LinkedIn puede devolver una pantalla de login en vez del contenido | Cargá una URL en Mis datos → "Perfiles de reclutadores", corré, mirá el log |
 | **El instalador multi-perfil** | Registra tareas programadas de verdad en Windows; no lo corrí | Corré `instalar.bat` con dos perfiles y fijate que aparezcan dos tareas en `estado.bat` |
 | **El PDF con tu CV real** | Se genera bien (59 KB, Arial, con `—`, `“”`, `€`) pero no juzgué cómo se ve | Pantalla → Trabajos → "Descargar CV en PDF" |
@@ -55,6 +56,108 @@ bloque de esa fuente:
 Buscá algo a mano en el portal, copiá la dirección de la barra del navegador y
 reemplazá el término buscado por `{query}`. Después abrí dos o tres avisos y
 mirá qué tienen en común sus direcciones: eso va en `job_url_pattern`.
+
+
+## 2.3. ⚠️ La cuenta de Gemini se quedó sin crédito — esto es lo urgente
+
+Al verificar los portales salió que **el scoring con LLM no está corriendo**.
+Falló en las tres corridas, con los tres modelos, siempre igual.
+
+Son dos problemas encadenados, y el segundo es el que importa:
+
+**a) Dos de los tres modelos ya no existen.** Google dio de baja
+`gemini-2.5-flash-lite` y `gemini-2.5-flash` para las cuentas nuevas: devuelven
+404 diciendo "no longer available to new users". **Ya lo arreglé**, el perfil
+quedó apuntando a los vigentes:
+
+```
+model:            gemini-3.5-flash-lite
+fallback_models:  gemini-flash-lite-latest, gemini-3.6-flash
+```
+
+**b) Pero la cuenta no tiene crédito, y eso no lo arregla el código.** Probé los
+siete modelos flash que tu API key puede ver, uno por uno. Los siete responden
+lo mismo:
+
+```
+429 - Your prepayment credits are depleted.
+      Please go to AI Studio at https://ai.studio/projects
+```
+
+No es el límite diario del plan gratis: es el saldo de la cuenta en cero. Es un
+problema conocido y le está pasando a mucha gente, incluso en proyectos free
+tier sin uso ([foro de Google, agosto-septiembre
+2026](https://discuss.ai.google.dev/t/429-prepayment-credits-are-depleted-on-a-fresh-confirmed-free-tier-project/177394)).
+
+**Qué hacer, en este orden:**
+
+1. Entrá a <https://ai.studio/projects>, mirá el estado de facturación del
+   proyecto y cargá crédito si hace falta.
+2. Si eso no lo destraba, **el plan B ya está listo y probado**: tu key de
+   OpenRouter funciona (responde 200, uso 0). Se cambia desde la pantalla,
+   poniendo `provider` en `openrouter` en `profiles/isaias.json`. El techo son
+   50 llamadas/día, que alcanza para una corrida diaria.
+
+**Mientras tanto el sistema no se rompe, pero miente el puntaje.** Cae a una
+heurística que sólo cuenta cuántas de tus keywords aparecen en el título:
+
+```
+[ 68] Ai Engineer Hibrido ... — [heurística, sin LLM] 1/2 keywords del perfil
+```
+
+Por eso los puntajes salen todos apelotonados entre 61 y 79 y ninguno se
+despega. **Los avisos que te llegaron por Telegram estos días no están
+ordenados por qué tan bien te quedan**: nadie leyó tu CV contra el aviso.
+
+De paso arreglé el mensaje de error, que te mandaba por el camino equivocado.
+Decía *"Revisá la API key del proveedor y su cuota diaria"* cuando el problema
+era el saldo. Ahora, si la falla es de la cuenta, lo dice con esas palabras y
+corta al toque en vez de reintentar los tres modelos (18s → 0,8s).
+
+## 2.4. Lo que apareció al verificar los portales
+
+Los tres andan. Pero la corrida real mostró cuatro cosas que no se veían.
+
+**1. Bumeran y Zonajobs son la misma base de avisos.** Los dos son de Navent.
+Zonajobs trajo 5 avisos y los 5 eran los mismos de Bumeran, con el mismo id:
+
+```
+bumeran   .../cloud-data-engineer-|-ai-real-time-marco-marketing-2188711.html
+zonajobs  .../cloud-data-engineer-|-ai-real-time-marco-marketing-2188711.html
+```
+
+Lo dice el propio Bumeran en los avisos republicados: *"Este aviso fue publicado
+por ZonaJobs"*. **Prendé uno de los dos, no los dos.** Ya está avisado en la
+pantalla, abajo del tilde de cada uno.
+
+**2. Computrabajo repetía el mismo aviso hasta 12 veces.** Cuelga la posición en
+la lista de resultados del final de la dirección (`#lc=ListOffers-Score4-3`) y
+publica el mismo puesto con varios ids. De 20 direcciones, había 9 avisos
+reales. **Arreglado**: ahora el título sale del encabezado de la página del
+aviso en vez del pedazo de la dirección, y con eso el dedupe por empresa+título
+los junta.
+
+**3. Ningún portal llenaba empresa, ciudad ni modalidad.** Eso los dejaba fuera
+de tu regla de ubicación —así entró un presencial de Jujuy con el perfil puesto
+en Bahía Blanca— y sin `company` el dedupe tampoco corría. **Arreglado**: se
+leen de la página del aviso, que ya se baja igual para la descripción, así que
+no cuesta ni una llamada más.
+
+> Ojo con la causa, porque es sutil: `city` y `work_mode` los completa
+> normalmente el LLM al puntuar. Estaban vacíos **porque el LLM estaba caído**
+> (2.3), no porque los portales estuvieran mal escritos. Leerlos en la fuente es
+> un cinturón de seguridad: ahora, si el modelo se cae, la regla de ubicación
+> sigue filtrando igual.
+
+**4. Buscó con 2 keywords, no con 5.** Tu perfil tiene dos (`AI engineer`,
+`Python`) mientras que la fuente de LinkedIn tiene cinco términos. Si es a
+propósito, ignoralo; si no, se agregan desde la pantalla en *Palabras clave*.
+
+**Lo que quedó sin arreglar, a propósito**: cuando Bumeran republica un aviso de
+Zonajobs, esa página viene recortada y no trae ni la empresa ni la ubicación.
+Sin empresa, el dedupe por empresa+título no puede juntarlo con el original.
+Juntarlos pedía tocar `Job.dedupe_key`, que es una decisión de diseño con su
+motivo escrito, y el aviso en pantalla resuelve el caso real. Queda dicho acá.
 
 ---
 
@@ -133,6 +236,12 @@ todo, "Crear un perfil nuevo". Genera `profiles/<nombre>.json` y
 
 Da incluso para 6 perfiles (90 llamadas/día contra 1000). Lo único que no
 escala son las 50/día de OpenRouter, y ya no lo usás: el perfil está en Gemini.
+
+> ⚠️ **Esta cuenta quedó vieja con lo del 4/9/2026.** El número de llamadas
+> nunca fue el problema: la cuenta de Gemini se quedó **sin crédito**, que es
+> otra cosa y no depende del uso. Ver 2.3. Si terminás pasando a OpenRouter,
+> las 50/día sí pasan a ser el techo, y ahí alcanza para una corrida diaria por
+> perfil, no para tres.
 
 **Los perfiles de tu familia**: los saqué de la lista de pendientes, como
 pediste. Queda dicho que cada uno crea el suyo cuando le pases la carpeta.
@@ -216,7 +325,28 @@ que seguía valiendo (las decisiones cerradas y lo que falta) quedó acá, y lo
 demás eran cuentas de consumo de API que ya no cambian nada. Si alguna vez lo
 querés releer, está en el historial de git.
 
-## Bloque 1 — La UI local ✅ COMPLETO
+## Bloque 1 — La UI local ✅ COMPLETO Y VERIFICADO (4/9/2026)
+
+El checklist de este bloque no estaba acá: vivía en `COSTOS.md`, que se borró en
+`c73aea4`. Lo recuperé del historial de git y lo dejo escrito, que era lo que
+faltaba para poder darlo por hecho de verdad.
+
+- [x] Servidor local + `abrir.bat` que abra `http://localhost:8756`
+      — arranca, `/` redirige a `/trabajos`, las dos pestañas dan 200
+- [x] Pestaña **Mis datos**: CV, keywords, país/ciudad, modalidad, idioma, URLs de RRHH
+      — los ocho campos están en el formulario
+- [x] Pestaña **Trabajos**: verde/rojo + campo de motivo obligatorio en rojo
+      — probado que descartar sin motivo lo frena **del lado del servidor**, no
+      sólo con el JavaScript, y que no escribe nada
+- [x] Campos nuevos en `Job`: `aplicado`, `motivo_descarte`, `fecha_feedback`
+      — `models.py:96-98`, y `state.py:191` vuelve a exigir el motivo al guardar
+
+Lo cubren 32 tests entre `test_ui.py` y `test_feedback.py`.
+
+**Lo único que queda es mirarlo vos**: que se vea bien, que el doble clic en
+`abrir.bat` le funcione a alguien que no programa. Eso no lo puede verificar un
+test.
+
 
 ## Bloque 2 — Que el sistema aprenda ⬜ PENDIENTE (lo dejaste fuera a propósito)
 
@@ -235,7 +365,7 @@ querés releer, está en el historial de git.
 
 ## Bloque 4 — Que la familia lo pueda usar 🟡
 
-- [x] Fuentes para rubros no técnicos — **hechas, sin verificar**
+- [x] Fuentes para rubros no técnicos — **verificadas contra los sitios el 4/9/2026** (2.4)
 - [x] Seguir perfiles de RRHH por URL — **hecha, sin verificar**
 - [x] Que cada uno pueda armar su perfil y su Telegram por separado
 - [ ] **Cargarle el `chat_id` a cada persona** cuando les pases la carpeta (3.2)
@@ -248,6 +378,11 @@ querés releer, está en el historial de git.
 - [x] `notify_when_empty`
 - [x] `use_search: false` en las 7 empresas
 - [ ] **Cargar más empresas** en `companies.json` — tuyo
+- [x] Empresa, ciudad y modalidad en los portales — sin eso la regla de
+      ubicación no corría en ninguno de los tres (2.4)
+- [x] El mismo aviso repetido dentro de Computrabajo (2.4)
+- [ ] **Poner crédito en Gemini o pasar a OpenRouter** — mientras tanto todo
+      puntúa por heurística y el orden de las ofertas no significa nada (2.3)
 
 ## Bloque 6 — Vigilar 🟡
 

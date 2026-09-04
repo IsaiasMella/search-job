@@ -366,3 +366,18 @@ def test_el_consejo_de_una_url_desconocida_vuelve_a_trabajos(sitio):
     base, _ = sitio
     _, html, url = get(base, "/consejo?perfil=test&url=https%3A%2F%2Fno-existe%2F1")
     assert "trabajos" in url and "No encontré" in html
+
+
+def test_avisa_que_bumeran_y_zonajobs_comparten_los_avisos(tmp_path, monkeypatch):
+    """Los dos son de Navent y devuelven exactamente los mismos avisos.
+
+    Verificado a mano: Zonajobs trajo 5 de 5 idénticos a los de Bumeran, con el
+    mismo id de aviso. El propio Bumeran lo dice en las páginas republicadas
+    ("Este aviso fue publicado por ZonaJobs"). Sin el aviso en pantalla, quien
+    no programa prende los dos y recibe todo duplicado por Telegram.
+    """
+    from vacantia.ui import formulario
+
+    html = formulario.render("ana", {"keywords": ["Python"]}, [])
+    assert "Misma base de avisos que Bumeran" in html
+    assert "Misma base de avisos que Zonajobs" in html

@@ -68,8 +68,10 @@ form.datos { background: #fff; border: 1px solid var(--borde); border-radius: 6p
     padding: 6px; border: 1px solid var(--borde); border-radius: 4px; font: inherit; }
 textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .ancho { grid-column: 1 / -1; }
-.checks { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.checks { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
 .checks label { font-size: 14px; }
+.tilde { display: flex; flex-direction: column; gap: 2px; }
+.tilde .nota { font-size: 12px; color: var(--gris); max-width: 34ch; }
 .ayuda { font-size: 12px; color: var(--gris); margin: 3px 0 0; }
 .guardar { margin-top: 18px; }
 .guardar button { padding: 9px 20px; background: #14509b; border-color: #14509b;

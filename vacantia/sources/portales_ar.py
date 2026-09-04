@@ -98,6 +98,7 @@ class PortalSource(Source):
     """Base común. Cada portal es una subclase con su `portal` puesto."""
 
     portal: Portal | None = None
+    extractor = None        # lo pone cada subclase; ver `extraer_navent`
 
     def __init__(self, config: dict, profile: dict):
         super().__init__(config, profile)
@@ -197,7 +198,13 @@ class PortalSource(Source):
         candidatos += re.findall(r"https?://[^\s)\"'<>]+", texto or "")
         vistos, salida = set(), []
         for link in candidatos:
-            limpio = link.split("?")[0].rstrip("/")
+            # El `#` se corta acá y no en `Job.key`: para estos portales el
+            # fragmento es ruido —Computrabajo cuelga ahí la posición del aviso
+            # en la lista (`#lc=ListOffers-Score4-3`), y el mismo aviso salía
+            # dos veces— pero para la fuente `rrhh` es identidad: ahí la página
+            # del reclutador es una sola URL y el hash es lo que separa una
+            # publicación de otra.
+            limpio = link.split("?")[0].split("#")[0].rstrip("/")
             if not self.job_re.search(limpio):
                 continue
             clave = limpio.lower()
@@ -211,8 +218,27 @@ class PortalSource(Source):
         paginas = self._descargar([j.url for j in jobs], con_links=False)
         for job in jobs:
             texto, _ = paginas.get(job.url, ("", []))
-            if texto:
-                job.description = texto[:3000]
+            if not texto:
+                continue
+            job.description = texto[:3000]
+            if self.extractor is None:
+                continue
+            try:
+                datos = self.extractor(texto)
+            except Exception as e:       # un cambio de maquetación no tumba la corrida
+                logger.debug(f"[{self.name}] No pude leer los campos de {job.url}: {e}")
+                continue
+            # El título del listado sale del slug de la URL y trae pegado el
+            # id del aviso ("...En Monserrat B4D6A5C1...9B61373E686DCF3405"),
+            # así que dos publicaciones del mismo puesto nunca coincidían y el
+            # dedupe por empresa+título no las juntaba. El <h1> es el título de
+            # verdad, y por eso este sí pisa lo que había.
+            if titulo := datos.pop("title", ""):
+                job.title = titulo
+            # El resto no: lo que vino del listado es más específico.
+            for campo, valor in datos.items():
+                if valor and not getattr(job, campo, ""):
+                    setattr(job, campo, valor)
 
     # --- interfaz Source ------------------------------------------------
 
@@ -254,16 +280,136 @@ class PortalSource(Source):
         return jobs
 
 
+# --- leer empresa, ciudad y modalidad de la página del aviso -------------
+#
+# `city` y `work_mode` los completa normalmente el scoring con el LLM
+# (`scoring.py`), pero si el LLM falla quedan vacíos y entonces la regla de
+# ubicación no filtra nada: así entró un presencial de Jujuy con el perfil
+# puesto en Bahía Blanca. Sacarlos acá es gratis —la página de detalle ya se
+# baja para la descripción— y deja el filtro en pie aunque el modelo se caiga.
+#
+# `company` no lo llena nadie más, y sin él `Job.dedupe_key` devuelve "" y el
+# dedupe por empresa+título no corre. Es lo que dejaba pasar el mismo aviso por
+# Bumeran y por Zonajobs, que comparten la base.
+
+_MODOS = (
+    ("remote", ("remoto", "remote", "teletrabajo", "home office")),
+    ("hybrid", ("hibrido", "hybrid", "mixto", "semipresencial")),
+    ("onsite", ("presencial", "on site", "on-site", "in situ")),
+)
+
+
+def _sin_tildes(texto: str) -> str:
+    plano = unicodedata.normalize("NFKD", str(texto or "").lower())
+    return "".join(c for c in plano if not unicodedata.combining(c))
+
+
+def _modo(texto: str, estricto: bool = False) -> str:
+    """'remote' | 'hybrid' | 'onsite' | ''.
+
+    Con `estricto`, devuelve "" si el texto nombra más de una modalidad. Es para
+    texto libre, donde "el primero que aparece" se equivoca: un aviso de
+    Computrabajo empezaba diciendo "remoto" y más abajo aclaraba "días
+    presenciales (3)" —o sea híbrido— y lo dábamos por remoto, que es
+    justamente el error que deja pasar un presencial disfrazado.
+
+    Devolver "" no es perder información: `Job.work_mode` vacío significa "el
+    aviso no lo dice" y no filtra, así que la duda queda para el LLM, que lee
+    la frase entera en vez de buscar palabras sueltas.
+    """
+    plano = _sin_tildes(texto)
+    posiciones = [
+        (pos, modo)
+        for modo, marcas in _MODOS
+        for m in marcas
+        if (pos := plano.find(m)) >= 0
+    ]
+    if not posiciones:
+        return ""
+    if estricto and len({modo for _, modo in posiciones}) > 1:
+        return ""
+    return min(posiciones)[1]
+
+
+def _ciudad(lugar: str) -> str:
+    """'Monserrat, Capital Federal' -> 'Monserrat'. El barrio es lo específico."""
+    return (lugar or "").split(",")[0].strip()
+
+
+def extraer_navent(texto: str) -> dict:
+    """Bumeran y Zonajobs: misma plataforma, misma maquetación.
+
+    Al pie de la página del aviso:
+
+        * Híbrido
+        ...
+        Ubicación
+
+        Capital Federal, Capital Federal
+        ...
+        Ver más avisos de la empresa
+
+        Aliantec
+    """
+    datos: dict[str, str] = {}
+
+    if m := re.search(r"^#\s+(.+?)\s*$", texto, re.M):
+        datos["title"] = m.group(1)
+
+    if m := re.search(r"^Ubicaci[oó]n\s*$\n+^(.+)$", texto, re.M | re.I):
+        datos["city"] = _ciudad(m.group(1))
+
+    if m := re.search(r"^Ver m[aá]s avisos de la empresa\s*$\n+^(.+)$", texto, re.M | re.I):
+        datos["company"] = m.group(1).strip()
+
+    # La modalidad es un bullet suelto, no una etiqueta con valor.
+    if m := re.search(r"^\*\s*(Presencial|H[ií]brido|Remoto)\s*$", texto, re.M | re.I):
+        datos["work_mode"] = _modo(m.group(1))
+
+    return datos
+
+
+def extraer_computrabajo(texto: str) -> dict:
+    """Computrabajo: empresa y lugar van juntos, en la línea de abajo del título.
+
+        # ML / AI Engineer // Proyectos Bancarios - Remoto para residentes...
+
+        Kaizen Recursos Humanos - Monserrat, Capital Federal
+
+    No publica la modalidad como campo aparte, así que sale del texto.
+    """
+    datos: dict[str, str] = {}
+
+    cuerpo = [l.strip() for l in texto.splitlines() if l.strip()]
+    if cuerpo and cuerpo[0].startswith("#"):
+        datos["title"] = cuerpo[0].lstrip("# ").strip()
+    if len(cuerpo) >= 2 and cuerpo[0].startswith("#") and " - " in cuerpo[1]:
+        empresa, _, lugar = cuerpo[1].partition(" - ")
+        datos["company"] = empresa.strip()
+        datos["city"] = _ciudad(lugar)
+
+    # Sin campo propio: lo dice el título o el cuerpo ("Zona y horario Laboral:
+    # REMOTO"). Se mira sólo el principio para no comerse los avisos
+    # relacionados que el portal lista al pie.
+    if modo := _modo(texto[:2500], estricto=True):
+        datos["work_mode"] = modo
+
+    return datos
+
+
 class BumeranSource(PortalSource):
     name = "bumeran"
     portal = PORTALES["bumeran"]
+    extractor = staticmethod(extraer_navent)
 
 
 class ZonajobsSource(PortalSource):
     name = "zonajobs"
     portal = PORTALES["zonajobs"]
+    extractor = staticmethod(extraer_navent)
 
 
 class ComputrabajoSource(PortalSource):
     name = "computrabajo"
     portal = PORTALES["computrabajo"]
+    extractor = staticmethod(extraer_computrabajo)
