@@ -28,9 +28,9 @@
   },
   "candidate": {
     "name": "Isaías",
-    "profile": "Perfil AI Engineer. Stack: Python, FastAPI, postgresSQL, Typescript, React, Next.js, LLMs.",
+    "profile": "AI Engineer: conecto modelos ya entrenados (OpenAI, LLMs open source) a producto. RAG, function calling, agentes y APIs con Python y FastAPI.",
     "seeking": "Trabajo 100% remoto desde Argentina. Vive en Bahía Blanca.",
-    "not_suitable": "Puestos junior, roles no técnicos, puestos presenciales o híbridos fuera de Bahía Blanca, y cualquier puesto que requiera inglés",
+    "not_suitable": "NO entrena modelos ni construye redes neuronales: conecta modelos ya entrenados a producto. Por eso NO sirven los puestos de Machine Learning Engineer, Data Scientist, MLOps, Deep Learning, Computer Vision ni nada que pida entrenar, hacer fine-tuning o armar arquitecturas de modelos. Tampoco: puestos junior, roles no técnicos, presenciales o híbridos fuera de Bahía Blanca, ni nada que requiera inglés.",
     "relocation_note": "No se reubica ni viaja. Bahía Blanca o remoto.",
     "search_seniority": "",
     "search_keywords": "",
@@ -62,11 +62,11 @@
       "language": "es",
       "roles": [
         "AI Engineer",
-        "Machine Learning Engineer",
-        "Data Scientist",
-        "MLOps Engineer",
         "LLM Engineer",
-        "GenAI Engineer"
+        "GenAI Engineer",
+        "AI Agent Engineer",
+        "Backend Python",
+        "Prompt Engineer"
       ],
       "max_queries": 4,
       "results_per_query": 10
@@ -76,10 +76,10 @@
       "enabled": true,
       "search_terms": [
         "AI Engineer",
-        "Machine Learning Engineer",
-        "Data Scientist",
-        "MLOps Engineer",
-        "LLM Engineer"
+        "LLM Engineer",
+        "GenAI Engineer",
+        "AI Agent Engineer",
+        "Backend Python"
       ],
       "locations": [
         "Argentina"

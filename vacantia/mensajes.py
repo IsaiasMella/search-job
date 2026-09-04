@@ -97,15 +97,21 @@ REGLAS = """1. Los requisitos con tilde son el corazón del mensaje. Cada uno ti
 2. **Prohibido listar algo que el CV no diga.** No es un problema de honestidad
    nada más: se cae en la primera entrevista y quema el contacto. Si el aviso
    pide seis cosas y el CV cubre tres, van tres.
-3. Cero adjetivos sobre uno mismo. "Proactivo", "apasionado", "orientado a
+   Tampoco vale estirar lo que sí dice a algo parecido pero distinto. Alguien
+   que conecta modelos ya entrenados a un producto NO hace Machine Learning:
+   son dos oficios y en la entrevista se nota en la primera pregunta. Ante la
+   duda entre dos formas de decirlo, va la que el CV usa textual.
+3. Mirá "LO QUE NO HACE" antes de escribir cada línea. Si un requisito del aviso
+   cae ahí, no va, aunque el CV mencione algo que suene parecido.
+4. Cero adjetivos sobre uno mismo. "Proactivo", "apasionado", "orientado a
    resultados" son ruido: los pone todo el mundo y no dicen nada.
-4. El nombre de pila solo, sin apellido: "Hola Jazmín", no "Hola Jazmín Pérez".
+5. El nombre de pila solo, sin apellido: "Hola Jazmín", no "Hola Jazmín Pérez".
    Si el aviso no dice quién publicó, va "Hola!" sin nombre.
-5. El puesto va corto y limpio, como lo diría una persona: "Machine Learning
+6. El puesto va corto y limpio, como lo diría una persona: "Machine Learning
    Engineer Sr", "Analista de Datos". El título que viene guardado suele traer
    pegada media publicación ("Buscamos Desarrollador/a ML si tenés +5 años
    de...") y así no se puede usar: sacalo del aviso y recortalo.
-6. No cambiar el tono ni la estructura del molde. Está probado."""
+7. No cambiar el tono ni la estructura del molde. Está probado."""
 
 TIPOS = {"dm": "DM por LinkedIn", "mail": "Mail a RRHH"}
 
@@ -167,8 +173,8 @@ FORMATO EXACTO. Copialo tal cual y reemplazá SÓLO lo que está entre llaves:
 
 REGLAS:
 {REGLAS}
-7. Escribí en el mismo idioma del aviso.
-8. Devolvé SÓLO el mensaje, sin comillas, sin preámbulo y sin explicaciones.
+8. Escribí en el mismo idioma del aviso.
+9. Devolvé SÓLO el mensaje, sin comillas, sin preámbulo y sin explicaciones.
 
 DATOS QUE YA ESTÁN RESUELTOS, no los cambies:
 - nombre (quien publicó): {_nombre_de_pila(job.company) or 'no figura, usá "Hola!" sin nombre'}
@@ -178,6 +184,9 @@ DATOS QUE YA ESTÁN RESUELTOS, no los cambies:
 
 EL PUESTO lo sacás vos del aviso, corto y limpio (regla 5). Como referencia, el
 título que quedó guardado es: {job.display_title}
+
+LO QUE NO HACE (regla 3, es tan importante como el CV):
+{(cand.get('not_suitable') or 'no se cargó').strip()}
 
 AVISO:
 {(job.description or '')[:2000]}

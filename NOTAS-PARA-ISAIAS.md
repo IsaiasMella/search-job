@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**246 tests pasan.**
+**247 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  246 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  247 passed
 ```
 
 Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
@@ -229,6 +229,33 @@ Tres detalles que están resueltos y conviene saber:
 
 Para ver si está programada, cuándo corrió y cómo le fue: doble clic en
 `estado.bat`. Para que deje de correr: `desinstalar.bat`.
+
+## 2.9. AI Engineer no es Machine Learning
+
+Es la distinción que más plata cuesta si se confunde, y estaba mal cargada.
+
+**Lo que hacés**: conectás modelos ya entrenados (OpenAI, LLMs open source) a un
+producto. RAG, function calling, prompt engineering, agentes, APIs.
+
+**Lo que NO hacés**: entrenar modelos, fine-tuning, armar redes neuronales.
+
+Estaba mal en tres lugares a la vez, y por eso se colaba:
+
+1. **Tu CV decía "Entrené un modelo de IA"** para el chatbot regulatorio, cuando
+   en la misma línea el stack dice `RAG, LangChain, Chroma`, que es lo contrario.
+   Corregido: *"Construí un sistema RAG sobre documentación regulatoria..."*.
+2. **Las fuentes buscaban `Machine Learning Engineer`, `Data Scientist` y
+   `MLOps`.** Por eso te llegaban. Ahora buscan AI Engineer, LLM Engineer,
+   GenAI Engineer, AI Agent Engineer, Backend Python y Prompt Engineer.
+3. **`not_suitable` no lo decía.** Ahora lo dice con todas las letras, y es lo
+   que lee el que puntúa.
+
+**El efecto, medido sobre la misma oferta**: pasó de **90 a 0**, con la razón
+*"El candidato no hace Machine Learning ni entrena modelos, y el puesto es de
+Machine Learning Engineer"*.
+
+⚠️ **Las 207 ofertas que ya tenés guardadas conservan su puntaje viejo.** Se
+puntuaron con el perfil equivocado. Sólo las corridas nuevas salen bien.
 
 ---
 

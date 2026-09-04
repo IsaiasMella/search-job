@@ -11,7 +11,7 @@ Desarrollador Full Stack con +6 años de experiencia construyendo soluciones par
 - Extendí y mantuve el modelado de datos con SQLAlchemy (PostgreSQL), gestionando migraciones con Alembic.
 - Construí un sistema de roles, permisos y delegaciones multi-organización.
 - Reduje en un 30% los tiempos de carga en los formularios del módulo de importaciones.
-- **Chatbot Regulatorio de Importaciones con IA:** Entrené un modelo de IA con documentación regulatoria de importaciones y restricciones aduaneras, e integré el modelo vía chat embebido, permitiendo a despachantes consultar normativa sin salir de la plataforma.
+- **Chatbot Regulatorio de Importaciones con IA:** Construí un sistema RAG sobre documentación regulatoria de importaciones y restricciones aduaneras (LangChain + Chroma), integrado vía chat embebido, permitiendo a despachantes consultar normativa sin salir de la plataforma.
 - **Stack:** JavaScript, TypeScript, Python, FastAPI, React.js, Next.js, SQLAlchemy, Alembic, PostgreSQL, RAG, LangChain, Chroma.
 
 ### Tech Lead — Desky (oct. 2023 - ene. 2026)

@@ -128,3 +128,30 @@ def test_el_prompt_prohibe_listar_lo_que_el_cv_no_dice(monkeypatch):
     assert "Cero adjetivos" in prompt
     assert "Buscamos AI Agent Engineer" in prompt      # el aviso
     assert "CV con Python y LangChain" in prompt       # el CV
+
+
+def test_el_prompt_le_dice_al_modelo_que_es_lo_que_NO_hace(monkeypatch):
+    """El caso real: el CV decía "entrené un modelo de IA" cuando en verdad era
+    un RAG, y el mensaje salió ofreciendo Machine Learning.
+
+    Conectar modelos ya entrenados a un producto y entrenarlos son dos oficios
+    distintos, y en la entrevista se nota en la primera pregunta. Con el CV
+    corregido alcanzaría, pero el `not_suitable` del perfil es la red: dice qué
+    no hay que ofrecer aunque el CV mencione algo que suene parecido.
+    """
+    capturado = {}
+    perfil = {
+        "candidate": {"name": "Isaías", "headline": "AI Engineer",
+                      "not_suitable": "NO entrena modelos ni arma redes neuronales."},
+        "llm": {},
+    }
+    monkeypatch.setattr(mensajes, "has_llm_credentials", lambda cfg: True)
+    monkeypatch.setattr(mensajes, "chat_with_llm",
+                        lambda cfg, messages, **k: capturado.setdefault(
+                            "p", messages[0]["content"]) and "ok")
+    mensajes.generar(JOB, "CV con Python", perfil, "dm")
+    prompt = capturado["p"]
+
+    assert "LO QUE NO HACE" in prompt
+    assert "NO entrena modelos ni arma redes neuronales." in prompt
+    assert "NO hace Machine Learning" in prompt        # el ejemplo, en las reglas
