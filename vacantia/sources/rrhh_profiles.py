@@ -19,12 +19,32 @@ Se le da una lista de URLs en el perfil:
 }
 ```
 
-Sirve cualquier página pública que liste publicaciones o búsquedas: el perfil
-de actividad de alguien de RRHH, la página de una consultora, el blog de
-empleos de una cámara. **No hay login ni scraping de LinkedIn**: se lee con
-TinyFish, igual que `careers`.
+**No hay login ni scraping de LinkedIn**: se lee con TinyFish, igual que
+`careers`.
 
-De cada página salen tres cosas, en este orden:
+## El rodeo para seguir a una persona de LinkedIn
+
+Un perfil (`linkedin.com/in/...`) **no se puede leer**: LinkedIn devuelve la
+página vacía a quien no tiene sesión, y desde una IP común responde `HTTP 999`.
+Verificado el 4/9/2026 contra un perfil real.
+
+Pero sus **posts sueltos sí se leen**, y Google los tiene indexados. Entonces,
+cuando la URL es un perfil, no se entra: se le pregunta al buscador cuáles son
+sus publicaciones (`site:linkedin.com/posts "Nombre Apellido"`), se filtran por
+el slug del perfil para no traer a un homónimo, y se leen esos posts. Cuesta una
+búsqueda por persona y por corrida. Se apaga con `"buscar_posts": false`.
+
+Para quien carga la URL no cambia nada: pega el perfil y funciona.
+
+## Qué sale de cada página
+
+Cuando la página **es un post**, el aviso es esa página: título de su primera
+línea y el texto como descripción. No se siguen los links que contiene, porque
+un post enlaza a otros posts del mismo autor y eso traía publicaciones de hace
+cinco años como si fueran búsquedas abiertas.
+
+Cuando es **cualquier otra página** (una consultora, el blog de empleos de una
+cámara), salen tres cosas en este orden:
 
 1. Los links a publicaciones (`linkedin.com/posts/...`).
 2. Los links que tienen pinta de aviso (`/jobs/`, ATS conocidos) — reusa la
@@ -60,6 +80,18 @@ MAX_PARRAFOS = 8
 MIN_LARGO_PARRAFO = 60
 
 _POST_RE = re.compile(r"linkedin\.com/(posts|pulse)/", re.IGNORECASE)
+
+#: La propia navegación de LinkedIn, que viene en cada página de post.
+#:
+#: Una página de post trae 226 links, y el único que `is_job_url()` acepta es
+#: el botón "Empleos" del menú de arriba: `/jobs/search?trk=public_post_guest_
+#: nav_menu_jobs`. Sin esto, cada post generaba un aviso falso que apuntaba al
+#: buscador de LinkedIn, siempre el mismo, y duplicaba la lista.
+_CHROME_RE = re.compile(
+    r"trk=public_post_guest_nav|linkedin\.com/jobs/search/?(\?|$)"
+    r"|linkedin\.com/(login|signup|feed|help|legal|company/linkedin)",
+    re.IGNORECASE,
+)
 _ADORNOS_RE = re.compile(r"^[#>*\-\s|]+|[\s|]+$")
 
 
@@ -115,6 +147,41 @@ def _hash(texto: str) -> str:
     return hashlib.sha1(texto.encode("utf-8")).hexdigest()[:10]
 
 
+#: Cuánto hace que se publicó, tal como lo escribe LinkedIn: "1mo", "3y", "2w".
+_ANTIGUEDAD_RE = re.compile(r"^\d+\s*(mo|y|w|d|h|min)$", re.IGNORECASE)
+
+
+def limpiar_post(texto: str) -> str:
+    """Deja el texto que escribió la persona, sin el encabezado de LinkedIn.
+
+    Arriba de cada post viene siempre lo mismo, y no dice nada del aviso:
+
+        # Renzo Bazan's Post      <- el título de la página
+        Renzo Bazan               <- el nombre, repetido
+        1mo                       <- cuándo lo publicó
+        Edited
+        ¡Súmate a nuestros proyectos de Gobierno de Datos!   <- acá empieza
+
+    Estorba porque el título del aviso sale de la primera línea de verdad. Se
+    descartan líneas sólo hasta la primera que parece contenido: una vez que
+    empezó el texto no se saca nada más, así que un post que arranque distinto
+    no pierde nada.
+    """
+    utiles: list[str] = []
+    empezo = False
+    for cruda in str(texto or "").splitlines():
+        linea = cruda.strip()
+        if not linea:
+            continue
+        if not empezo:
+            if (linea.startswith("#") or _ANTIGUEDAD_RE.match(linea)
+                    or linea.lower() == "edited" or len(linea) <= 40):
+                continue
+            empezo = True
+        utiles.append(linea)
+    return "\n".join(utiles).strip()
+
+
 def es_perfil_de_linkedin(url: str) -> bool:
     """Un perfil de persona en LinkedIn (`/in/algo`), que es el caso que falla.
 
@@ -128,6 +195,17 @@ def es_perfil_de_linkedin(url: str) -> bool:
     """
     return bool(re.search(r"linkedin\.com/in/", str(url or ""), re.I))
 
+
+
+def slug_de_perfil(url: str) -> str:
+    """'linkedin.com/in/ana-perez-2472/recent-activity/' -> 'ana-perez-2472'.
+
+    Es el identificador exacto de la persona, y sirve para quedarse sólo con
+    SUS posts: buscando "Renzo Bazan" el buscador devuelve también los de otros
+    dos Renzo Bazan, y el slug es lo único que los distingue sin equivocarse.
+    """
+    m = re.search(r"linkedin\.com/in/([^/?#]+)", str(url or ""), re.I)
+    return m.group(1).lower() if m else ""
 
 
 class RRHHProfilesSource(Source):
@@ -144,6 +222,12 @@ class RRHHProfilesSource(Source):
             self.urls = self.urls[: int(max_profiles)]
         self.fetch_delay = float(config.get("fetch_delay", _FETCH_DELAY))
         self.max_links = int(config.get("max_links_per_profile", 15))
+        # Un perfil de LinkedIn no se puede leer (ver `es_perfil_de_linkedin`),
+        # así que se buscan sus publicaciones por el buscador. Cuesta una
+        # búsqueda por persona y por corrida.
+        self.buscar_posts = bool(config.get("buscar_posts", True))
+        self.posts_por_persona = int(config.get("posts_por_persona", 8))
+        self.language = str(config.get("language", "es"))
         self._tf = None
 
     # --- disponibilidad -------------------------------------------------
@@ -201,13 +285,25 @@ class RRHHProfilesSource(Source):
     # --- armado de ofertas ----------------------------------------------
 
     def _jobs_de_pagina(self, url: str, texto: str, links: list[str],
-                        terminos: list[str]) -> list[Job]:
-        autor = nombre_desde_url(url)
+                        terminos: list[str], duenio: str = "") -> list[Job]:
+        # `duenio` es la URL que cargó la persona; `url` puede ser un post suyo
+        # que encontramos por el buscador. El autor sale del dueño porque es a
+        # quien hay que escribirle, no del post.
+        duenio = duenio or url
+        autor = nombre_desde_url(duenio)
         base = dict(company=autor, source=self.name,
-                    raw={"perfil_rrhh": url, "autor": autor})
+                    raw={"perfil_rrhh": duenio, "autor": autor, "pagina": url})
 
-        posts = [l for l in dict.fromkeys(links) if _POST_RE.search(l)][: self.max_links]
-        avisos = [l for l in dict.fromkeys(links)
+        # Cuando la página YA es un post, el aviso es esa página y no los links
+        # que contiene. Un post enlaza a otros posts del mismo autor, así que
+        # seguirlos traía publicaciones sueltas de hace cinco años ("gracias
+        # equipo por el reconocimiento") como si fueran búsquedas abiertas.
+        if _POST_RE.search(url):
+            return self._job_del_post(url, texto, terminos, base)
+
+        utiles = [l for l in dict.fromkeys(links) if not _CHROME_RE.search(l)]
+        posts = [l for l in utiles if _POST_RE.search(l)][: self.max_links]
+        avisos = [l for l in utiles
                   if is_job_url(l) and l not in posts][: self.max_links]
 
         jobs = [
@@ -237,30 +333,127 @@ class RRHHProfilesSource(Source):
         return jobs
 
 
+    def _job_del_post(self, url: str, texto: str, terminos: list[str],
+                      base: dict) -> list[Job]:
+        """El post como una sola oferta, con su primera línea de título.
+
+        Sin esto todos los posts salían con el mismo título ("Publicación de
+        Fulano") y, como la empresa también es la misma persona, el dedupe del
+        motor por empresa+título los colapsaba a uno.
+
+        Se descarta el post que no anuncia una búsqueda: la gente de RRHH
+        también publica agradecimientos y fotos del equipo.
+        """
+        cuerpo = limpiar_post(texto)
+        if not any(t in cuerpo.lower() for t in terminos):
+            logger.debug(f"[rrhh]   no parece una búsqueda: {url}")
+            return []
+
+        titulo = next((l for l in cuerpo.splitlines() if len(l.strip()) > 15), "")
+        return [Job(
+            url=url,
+            title=(titulo.strip() or f"Publicación de {base['company']}")[:90],
+            description=cuerpo[:2000],
+            **base,
+        )]
+
+    # --- seguir a una persona sin poder leer su perfil ------------------
+
+    def _cliente(self):
+        from tinyfish import TinyFish
+
+        if self._tf is None:
+            self._tf = TinyFish(api_key=self.api_key)
+        return self._tf
+
+    def posts_de(self, url_perfil: str) -> list[str]:
+        """Las direcciones de los posts de esa persona, según el buscador.
+
+        Es la vuelta al bloqueo: el **perfil** no se puede leer, pero los
+        **posts sueltos** sí, y Google los tiene indexados. Entonces en vez de
+        entrar al perfil se le pregunta al buscador cuáles son sus posts.
+
+        La query lleva el nombre entre comillas y los resultados se filtran por
+        el slug del perfil, que es el identificador exacto: buscar "Renzo Bazan"
+        trae también a otros dos que se llaman igual.
+        """
+        from vacantia.sources.google_posts import buscar_en_tinyfish
+
+        slug = slug_de_perfil(url_perfil)
+        nombre = nombre_desde_url(url_perfil)
+        if not slug or not nombre:
+            return []
+
+        query = f'site:linkedin.com/posts "{nombre}"'
+        resultados = buscar_en_tinyfish(
+            self._cliente(), query, self.language,
+            self.posts_por_persona * 3, etiqueta=self.name,
+        )
+        marca = f"/posts/{slug}_"
+        propios, vistos = [], set()
+        for r in resultados:
+            limpia = (r.get("url") or "").split("?")[0]
+            if marca not in limpia.lower() or limpia.lower() in vistos:
+                continue
+            vistos.add(limpia.lower())
+            propios.append(limpia)
+            if len(propios) >= self.posts_por_persona:
+                break
+
+        ajenos = len(resultados) - len(propios)
+        logger.info(f"[rrhh]   {nombre}: {len(propios)} post(s) suyos"
+                    f"{f', {ajenos} de otra persona descartado(s)' if ajenos > 0 else ''}")
+        return propios
+
     # --- interfaz Source ------------------------------------------------
+
+    def _paginas_a_leer(self) -> dict[str, str]:
+        """{url a bajar: a quién pertenece}.
+
+        Una página común se lee tal cual. Un perfil de LinkedIn no se puede
+        leer, así que se reemplaza por las direcciones de sus publicaciones,
+        que sí se pueden. Para quien carga las URLs es el mismo campo: pega el
+        perfil y funciona, sin tener que saber nada de esto.
+        """
+        destinos: dict[str, str] = {}
+        for url in self.urls:
+            if not es_perfil_de_linkedin(url):
+                destinos[url] = url
+                continue
+            if not self.buscar_posts:
+                logger.warning(
+                    f"[rrhh]   {url} es un perfil de LinkedIn y `buscar_posts` "
+                    "está apagado: LinkedIn no deja leerlo, así que no va a traer nada."
+                )
+                continue
+            for post in self.posts_de(url):
+                destinos[post] = url          # el autor es la persona, no el post
+        return destinos
 
     def fetch(self) -> list[Job]:
         logger.info(f"[rrhh] Revisando {len(self.urls)} perfil(es) de RRHH...")
-        paginas = self._descargar(self.urls)
+        destinos = self._paginas_a_leer()
+        if not destinos:
+            logger.info("[rrhh] 0 publicación(es) en total")
+            return []
+
+        paginas = self._descargar(list(destinos))
         terminos = _terminos(self.profile)
 
         jobs: list[Job] = []
-        for url in self.urls:
+        por_persona: dict[str, int] = {}
+        for url, duenio in destinos.items():
             texto, links = paginas.get(url, ("", []))
             if not texto and not links:
                 logger.warning(f"[rrhh]   sin contenido en {url}")
-                if es_perfil_de_linkedin(url):
-                    logger.warning(
-                        "[rrhh]   LinkedIn no deja leer los perfiles desde afuera: "
-                        "devuelve la página vacía, con o sin /recent-activity/all/. "
-                        "No es tu URL ni un error del programa. Para seguir a esta "
-                        "persona, usá la página de su consultora, que sí se puede "
-                        "leer. Verificado el 4/9/2026."
-                    )
                 continue
-            nuevas = self._jobs_de_pagina(url, texto, links, terminos)
+            # El aviso se le atribuye a la persona que seguís, no a la URL del
+            # post: es a quien le vas a escribir.
+            nuevas = self._jobs_de_pagina(url, texto, links, terminos, duenio)
             jobs.extend(nuevas)
-            logger.info(f"[rrhh]   {len(nuevas)} de {nombre_desde_url(url)}")
+            por_persona[duenio] = por_persona.get(duenio, 0) + len(nuevas)
 
+        for duenio, cuantas in por_persona.items():
+            logger.info(f"[rrhh]   {cuantas} de {nombre_desde_url(duenio)}")
         logger.info(f"[rrhh] {len(jobs)} publicación(es) en total")
         return jobs

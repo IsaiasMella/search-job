@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**237 tests pasan.**
+**242 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  237 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  242 passed
 ```
 
 Andando: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de las
@@ -17,11 +17,10 @@ seguir a un reclutador por su perfil de LinkedIn (ver 2.5).
 
 | # | Qué | Dónde | Cuánto lleva |
 |---|---|---|---|
-| 1 | **Cambiar la URL de RRHH**: la de LinkedIn no puede funcionar, va la de la consultora | pantalla → Mis datos | 5 min |
-| 2 | **Corregir los moldes de mensaje** con tu experiencia | `vacantia/mensajes.py`, ver 2.3 | 10 min |
-| 3 | Una **corrida real** de punta a punta con todo prendido | `--dry-run` primero | 10 min |
-| 4 | **Cargar el chat de Telegram de cada persona** cuando armes sus carpetas | ver 2.2 | 1 min c/u |
-| 5 | **Correr `instalar.bat` de nuevo** cuando haya más de un perfil | — | 5 min |
+| 1 | **Corregir los moldes de mensaje** con tu experiencia | `vacantia/mensajes.py`, ver 2.3 | 10 min |
+| 2 | Una **corrida real** de punta a punta con todo prendido | `--dry-run` primero | 10 min |
+| 3 | **Cargar el chat de Telegram de cada persona** cuando armes sus carpetas | ver 2.2 | 1 min c/u |
+| 4 | **Correr `instalar.bat` de nuevo** cuando haya más de un perfil | — | 5 min |
 
 Sin empezar, y afuera a propósito: **que el sistema aprenda de tus descartes**.
 `State.feedback_jobs(aplicado=False, limit=15)` ya devuelve las últimas
@@ -108,7 +107,7 @@ tienen en común sus direcciones: eso va en `job_url_pattern`.
 
 El síntoma es `0 aviso(s)` en `vacantia.log`.
 
-## 2.5. LinkedIn: qué se puede y qué no
+## 2.5. LinkedIn: cómo se lo esquiva
 
 Probado el 4/9/2026 contra un perfil real:
 
@@ -116,21 +115,27 @@ Probado el 4/9/2026 contra un perfil real:
 |---|---|
 | Post suelto (`/posts/...`) | ✅ se lee |
 | Búsqueda de LinkedIn Jobs | ✅ se lee |
-| **Perfil de persona** (`/in/...`) | ❌ **vacío** |
+| **Perfil de persona** (`/in/...`) | ❌ **vacío**, y `HTTP 999` desde tu IP |
 | Página de empresa (`/company/...`) | ❌ vacío |
 
-**Seguir a un reclutador por su perfil no se puede.** LinkedIn devuelve la
-página vacía a quien no tenga sesión iniciada, y desde tu propia IP con una
-request normal devuelve `HTTP 999`, que es el código que usa para decir "sos un
-bot". No es tu URL ni un error del programa.
+**El perfil de una persona no se puede leer**, y no hay forma de arreglarlo sin
+poner usuario y contraseña, que es lo que haría que te bloqueen la cuenta.
 
-**Qué sí sirve en el campo de RRHH**: la página propia de la consultora, la que
-lista los puestos y no la de inicio. También el blog de empleos de una cámara o
-la bolsa de trabajo de una universidad.
+**Pero se lo esquiva y ya está hecho.** Cuando cargás un perfil de LinkedIn en
+*Mis datos*, el sistema no entra al perfil: le pregunta a Google cuáles son las
+publicaciones de esa persona y lee ésas, que sí se pueden leer. Vos pegás el
+perfil y funciona; el rodeo es invisible.
 
-**Ojo, no confundir**: la fuente `google_posts` **sí trae publicaciones de
-LinkedIn** y anda perfecto, porque las busca por el buscador y nunca toca
-LinkedIn. Lo que no se puede es seguir a una persona puntual.
+Filtra por el identificador del perfil, no por el nombre: buscando "Renzo Bazan"
+aparecían otras dos personas que se llaman igual.
+
+Cuesta **una búsqueda por reclutador y por corrida**. Se apaga con
+`"buscar_posts": false` en el bloque `rrhh` del perfil.
+
+**Ojo, no confundir**: la fuente `google_posts` **también** trae publicaciones de
+LinkedIn, pero busca por puesto ("AI Engineer" y señales de que contratan), de
+cualquiera. Esto otro busca por persona, la que vos elegiste seguir. Son
+complementarias.
 
 ## 2.6. La cuenta de Gemini
 
@@ -165,8 +170,10 @@ Sin detalle, para no volver a discutirlo:
 - **Cartel de cuántas ofertas se pierden por no saber inglés**, con cuánto
   puntuaba la mejor. Baja solo si subís tu nivel en Mis datos.
 - **Fuentes**: páginas de empleo de empresas, LinkedIn Jobs, publicaciones de
-  LinkedIn vía buscador, Bumeran, Zonajobs, Computrabajo, y páginas de
-  reclutadores. Los tres portales argentinos verificados contra los sitios.
+  LinkedIn vía buscador, Bumeran, Zonajobs, Computrabajo, y reclutadores que
+  seguís. Los tres portales argentinos verificados contra los sitios.
+- **Seguir a un reclutador de LinkedIn** aunque LinkedIn no deje leer su perfil:
+  se buscan sus publicaciones en Google y se leen ésas (2.5).
 - **Scoring con Gemini** leyendo tu CV contra cada aviso, con cadena de modelos
   de respaldo.
 - **Regla de ubicación** (2.1) y filtro de idioma.
@@ -192,10 +199,6 @@ Sin detalle, para no volver a discutirlo:
 
 # 4. IDEAS, NO PENDIENTES
 
-- **Seguir a un reclutador buscando sus posts en Google** en vez de leer su
-  perfil, que es lo que no se puede (2.5). Probado a mano y funciona: buscando
-  `site:linkedin.com/posts "Nombre Apellido"` aparecen sus publicaciones de
-  búsquedas, y esos posts sí se leen. Las dos piezas ya existen en el proyecto.
 - **Que las ofertas lleguen por mail** además de por Telegram, para tu viejo. El
   motor ya tiene la interfaz `Notifier` lista (`vacantia/notifiers/`): agregar un
   canal es un archivo, no tocar el motor.

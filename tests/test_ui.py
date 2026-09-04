@@ -397,11 +397,11 @@ def test_el_recuadro_explica_que_pagina_pegar_y_cual_no():
     html = formulario.render("ana", {"keywords": ["Python"]}, [])
 
     assert 'class="pista"' in html
-    assert "Los perfiles de LinkedIn NO funcionan" in html   # probado el 4/9/2026
+    assert "El perfil de LinkedIn de la persona" in html   # ahora sí anda, por el rodeo
     assert "Búsquedas activas" in html              # lo que sí hay que pegar
     assert "0 publicación(es)" in html              # el síntoma de haberla errado
     # Y como ejemplo dentro del cuadro vacío, que se ve sin leer nada.
-    assert 'placeholder="https://consultora.com.ar/busquedas-activas' in html
+    assert 'placeholder="https://www.linkedin.com/in/nombre-apellido' in html
 
 
 # --- el rediseño de la pantalla -------------------------------------------

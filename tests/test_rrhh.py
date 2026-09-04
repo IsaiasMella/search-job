@@ -38,6 +38,16 @@ def con_paginas(monkeypatch, src, paginas):
     monkeypatch.setattr(type(src), "_descargar", lambda self, urls: paginas)
 
 
+def con_busqueda(monkeypatch, src, por_perfil):
+    """Stubea el buscador: {url del perfil: [urls de sus posts]}.
+
+    Un perfil de LinkedIn no se puede leer, así que la fuente le pregunta al
+    buscador cuáles son sus publicaciones. Eso es lo que se reemplaza acá.
+    """
+    monkeypatch.setattr(type(src), "posts_de",
+                        lambda self, url: list(por_perfil.get(url, [])))
+
+
 # --- helpers ---------------------------------------------------------------
 
 @pytest.mark.parametrize("url,esperado", [
@@ -96,7 +106,7 @@ def test_el_hash_distingue_una_publicacion_nueva_de_la_vieja(monkeypatch):
 
 
 def test_los_links_a_publicaciones_ganan_sobre_el_texto(monkeypatch):
-    url = "https://www.linkedin.com/in/ana-perez/recent-activity/all/"
+    url = "https://consultora.com.ar/busquedas"
     src = fuente([url])
     con_paginas(monkeypatch, src, {url: (
         PAGINA_CONSULTORA,
@@ -109,7 +119,6 @@ def test_los_links_a_publicaciones_ganan_sobre_el_texto(monkeypatch):
         "https://www.linkedin.com/posts/ana-perez_vacante-activity-123",
         "https://www.linkedin.com/posts/ana-perez_otra-activity-456",
     ]
-    assert all(j.company == "Ana Perez" for j in jobs)
 
 
 def test_tambien_agarra_links_de_aviso_comunes(monkeypatch):
@@ -164,14 +173,102 @@ def test_reconoce_un_perfil_de_persona_de_linkedin():
     assert not es_perfil_de_linkedin("")
 
 
-def test_avisa_por_que_un_perfil_de_linkedin_no_trae_nada(monkeypatch, caplog):
+def test_con_la_busqueda_apagada_un_perfil_de_linkedin_avisa_que_no_va_a_traer(
+        monkeypatch, caplog):
+    """Sin el rodeo por el buscador, un perfil de LinkedIn no puede dar nada.
+
+    El síntoma sería "0 publicaciones", que se lee igual que un error de
+    configuración, así que el log tiene que decir cuál es la causa.
+    """
     import logging
 
-    src = fuente(["https://www.linkedin.com/in/ana-perez/recent-activity/all/"])
-    con_paginas(monkeypatch, src, {})            # LinkedIn no devuelve nada
+    src = fuente(["https://www.linkedin.com/in/ana-perez/recent-activity/all/"],
+                 {"buscar_posts": False})
+    con_paginas(monkeypatch, src, {})
 
     with caplog.at_level(logging.WARNING):
         assert src.fetch() == []
-    texto = caplog.text
-    assert "LinkedIn no deja leer los perfiles" in texto
-    assert "No es tu URL" in texto
+    assert "LinkedIn no deja leerlo" in caplog.text
+
+
+# --- seguir a una persona sin poder leer su perfil -------------------------
+
+def test_saca_el_slug_del_perfil():
+    from vacantia.sources.rrhh_profiles import slug_de_perfil
+
+    assert slug_de_perfil(
+        "https://www.linkedin.com/in/renzo-bazan-reyna-247214182/recent-activity/all/"
+    ) == "renzo-bazan-reyna-247214182"
+    assert slug_de_perfil("https://consultora.com.ar/busquedas") == ""
+
+
+def test_un_perfil_de_linkedin_se_reemplaza_por_sus_posts(monkeypatch):
+    """La vuelta al bloqueo: el perfil no se lee, los posts sí.
+
+    Para quien carga la URL no cambia nada: pega el perfil y anda.
+    """
+    # Un slug real de LinkedIn: nombre más el identificador numérico largo,
+    # que `nombre_desde_url` recorta para dejar el nombre a secas.
+    perfil = "https://www.linkedin.com/in/ana-perez-247214182/recent-activity/all/"
+    post = "https://www.linkedin.com/posts/ana-perez-247214182_vacante-activity-123"
+    src = fuente([perfil])
+    con_busqueda(monkeypatch, src, {perfil: [post]})
+    con_paginas(monkeypatch, src, {post: (PAGINA_CONSULTORA, [])})
+
+    jobs = src.fetch()
+    assert jobs, "el post tendría que haberse leído"
+    # El aviso queda a nombre de la persona, no del post: es a quien le escribís.
+    assert all(j.company == "Ana Perez" for j in jobs)
+    assert all(j.raw["perfil_rrhh"] == perfil for j in jobs)
+
+
+def test_descarta_los_posts_de_otra_persona_con_el_mismo_nombre(monkeypatch):
+    """Buscando "Renzo Bazan" el buscador devolvió tres personas distintas.
+
+    El slug del perfil es lo único que las separa sin equivocarse.
+    """
+    perfil = "https://www.linkedin.com/in/renzo-bazan-reyna-247214182/"
+    mios = "https://www.linkedin.com/posts/renzo-bazan-reyna-247214182_hiring-activity-1"
+    otro = "https://www.linkedin.com/posts/renzo-bazan-loayza-52435072_otra-activity-2"
+
+    src = fuente([perfil])
+    monkeypatch.setattr(
+        "vacantia.sources.google_posts.buscar_en_tinyfish",
+        lambda *a, **k: [{"url": mios, "title": "", "snippet": "", "date": ""},
+                         {"url": otro, "title": "", "snippet": "", "date": ""}],
+    )
+    monkeypatch.setattr(type(src), "_cliente", lambda self: object())
+
+    assert src.posts_de(perfil) == [mios]
+
+
+def test_una_pagina_normal_no_pasa_por_el_buscador(monkeypatch):
+    """La consultora se lee directo: gastar una búsqueda ahí sería al pedo."""
+    url = "https://consultora.com.ar/busquedas"
+    src = fuente([url])
+    llamadas = []
+    monkeypatch.setattr(type(src), "posts_de",
+                        lambda self, u: llamadas.append(u) or [])
+    con_paginas(monkeypatch, src, {url: (PAGINA_CONSULTORA, [])})
+
+    src.fetch()
+    assert llamadas == []
+
+
+def test_ignora_la_navegacion_de_linkedin(monkeypatch):
+    """Cada página de post trae 226 links y uno solo parece aviso: el menú.
+
+    Es `/jobs/search?trk=public_post_guest_nav_menu_jobs`, el botón "Empleos"
+    de la barra de arriba. Sin filtrarlo, cada post generaba un aviso falso
+    apuntando al buscador de LinkedIn, siempre el mismo.
+    """
+    url = "https://consultora.com.ar/busquedas"
+    src = fuente([url])
+    con_paginas(monkeypatch, src, {url: ("", [
+        "https://www.linkedin.com/jobs/search?trk=public_post_guest_nav_menu_jobs",
+        "https://www.linkedin.com/login",
+        "https://consultora.com.ar/jobs/analista-de-datos-123",
+    ])})
+    assert [j.url for j in src.fetch()] == [
+        "https://consultora.com.ar/jobs/analista-de-datos-123"
+    ]

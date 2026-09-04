@@ -187,6 +187,34 @@ def _hiring_terms_for(profile: dict) -> list[str]:
     return list(HIRING_TERMS_ES)
 
 
+def buscar_en_tinyfish(client, query: str, language: str, limite: int,
+                       etiqueta: str = "google_posts") -> list[dict]:
+    """Una búsqueda. Devuelve [{url, title, snippet, date}].
+
+    Está afuera de la clase porque la fuente `rrhh` hace la misma búsqueda con
+    otra query: `google_posts` busca por puesto ("AI Engineer" + señales de que
+    contratan) y `rrhh` busca por persona (el nombre del reclutador). Es el
+    mismo buscador con distinto criterio, no dos cosas.
+    """
+    from tinyfish import RateLimitError
+
+    try:
+        resp = client.search.query(query, language=language)
+    except RateLimitError:
+        logger.warning(f"[{etiqueta}] Rate-limited — espero 62s y sigo...")
+        time.sleep(62)
+        return []
+    return [
+        {
+            "url": r.url,
+            "title": r.title or "",
+            "snippet": getattr(r, "snippet", "") or "",
+            "date": getattr(r, "date", "") or "",
+        }
+        for r in resp.results[:limite]
+    ]
+
+
 def build_queries(profile: dict, config: dict) -> list[str]:
     """Una query por rol. Se rotan entre corridas para cubrirlos todos.
 
@@ -315,25 +343,12 @@ class GooglePostsSource(Source):
     # --- proveedores ----------------------------------------------------
 
     def _search_tinyfish(self, query: str) -> list[dict]:
-        from tinyfish import RateLimitError, TinyFish
+        from tinyfish import TinyFish
 
         if self._client_obj is None:
             self._client_obj = TinyFish(api_key=self.api_key)
-        try:
-            resp = self._client_obj.search.query(query, language=self.language)
-        except RateLimitError:
-            logger.warning("[google_posts] Rate-limited — espero 62s y sigo...")
-            time.sleep(62)
-            return []
-        return [
-            {
-                "url": r.url,
-                "title": r.title or "",
-                "snippet": getattr(r, "snippet", "") or "",
-                "date": getattr(r, "date", "") or "",
-            }
-            for r in resp.results[: self.results_per_query]
-        ]
+        return buscar_en_tinyfish(self._client_obj, query, self.language,
+                                  self.results_per_query, etiqueta=self.name)
 
     def _search_google_cse(self, query: str) -> list[dict]:
         import requests
