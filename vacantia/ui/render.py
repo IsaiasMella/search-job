@@ -531,9 +531,6 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
 
     return f"""{avisos(mensajes)}
 <h2>Trabajos</h2>
-<p class="herramientas">
-  <a class="boton" href="/cv.pdf?perfil={esc(perfil)}">Descargar CV en PDF</a>
-</p>
 {_ingles(pena)}
 <div class="filtros">{por_estado}</div>
 <div class="filtros fechas">

@@ -94,8 +94,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._get_trabajos(perfil, params)
             if ruta == "/datos":
                 return self._get_datos(perfil, params)
-            if ruta == "/cv.pdf":
-                return self._get_cv_pdf(perfil)
             if ruta == "/mensajes":
                 return self._get_mensajes(perfil, params)
             if ruta == "/consejo":
@@ -128,29 +126,6 @@ class Handler(BaseHTTPRequestHandler):
             pena=data.pena_de_ingles(perfil, desde),
         )
         self._pagina("Trabajos", cuerpo, perfil, "trabajos")
-
-    def _get_cv_pdf(self, perfil: str) -> None:
-        """El CV en PDF, como descarga. Si algo falla, se vuelve a Trabajos con
-        el motivo escrito: un navegador mostrando un PDF roto no explica nada."""
-        from vacantia import pdf as pdf_mod
-
-        datos = data.leer_perfil(perfil)
-        cv = data.leer_cv(datos)
-        if not cv.strip():
-            return self._redirigir(
-                "/trabajos", perfil=perfil,
-                error="Todavía no cargaste el CV. Está en la pestaña Mis datos.",
-            )
-        try:
-            contenido = pdf_mod.cv_a_pdf(cv, f"CV {perfil}")
-        except ImportError:
-            return self._redirigir(
-                "/trabajos", perfil=perfil,
-                error="Falta la librería fpdf2. Volvé a correr instalar.bat.",
-            )
-        nombre = pdf_mod.nombre_archivo(perfil)
-        self._responder(contenido, tipo="application/pdf",
-                        extra={"Content-Disposition": f'attachment; filename="{nombre}"'})
 
     def _get_mensajes(self, perfil: str, params: dict, con_llm: bool = False) -> None:
         """Los moldes para escribirle a quien publicó. Con `con_llm`, se los

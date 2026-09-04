@@ -6,13 +6,6 @@ python-dotenv>=1.0.0
 # Fuente de careers pages (sources/careers.py)
 tinyfish>=0.2.5
 
-# Generación del CV en PDF (botón de descarga en la UI).
-# Python puro, se instala sin compilador. OJO: las fuentes que trae por defecto
-# son latin-1 y revientan con el guion largo, las comillas tipográficas y el
-# símbolo de euro, que aparecen todo el tiempo en un CV. Hay que registrar una
-# fuente Unicode del sistema (C:\Windows\Fonts\arial.ttf).
-fpdf2>=2.8.0
-
 # Opcional: sólo si usás llm.provider = "anthropic"
 # anthropic>=0.40.0
 

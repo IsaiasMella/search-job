@@ -1,6 +1,6 @@
 # Notas para Isaías
 
-**250 tests pasan.**
+**237 tests pasan.**
 
 **Estado al 4/9/2026.** Andando: los 3 portales argentinos, el scoring con el
 LLM (Gemini con crédito), la pantalla con filtro por fecha y modo oscuro.
@@ -11,7 +11,7 @@ tabla.
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  250 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  237 passed
 ```
 
 ---
@@ -26,11 +26,9 @@ Esta es la lista corta. Todo lo demás es contexto.
 |---|---|---|---|
 | 1 | **Reemplazar la URL de LinkedIn de RRHH** por la página de la consultora. La que cargaste no puede funcionar | ver 2.1 | 5 min |
 | 2 | **Corregir los moldes de mensaje** contra tu experiencia | `vacantia/mensajes.py` | 10 min |
-| 3 | **Cargar más empresas** en `companies.json` | pantalla → Mis datos | tuyo |
-| 4 | Mirar cómo queda **tu CV en PDF** | pantalla → Trabajos | 1 min |
-| 5 | Una **corrida real** de punta a punta con todo prendido | `--dry-run` primero | 10 min |
-| 6 | **Cargar el chat de Telegram de cada persona** cuando armes sus carpetas | ver 3.2 | 1 min c/u |
-| 7 | **Correr `instalar.bat` de nuevo** cuando haya más de un perfil | — | 5 min |
+| 3 | Una **corrida real** de punta a punta con todo prendido | `--dry-run` primero | 10 min |
+| 4 | **Cargar el chat de Telegram de cada persona** cuando armes sus carpetas | ver 3.2 | 1 min c/u |
+| 5 | **Correr `instalar.bat` de nuevo** cuando haya más de un perfil | — | 5 min |
 
 ## Ya hecho
 
@@ -52,7 +50,6 @@ Esta es la lista corta. Todo lo demás es contexto.
 | ~~**Bumeran, Zonajobs, Computrabajo**~~ ✅ **verificados el 4/9/2026** | Se probaron los tres contra los sitios reales, uno por vez | Bumeran 12 avisos, Zonajobs 5, Computrabajo 20. Ninguno dio "0 aviso(s)": las direcciones y los patrones andan. Lo que sí apareció está en 2.4 |
 | ~~**La fuente `rrhh`**~~ ⚠️ **probada el 4/9/2026: LinkedIn la bloquea** | El código anda; LinkedIn devuelve la página vacía a quien no tiene sesión | Ver 2.5. Sirve con páginas de consultoras, no con perfiles de LinkedIn |
 | **El instalador multi-perfil** | Registra tareas programadas de verdad en Windows; no lo corrí | Corré `instalar.bat` con dos perfiles y fijate que aparezcan dos tareas en `estado.bat` |
-| **El PDF con tu CV real** | Se genera bien (59 KB, Arial, con `—`, `“”`, `€`) pero no juzgué cómo se ve | Pantalla → Trabajos → "Descargar CV en PDF" |
 
 ## 2.2. Si un portal no devuelve nada
 
@@ -395,7 +392,7 @@ semana, no en total.
 | `cf3441d` | Molde de perfil y CV con huecos marcados |
 | `8bd2dce` | **Bumeran / Zonajobs / Computrabajo** |
 | `19c6046` | Moldes de mensaje |
-| `349898d` | **CV en PDF** |
+| ~~`349898d`~~ | ~~CV en PDF~~ — sacado el 4/9/2026 |
 | `a2715c3` | **Fuente `rrhh`** |
 | `ade760b` | **La pantalla local** |
 | tanda 1 | Regla de Bahía Blanca · dedupe entre fuentes · vacantes cubiertas · `notify_when_empty` · `use_search: false` · campos de feedback |
@@ -455,9 +452,10 @@ test.
 
 ## Bloque 3 — Documentos para postularse ✅ COMPLETO
 
-(Falta que mires el PDF y corrijas los moldes: es criterio tuyo, no código.)
-
-- [x] CV en PDF con botón de descarga
+- [x] ~~CV en PDF con botón de descarga~~ — **sacado el 4/9/2026**: el PDF salía
+      feo y no valía la pena arreglarlo. Se borró todo (`vacantia/pdf.py`, el
+      botón, la ruta `/cv.pdf`, los tests y la dependencia `fpdf2`). El CV en
+      Markdown sigue estando en `resume/` y se edita desde la pantalla.
 - [x] Mensaje corto para DM y para mail — *borradores, corregilos*
 - [x] Modo "consejo" en vez de generación
 
@@ -476,7 +474,6 @@ test.
 - [x] Descartar vacantes ya cubiertas
 - [x] `notify_when_empty`
 - [x] `use_search: false` en las 7 empresas
-- [ ] **Cargar más empresas** en `companies.json` — tuyo
 - [x] Empresa, ciudad y modalidad en los portales — sin eso la regla de
       ubicación no corría en ninguno de los tres (2.4)
 - [x] El mismo aviso repetido dentro de Computrabajo (2.4)
@@ -544,8 +541,8 @@ El resto:
 vacantia/
 ├── agenda.py         reparto de horarios entre perfiles
 ├── consejo.py        qué reordenar del CV (no lo reescribe)
+├── fechas.py         leer el 'posted_at' de cada portal (4 formatos)
 ├── mensajes.py       moldes de DM y mail (borradores)
-├── pdf.py            CV a PDF (ojo con la fuente Unicode)
 ├── filters.py        la regla de ubicación y modalidad
 ├── ui/
 │   ├── server.py     el servidor y las rutas
