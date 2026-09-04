@@ -381,3 +381,123 @@ def test_avisa_que_bumeran_y_zonajobs_comparten_los_avisos(tmp_path, monkeypatch
     html = formulario.render("ana", {"keywords": ["Python"]}, [])
     assert "Misma base de avisos que Bumeran" in html
     assert "Misma base de avisos que Zonajobs" in html
+
+
+def test_el_tilde_y_el_campo_de_reclutadores_no_se_llaman_igual():
+    """Se llamaban los dos "Perfiles de reclutadores que sigo".
+
+    Uno es el interruptor de la fuente y el otro el cuadro donde van las URLs,
+    con "Empresas que sigo" en el medio. Con el mismo nombre, no se encontraba
+    dónde pegarlas.
+    """
+    from vacantia.ui import formulario
+
+    html = formulario.render("ana", {"keywords": ["Python"]}, [])
+
+    # El tilde conserva el nombre de la fuente...
+    assert "> Perfiles de reclutadores que sigo</label>" in html
+    # ...y el cuadro de texto pasa a decir qué va adentro.
+    assert '<label for="rrhh">Las URLs de esos reclutadores</label>' in html
+    assert '<label for="rrhh">Perfiles de reclutadores que sigo</label>' not in html
+    # Y el recuadro nombra al tilde, para que se vea que van juntos.
+    assert "arriba tiene que estar tildado" in html
+
+
+def test_el_recuadro_explica_que_pagina_pegar_y_cual_no():
+    """Del perfil pelado de LinkedIn no sale nada: hay que ir a su actividad.
+
+    Y de la home de una consultora tampoco: va la página que lista las
+    búsquedas. Es lo que nadie se acuerda, y cuando se equivoca la fuente
+    devuelve 0 sin decir por qué. Va en un recuadro aparte, no en la ayuda
+    gris, porque hay que poder encontrarlo de nuevo cada vez.
+    """
+    from vacantia.ui import formulario
+
+    html = formulario.render("ana", {"keywords": ["Python"]}, [])
+
+    assert 'class="pista"' in html
+    assert "/recent-activity/all/" in html          # la forma correcta
+    assert "Búsquedas activas" in html              # dónde mirar en la consultora
+    assert "0 publicación(es)" in html              # el síntoma de haberla errado
+    # Y como ejemplo dentro del cuadro vacío, que se ve sin leer nada.
+    assert 'placeholder="https://www.linkedin.com/in/nombre-apellido' in html
+
+
+# --- el rediseño de la pantalla -------------------------------------------
+
+def _paginas_para_auditar():
+    """Todas las vistas, con datos de prueba propios (nada del CV real)."""
+    from vacantia.ui import formulario, render
+
+    perfil = {"keywords": ["Python"], "sources": [{"type": "rrhh", "enabled": True}]}
+    oferta = {"url": "https://x/1", "title": "Data Scientist", "score": 70,
+              "found_at": "2026-09-04", "company": "ACME", "reason": "Encaja"}
+    return {
+        "trabajos": render.trabajos("ana", [oferta], {"pendientes": 1}, "pendientes", []),
+        "vacio": render.trabajos("ana", [], {}, "descartadas", []),
+        "mensajes": render.mensajes("ana", oferta, {"dm": "a", "mail": "b"}, False, []),
+        "consejo": render.consejo("ana", oferta, ["sql"], "texto", True, []),
+        "datos": formulario.render("ana", perfil, []),
+    }
+
+
+def test_ninguna_pantalla_muestra_em_dash():
+    """Se cuela sin que se note y queda de firma de texto generado.
+
+    Se mira el texto ya renderizado, no el código: la vez que se coló fue
+    dentro de un `&mdash;` y de un bloque que el grep del archivo salteaba.
+    El CV de la persona no cuenta: ese texto es suyo y no se le toca.
+    """
+    import html as H
+    import re
+
+    for nombre, pagina in _paginas_para_auditar().items():
+        sin_script = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", pagina,
+                            flags=re.S | re.I)
+        visible = H.unescape(re.sub(r"<[^>]+>", " ", sin_script))
+        assert "\u2014" not in visible, f"em-dash visible en la pantalla '{nombre}'"
+        assert "\u2013" not in visible, f"en-dash visible en la pantalla '{nombre}'"
+
+
+def test_cada_filtro_vacio_dice_algo_distinto():
+    """"No hay ofertas" desperdicia el momento de más atención de la pantalla.
+
+    Sin ninguna descartada, lo útil es explicar para qué sirve descartar; en
+    la primera corrida, lo útil es decir qué archivo hay que abrir.
+    """
+    from vacantia.ui import render
+
+    primera = render.trabajos("ana", [], {}, "todas", [])
+    sin_descartes = render.trabajos("ana", [], {}, "descartadas", [])
+
+    assert "buscar_ahora.bat" in primera
+    assert "No apliqué" in sin_descartes and "buscar_ahora.bat" not in sin_descartes
+
+
+def test_la_pantalla_se_adapta_al_tema_del_sistema():
+    """Se usa de noche y de día. Sin esto, de noche encandila."""
+    from vacantia.ui.render import CSS
+
+    assert "prefers-color-scheme: dark" in CSS
+    assert "color-scheme: dark" in CSS
+    # Los colores se declaran una sola vez, como tokens: si una regla escribe
+    # un color suelto, el modo oscuro se olvida de esa regla.
+    assert CSS.count("var(--texto)") > 3 and CSS.count("var(--papel)") > 3
+
+
+def test_se_puede_navegar_con_teclado():
+    from vacantia.ui.render import CSS, pagina
+
+    assert ":focus-visible" in CSS                 # dónde estoy parado
+    assert "prefers-reduced-motion" in CSS         # quien pide menos movimiento
+    assert 'href="#contenido"' in pagina("t", "c", "ana", ["ana"], "trabajos")
+
+
+def test_el_motivo_faltante_se_avisa_al_lado_del_campo():
+    """Antes era un alert(): tapaba la pantalla y no decía cuál de las 200 ofertas."""
+    from vacantia.ui.render import JS, _tarjeta
+
+    assert "alert(" not in JS
+    assert "aria-invalid" in JS
+    tarjeta = _tarjeta({"url": "https://x/1", "title": "T"}, "ana", "pendientes")
+    assert 'class="error-motivo"' in tarjeta

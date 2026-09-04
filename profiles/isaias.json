@@ -96,8 +96,10 @@
     },
     {
       "type": "rrhh",
-      "enabled": false,
-      "profiles": []
+      "enabled": true,
+      "profiles": [
+        "https://www.linkedin.com/in/renzo-bazan-reyna-247214182/recent-activity/all/"
+      ]
     },
     {
       "type": "bumeran",

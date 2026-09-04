@@ -17,6 +17,33 @@ NIVELES = ("A1", "A2", "B1", "B2", "C1", "C2")
 
 #: Fuentes que se pueden prender y apagar desde la UI. Agregar una fuente nueva
 #: al sistema es agregar una línea acá.
+# Lo que no se recuerda de una vez para siempre: qué página de cada sitio hay
+# que pegar. Del perfil de alguien no sale nada —hay que ir a su actividad— y
+# de la home de una consultora tampoco: va la página que lista las búsquedas.
+# Se equivoca cualquiera, y el error es mudo: la fuente devuelve 0 y parece rota.
+EJEMPLO_RRHH = """https://www.linkedin.com/in/nombre-apellido/recent-activity/all/
+https://consultora.com.ar/busquedas-activas"""
+
+PISTA_RRHH = """<b>&#9888; Ojo con QUÉ página pegás: no alcanza con el perfil</b>
+<ul>
+  <li><b>Persona de LinkedIn:</b> entrá a su perfil, tocá <b>&#8220;Actividad&#8221;</b>
+      y de ahí <b>&#8220;Ver todas las publicaciones&#8221;</b>. La dirección tiene que
+      terminar en <code>/recent-activity/all/</code>.<br>
+      <span class="bien">SÍ</span> <code>linkedin.com/in/ana-perez/recent-activity/all/</code><br>
+      <span class="mal">NO</span> <code>linkedin.com/in/ana-perez/</code>. El perfil
+      pelado no lista las publicaciones y no va a traer nada.</li>
+  <li><b>Consultora o empresa:</b> la página donde lista los puestos, no la de inicio.
+      Suele llamarse <b>&#8220;Búsquedas activas&#8221;</b>, &#8220;Trabajá con nosotros&#8221;
+      o &#8220;Empleos&#8221;.<br>
+      <span class="bien">SÍ</span> <code>consultora.com.ar/busquedas-activas</code><br>
+      <span class="mal">NO</span> <code>consultora.com.ar</code></li>
+</ul>
+<p style="margin:8px 0 0">Una por línea. Y arriba tiene que estar tildado
+<b>&#8220;Perfiles de reclutadores que sigo&#8221;</b>, si no no se usan.</p>
+<p style="margin:6px 0 0">Si el log dice <code>0 publicación(es)</code>, casi siempre es
+esto: pegaste la página de entrada en vez de la que lista.</p>"""
+
+
 # (clave, etiqueta, nota). La nota se muestra abajo del tilde: es donde mira
 # quien no programa, y hay cosas que no se pueden adivinar desde el nombre.
 FUENTES = (
@@ -41,11 +68,19 @@ def _campo(nombre, etiqueta, valor, tipo="text", ayuda="", **extra) -> str:
 </div>"""
 
 
-def _area(nombre, etiqueta, valor, filas=8, ayuda="") -> str:
+def _area(nombre, etiqueta, valor, filas=8, ayuda="", placeholder="", pista="") -> str:
+    """`pista` va como HTML tal cual: es el recuadro amarillo, y lleva marcado.
+
+    Se usa para lo que hay que recordar cada vez que se toca el campo, no para
+    aclarar el campo una vez. La ayuda gris de abajo se lee la primera vez y
+    después la vista la saltea.
+    """
+    ph = f' placeholder="{esc(placeholder)}"' if placeholder else ""
     return f"""<div class="campo ancho">
   <label for="{nombre}">{esc(etiqueta)}</label>
-  <textarea id="{nombre}" name="{nombre}" rows="{filas}">{esc(valor)}</textarea>
+  <textarea id="{nombre}" name="{nombre}" rows="{filas}"{ph}>{esc(valor)}</textarea>
   {f'<p class="ayuda">{esc(ayuda)}</p>' if ayuda else ''}
+  {f'<div class="pista">{pista}</div>' if pista else ''}
 </div>"""
 
 
@@ -87,7 +122,7 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
     )
 
     return f"""{avisos(mensajes)}
-<h2>Mis datos — {esc(nombre)}</h2>
+<h2>Mis datos de {esc(nombre)}</h2>
 <form class="datos" method="post" action="/datos">
 <input type="hidden" name="perfil" value="{esc(nombre)}">
 
@@ -158,9 +193,9 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
   </div>
   {_area("empresas", "Empresas que sigo", data.companies_a_texto(data.leer_companies(perfil)), 8,
          ayuda="Una por línea:  Nombre | https://empresa.com/careers | empresa.com")}
-  {_area("rrhh", "Perfiles de reclutadores que sigo",
+  {_area("rrhh", "Las URLs de esos reclutadores",
          rrhh_texto, 5,
-         ayuda="Una URL por línea (perfil de LinkedIn, página de la consultora...).")}
+         placeholder=EJEMPLO_RRHH, pista=PISTA_RRHH)}
 </div>
 
 <h2>Mi Telegram</h2>
