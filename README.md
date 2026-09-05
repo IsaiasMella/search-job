@@ -76,6 +76,9 @@ La lista de ofertas, ordenadas por qué tan bien te quedan. Cada una tiene:
 - **Dos botones: Apliqué (verde) y No apliqué (rojo).** El rojo te pide el
   motivo, y es obligatorio. Ese texto es lo único que después sirve para que el
   sistema aprenda qué no mostrarte.
+  Al marcarla, **la tarjeta se va con una animación** y arriba aparece un cartel
+  que la nombra: *"Aplicaste a «Python Senior Developer»"*. Con dos ofertas del
+  mismo puntaje pegadas, sin eso no se nota cuál desapareció.
 - **"Mensaje para escribirle"**: el mensaje para mandarle a quien publicó, por
   LinkedIn o por mail, escrito a partir del aviso y tu CV.
 - **"Consejo para el CV"**: qué reordenar y qué palabra falta para pasar el
@@ -578,7 +581,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  271 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  273 passed
 ```
 
 ---

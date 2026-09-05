@@ -175,6 +175,14 @@ h3 { letter-spacing: -.01em; }
 @media (max-width: 560px) { .duele { flex-direction: column; align-items: flex-start;
                                      gap: 8px; } }
 
+/* Al marcarla, la tarjeta se va antes de que la página se recargue. Sin esto
+   no se nota cuál desapareció: con dos ofertas de 90 al lado, la lista queda
+   igual y no sabés a cuál le diste. */
+.oferta.yendose { animation: sale .26s ease forwards; pointer-events: none; }
+@keyframes sale {
+  to { opacity: 0; transform: translateX(28px) scale(.98); }
+}
+
 .oferta { display: grid; grid-template-columns: 60px 1fr 260px; gap: 16px;
           background: var(--papel); border: 1px solid var(--borde);
           border-radius: var(--r-caja); padding: 16px; margin-bottom: 12px;
@@ -344,6 +352,34 @@ function descartar(boton) {
   return true;
 }
 
+// Marcar una oferta: se la ve irse antes de que la página se recargue.
+//
+// El servidor sigue haciendo todo el trabajo; esto es sólo para que se note
+// CUÁL se fue. Con dos ofertas de 90 pegadas, la página vuelve y la lista se
+// ve igual: no hay forma de saber a cuál le diste.
+//
+// Sin JavaScript el botón envía el formulario como siempre, y quien pidió
+// menos movimiento tampoco espera la animación.
+function marcar(boton, esDescarte) {
+  if (esDescarte && !descartar(boton)) { return false; }
+  var tarjeta = boton.closest('.oferta');
+  var quieto = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!tarjeta || quieto) { return true; }
+
+  // `form.submit()` no manda el botón apretado, así que se agrega a mano:
+  // sin esto el servidor no sabría si fue "apliqué" o "no apliqué".
+  var form = boton.closest('form');
+  var oculto = document.createElement('input');
+  oculto.type = 'hidden';
+  oculto.name = boton.name;
+  oculto.value = boton.value;
+  form.appendChild(oculto);
+
+  tarjeta.classList.add('yendose');
+  setTimeout(function () { form.submit(); }, 260);
+  return false;
+}
+
 // Avisa cuando entraron ofertas mientras la pantalla estaba abierta, para no
 // tener que apretar F5. Le pregunta al servidor cada 20 segundos si el archivo
 // del historial cambió; es una request local y no lee el archivo entero.
@@ -510,9 +546,10 @@ def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
       <input type="hidden" name="p" value="{pagina}">
       <input type="hidden" name="url" value="{esc(url)}">
       <div class="fila">
-        <button class="verde" name="aplicado" value="si">Apliqué</button>
+        <button class="verde" name="aplicado" value="si"
+                onclick="return marcar(this, false)">Apliqué</button>
         <button class="rojo" name="aplicado" value="no"
-                onclick="return descartar(this)">No apliqué</button>
+                onclick="return marcar(this, true)">No apliqué</button>
       </div>
       <input type="text" name="motivo" placeholder="Por qué no apliqué (obligatorio)">
       <p class="error-motivo">Escribí el motivo. Es lo que hace que el sistema aprenda

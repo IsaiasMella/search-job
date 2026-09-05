@@ -823,3 +823,37 @@ def test_el_cartel_del_ingles_no_aparece_cuando_estas_revisando(sitio):
     assert 'class="duele"' in get(base, "/trabajos?perfil=test&ver=pendientes")[1]
     assert 'class="duele"' not in get(base, "/trabajos?perfil=test&ver=aplicadas")[1]
     assert 'class="duele"' not in get(base, "/trabajos?perfil=test&ver=descartadas")[1]
+
+
+def test_al_marcar_se_ve_cual_se_fue(sitio):
+    """Con dos ofertas de 90 pegadas, la lista vuelve y se ve igual.
+
+    Dos mitades para el mismo problema: la tarjeta se va animada (se ve CUÁL en
+    el momento) y el aviso de arriba la nombra (se lee DESPUÉS, y funciona
+    aunque el JavaScript no corra).
+    """
+    from vacantia.ui.render import CSS, JS
+
+    base, _ = sitio
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert 'onclick="return marcar(this, false)"' in html    # Apliqué
+    assert 'onclick="return marcar(this, true)"' in html     # No apliqué
+    assert ".oferta.yendose" in CSS and "@keyframes sale" in CSS
+
+    # `form.submit()` no manda el botón apretado: sin reponerlo a mano, el
+    # servidor no sabría si fue "apliqué" o "no apliqué".
+    assert "oculto.name = boton.name" in JS
+    assert "prefers-reduced-motion" in JS                    # quien pide quieto, quieto
+
+    _, _, url = post(base, "/feedback", {
+        "perfil": "test", "ver": "pendientes",
+        "url": "https://empresa.com/jobs/1", "aplicado": "si"})
+    assert "Aplicaste+a" in url and "Data+Scientist" in url
+
+
+def test_al_descartar_el_aviso_tambien_la_nombra(sitio):
+    base, _ = sitio
+    _, _, url = post(base, "/feedback", {
+        "perfil": "test", "ver": "pendientes", "url": "https://empresa.com/jobs/2",
+        "aplicado": "no", "motivo": "es junior"})
+    assert "Descartaste" in url and "Analista+de+Datos" in url

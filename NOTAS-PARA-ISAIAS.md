@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**271 tests pasan.**
+**273 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  271 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  273 passed
 ```
 
 Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
@@ -336,7 +336,8 @@ Sin detalle, para no volver a discutirlo:
 - **La pantalla local** (`abrir.bat`), con las pestañas Trabajos y Mis datos.
   Modo oscuro, navegable con teclado, usable en celular.
 - **Marcar ofertas** con verde y rojo, con motivo obligatorio al descartar. Al
-  marcarla se va de *Sin marcar* y aparece en su pestaña.
+  marcarla se va de *Sin marcar* con una animación, y el cartel de arriba la
+  nombra: con dos ofertas de 90 pegadas no se notaba cuál había desaparecido.
 - **Apliqué y Descarté sirven para revisar**: ordenadas por cuándo las marcaste,
   con la fecha en la tarjeta. Para cuando te llaman y no te acordás a qué
   empresa le mandaste el CV.

@@ -256,10 +256,18 @@ class Handler(BaseHTTPRequestHandler):
                 "/trabajos", perfil=perfil, ver=ver, desde=desde, p=pagina,
                 error="Para descartar una oferta hace falta escribir el motivo.",
             )
+        # El título se busca ANTES de guardar, para poder nombrarla en el aviso:
+        # "Guardado." no alcanza cuando hay dos ofertas de 90 pegadas y no se
+        # ve cuál desapareció de la lista.
+        oferta = data.buscar_oferta(perfil, url) or {}
+        titulo = (oferta.get("scored_title") or oferta.get("title") or "")[:70]
+
         ok = data.guardar_feedback(perfil, url, aplicado, motivo)
         if ok:
+            que = "Aplicaste a" if aplicado else "Descartaste"
+            aviso = f"{que} «{titulo}»." if titulo else "Guardado."
             self._redirigir("/trabajos", perfil=perfil, ver=ver, desde=desde, p=pagina,
-                            ok="Guardado." if aplicado else "Guardado con el motivo.")
+                            ok=aviso)
         else:
             self._redirigir("/trabajos", perfil=perfil, ver=ver, desde=desde, p=pagina,
                             error="No encontré esa oferta en el historial.")
