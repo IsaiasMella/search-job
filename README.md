@@ -82,6 +82,10 @@ La lista de ofertas, ordenadas por qué tan bien te quedan. Cada una tiene:
   filtro automático de la empresa. **Nunca reescribe tu CV**: te dice qué mover
   para que lo edites vos.
 
+La lista va **ordenada por puntaje**, de la que mejor encaja a la que menos, y
+**de a 20 por página**. El puntaje 0 lo sacan las que directamente no son para
+vos, así que terminan al final.
+
 Arriba hay dos filas de filtros que se combinan:
 
 - **Por estado**: sin marcar, apliqué, descarté, todas.
@@ -545,7 +549,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  251 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  258 passed
 ```
 
 ---

@@ -141,6 +141,16 @@ h3 { letter-spacing: -.01em; }
   .novedades button { background: #10151a; color: var(--acento); }
 }
 
+.paginas { display: flex; align-items: center; justify-content: center; gap: 10px;
+           margin: 22px 0 0; flex-wrap: wrap; }
+.paginas a, .paginas span.quieto {
+    display: inline-block; padding: 8px 14px; border: 1px solid var(--borde);
+    border-radius: var(--r-control); background: var(--papel);
+    text-decoration: none; color: var(--gris); font-size: 13px; min-height: 38px; }
+.paginas a:hover { border-color: var(--gris); color: var(--texto); }
+.paginas span.quieto { opacity: .4; }
+.paginas .donde { border: 0; background: none; font-variant-numeric: tabular-nums; }
+
 /* --- ofertas --- */
 .filtros { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 .filtros a { display: inline-block; padding: 7px 14px; border: 1px solid var(--borde);
@@ -366,7 +376,13 @@ function vigilarNovedades(perfil, marca, pendientesAlAbrir) {
 
 
 def esc(texto) -> str:
-    return escape(str(texto or ""), quote=True)
+    """Escapa para HTML. Sólo `None` se convierte en vacío.
+
+    Ojo con `texto or ""`, que fue el bug: el cero es falsy, así que una oferta
+    puntuada 0 salía con la caja del puntaje en blanco. Y justo el 0 es el
+    puntaje que más importa mostrar, porque es el que dice "esto no es para vos".
+    """
+    return escape("" if texto is None else str(texto), quote=True)
 
 
 def pagina(titulo: str, cuerpo: str, perfil: str, perfiles: list[str], tab: str) -> str:
@@ -442,7 +458,8 @@ def _cuando(oferta: dict) -> tuple[str, str]:
                    "bastante más viejo.")
 
 
-def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo") -> str:
+def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
+             pagina: int = 1) -> str:
     score = oferta.get("score")
     clase = "puntaje alto" if isinstance(score, int) and score >= 70 else "puntaje"
     titulo = oferta.get("scored_title") or oferta.get("title") or "(sin título)"
@@ -476,6 +493,7 @@ def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo") -> str:
       <input type="hidden" name="perfil" value="{esc(perfil)}">
       <input type="hidden" name="ver" value="{esc(ver)}">
       <input type="hidden" name="desde" value="{esc(desde)}">
+      <input type="hidden" name="p" value="{pagina}">
       <input type="hidden" name="url" value="{esc(url)}">
       <div class="fila">
         <button class="verde" name="aplicado" value="si">Apliqué</button>
@@ -546,10 +564,29 @@ def _ingles(pena: dict) -> str:
 </div>"""
 
 
+def _paginas(perfil: str, ver: str, desde: str, pagina: int, paginas: int,
+             total: int) -> str:
+    """La barra de abajo. No se dibuja si todo entra en una página."""
+    if paginas <= 1:
+        return ""
+
+    def link(destino: int, etiqueta: str) -> str:
+        if not 1 <= destino <= paginas:
+            return f'<span class="quieto">{etiqueta}</span>'
+        return (f'<a href="/trabajos?perfil={esc(perfil)}&ver={esc(ver)}'
+                f'&desde={esc(desde)}&p={destino}">{etiqueta}</a>')
+
+    return f"""<nav class="paginas" aria-label="Páginas">
+  {link(pagina - 1, "&larr; Anteriores")}
+  <span class="donde">Página {pagina} de {paginas} &middot; {total} ofertas</span>
+  {link(pagina + 1, "Siguientes &rarr;")}
+</nav>"""
+
+
 def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
              mensajes: list[tuple[str, str]], desde: str = "todo",
              conteo_fecha: dict | None = None, pena: dict | None = None,
-             marca: str = "") -> str:
+             marca: str = "", pagina: int = 1, paginas: int = 1) -> str:
     def chips(opciones, activo, param, cuentas, otro_param, otro_valor):
         return "".join(
             f'<a href="/trabajos?perfil={esc(perfil)}&{otro_param}={esc(otro_valor)}'
@@ -564,7 +601,9 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
     por_fecha = chips(RANGOS, desde, "desde", conteo_fecha, "ver", ver)
 
     if ofertas:
-        listado = "".join(_tarjeta(o, perfil, ver, desde) for o in ofertas)
+        listado = ("".join(_tarjeta(o, perfil, ver, desde, pagina) for o in ofertas)
+                   + _paginas(perfil, ver, desde, pagina, paginas,
+                              int((conteo or {}).get(ver, 0))))
     elif desde != "todo":
         listado = (
             '<div class="vacio"><b>Ninguna en ese rango de fechas.</b><br>'

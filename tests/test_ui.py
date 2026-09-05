@@ -641,3 +641,93 @@ def test_avisa_de_las_ofertas_nuevas_sin_recargar_sola(sitio):
 
     assert despues["marca"] != antes["marca"]
     assert despues["pendientes"] == antes["pendientes"] + 1
+
+
+# --- paginación y orden ----------------------------------------------------
+
+def _muchas(n, score_de=lambda i: 50):
+    return [{"url": f"https://e/{i}", "title": f"Oferta {i}", "aplicado": None,
+             "score": score_de(i), "found_at": HOY_ISO, "posted_at": HOY_YMD}
+            for i in range(n)]
+
+
+def test_el_puntaje_cero_se_ve(sitio):
+    """`esc(0)` devolvía vacío porque el cero es falsy.
+
+    La caja del puntaje salía en blanco, y justo el 0 es el que más importa
+    mostrar: es el que dice "esto no es para vos".
+    """
+    from vacantia.ui.render import esc
+
+    assert esc(0) == "0"
+    assert esc(None) == ""
+
+    base, tmp = sitio
+    _con_historial(tmp, [{"url": "https://e/0", "title": "No es para vos",
+                          "aplicado": None, "score": 0, "found_at": HOY_ISO}])
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert ">0<span class=\"de\">" in html
+
+
+def test_muestra_de_a_veinte(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, _muchas(45))
+    _, html, _ = get(base, "/trabajos?perfil=test")
+
+    assert html.count('class="oferta"') == 20
+    assert "Página 1 de 3" in html
+    assert "45 ofertas" in html
+
+
+def test_se_puede_pasar_de_pagina_sin_perder_los_filtros(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, _muchas(45))
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=pendientes&desde=todo&p=2")
+
+    assert "Página 2 de 3" in html
+    assert "ver=pendientes&desde=todo&p=3" in html    # siguientes, con los filtros
+    assert "ver=pendientes&desde=todo&p=1" in html    # anteriores
+
+
+def test_una_pagina_que_no_existe_cae_en_la_ultima(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, _muchas(45))
+    for pedida in ("99", "0", "-3", "hola"):
+        _, html, _ = get(base, f"/trabajos?perfil=test&p={pedida}")
+        assert "Página" in html and "de 3" in html
+
+
+def test_sin_suficientes_ofertas_no_dibuja_la_barra(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, _muchas(5))
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert 'class="paginas"' not in html
+
+
+def test_primero_las_que_mejor_encajan_y_no_las_mas_nuevas(sitio):
+    """Ordenar por fecha abría la lista con lo peor.
+
+    Las que puntúan 0 son las que directamente no son para uno, y si entraron
+    hoy quedaban arriba de todo: tres avisos de Lima en 0 antes que 29 ofertas
+    de 80 para arriba.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/mala", "title": "Recien entrada pero no sirve",
+         "aplicado": None, "score": 0, "found_at": HOY_ISO, "posted_at": HOY_YMD},
+        {"url": "https://e/buena", "title": "Vieja pero encaja",
+         "aplicado": None, "score": 90, "found_at": "2026-08-01T10:00:00+00:00",
+         "posted_at": "2026-08-01"},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert html.index("Vieja pero encaja") < html.index("Recien entrada pero no sirve")
+
+
+def test_marcar_una_oferta_te_deja_en_la_misma_pagina(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, _muchas(45))
+    _, _, url = post(base, "/feedback", {
+        "perfil": "test", "ver": "pendientes", "desde": "todo", "p": "2",
+        "url": "https://e/25", "aplicado": "si",
+    })
+    assert "p=2" in url

@@ -283,7 +283,9 @@ def fuente_o_crear(perfil: dict, tipo: str, defaults: dict | None = None) -> dic
 
 #: Cuántas mostrar en la pestaña Trabajos. Con 3 corridas por día y ~25 ofertas
 #: nuevas diarias, 300 son unas dos semanas de historial.
-MAX_OFERTAS = 300
+#: Cuántas ofertas por página. Con 267 en el historial, una sola página larga
+#: no se puede recorrer: se scrollea sin llegar nunca al final.
+POR_PAGINA = 20
 
 #: Para ordenar: las que no tienen fecha van al fondo, no arriba de todo.
 _SIN_FECHA = date.min
@@ -316,25 +318,34 @@ def _por_estado(historial: list[dict], ver: str) -> list[dict]:
     return historial
 
 
-def ofertas(nombre_perfil: str, ver: str = "pendientes",
-            desde: str = "todo") -> list[dict]:
-    """Las ofertas del historial, de la más nueva a la más vieja.
+def ofertas(nombre_perfil: str, ver: str = "pendientes", desde: str = "todo",
+            pagina: int = 1) -> tuple[list[dict], int, int]:
+    """Una página de ofertas: (las de esta página, número de página, páginas).
 
     `ver`:   pendientes (sin marcar) | aplicadas | descartadas | todas.
     `desde`: hoy | 7d | 30d | todo, por antigüedad del aviso.
 
-    Se ordena por la fecha del aviso, no por `found_at`: dos corridas distintas
-    traen avisos viejos y nuevos mezclados, y ordenar por cuándo los vimos
-    dejaba arriba uno de hace nueve meses sólo porque se encontró ayer.
+    **Se ordena por puntaje, no por fecha.** Ordenar por fecha ponía arriba las
+    que acababan de entrar, y como el puntaje 0 lo sacan las que directamente no
+    son para uno, la lista abría con lo peor: tres avisos de Lima puntuados 0
+    antes que 29 ofertas de 80 para arriba. A igual puntaje manda la fecha del
+    aviso, que ahí sí importa: entre dos que encajan igual, primero la más nueva.
     """
-    historial = State(nombre_perfil).load_history()
+    historial = _por_estado(State(nombre_perfil).load_history(), ver)
+    historial = [h for h in historial if _entra_por_fecha(h, desde)]
     historial.sort(
-        key=lambda h: (fecha_de(h)[0] or _SIN_FECHA, h.get("found_at", "")),
+        key=lambda h: (
+            h.get("score") if h.get("score") is not None else -1,
+            fecha_de(h)[0] or _SIN_FECHA,
+            h.get("found_at", ""),
+        ),
         reverse=True,
     )
-    historial = _por_estado(historial, ver)
-    historial = [h for h in historial if _entra_por_fecha(h, desde)]
-    return historial[:MAX_OFERTAS]
+
+    paginas = max(1, -(-len(historial) // POR_PAGINA))   # división para arriba
+    pagina = min(max(1, pagina), paginas)
+    arranca = (pagina - 1) * POR_PAGINA
+    return historial[arranca : arranca + POR_PAGINA], pagina, paginas
 
 
 def contar_ofertas(nombre_perfil: str, desde: str = "todo") -> dict[str, int]:

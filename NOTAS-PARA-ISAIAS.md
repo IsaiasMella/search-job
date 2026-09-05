@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**251 tests pasan.**
+**258 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  251 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  258 passed
 ```
 
 Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
@@ -285,6 +285,9 @@ Sin detalle, para no volver a discutirlo:
 - **La pantalla local** (`abrir.bat`), con las pestañas Trabajos y Mis datos.
   Modo oscuro, navegable con teclado, usable en celular.
 - **Marcar ofertas** con verde y rojo, con motivo obligatorio al descartar.
+- **Ordenadas por puntaje y de a 20 por página.** Antes ordenaba por fecha y la
+  lista abría con lo peor: las que puntúan 0 son las que no son para vos, y si
+  entraron hoy quedaban arriba de todo.
 - **Aviso de ofertas nuevas sin apretar F5**: si entra una corrida con la
   pantalla abierta, aparece un cartel abajo y vos decidís cuándo actualizar.
 - **Filtro por antigüedad del aviso**: hoy, 7 días, 30 días, sin filtro. Lee las

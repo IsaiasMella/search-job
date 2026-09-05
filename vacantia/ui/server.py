@@ -120,13 +120,19 @@ class Handler(BaseHTTPRequestHandler):
         desde = (params.get("desde") or ["todo"])[0]
         if desde not in data.RANGOS:
             desde = "todo"
+        try:
+            pedida = int((params.get("p") or ["1"])[0])
+        except ValueError:
+            pedida = 1
         mensajes = _mensajes(params)
+        ofertas, pagina, paginas = data.ofertas(perfil, ver, desde, pedida)
         cuerpo = render.trabajos(
-            perfil, data.ofertas(perfil, ver, desde), data.contar_ofertas(perfil, desde),
+            perfil, ofertas, data.contar_ofertas(perfil, desde),
             ver, mensajes, desde,
             conteo_fecha=data.contar_por_fecha(perfil, ver),
             pena=data.pena_de_ingles(perfil, desde),
             marca=data.marca_de_cambio(perfil),
+            pagina=pagina, paginas=paginas,
         )
         self._pagina("Trabajos", cuerpo, perfil, "trabajos")
 
@@ -240,21 +246,22 @@ class Handler(BaseHTTPRequestHandler):
         # sin esto, marcar una oferta te devolvía a la lista completa y había
         # que volver a elegir el filtro después de cada clic.
         desde = form.get("desde", "todo")
+        pagina = form.get("p", "1")
         url = form.get("url", "").strip()
         aplicado = form.get("aplicado") == "si"
         motivo = form.get("motivo", "").strip()
 
         if not aplicado and not motivo:
             return self._redirigir(
-                "/trabajos", perfil=perfil, ver=ver, desde=desde,
+                "/trabajos", perfil=perfil, ver=ver, desde=desde, p=pagina,
                 error="Para descartar una oferta hace falta escribir el motivo.",
             )
         ok = data.guardar_feedback(perfil, url, aplicado, motivo)
         if ok:
-            self._redirigir("/trabajos", perfil=perfil, ver=ver, desde=desde,
+            self._redirigir("/trabajos", perfil=perfil, ver=ver, desde=desde, p=pagina,
                             ok="Guardado." if aplicado else "Guardado con el motivo.")
         else:
-            self._redirigir("/trabajos", perfil=perfil, ver=ver, desde=desde,
+            self._redirigir("/trabajos", perfil=perfil, ver=ver, desde=desde, p=pagina,
                             error="No encontré esa oferta en el historial.")
 
     # --- ruido ----------------------------------------------------------
