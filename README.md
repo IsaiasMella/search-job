@@ -137,6 +137,12 @@ Lo que suele aparecer:
 | `[heurística, sin LLM]` | El modelo no respondió. **Los puntajes de esa corrida no significan nada**: sólo cuentan palabras del título |
 | `falta TINYFISH_API_KEY` | Sin esa clave se saltean varias fuentes |
 
+> **Un bloque rojo en la instalación no siempre es un error.** PowerShell pinta
+> de rojo cualquier cosa que un programa escriba por la salida de errores,
+> aunque el mensaje diga `INFO`. Si el bloque termina en `NativeCommandError` y
+> el texto no dice que algo falló, la corrida está saliendo bien. Lo que vale es
+> el `[OK]` de cada paso y el `LISTO` del final.
+
 ---
 ---
 
@@ -539,7 +545,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  248 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  251 passed
 ```
 
 ---

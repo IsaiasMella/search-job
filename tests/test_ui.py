@@ -493,19 +493,31 @@ def _con_historial(tmp, entradas):
     ruta.write_text(_json.dumps(entradas), encoding="utf-8")
 
 
-HOY_ISO = "2026-09-04T12:00:00+00:00"
+# Las fechas se calculan contra el día en que corren los tests, nunca fijas:
+# con "2026-09-04" escrito a mano estos tests pasaban ese día y se caían al
+# siguiente. Pasó de verdad, a la medianoche.
+from datetime import date as _date, datetime as _dt, timezone as _tz  # noqa: E402
+
+HOY_ISO = _dt.now(_tz.utc).isoformat()
+HOY_YMD = _date.today().isoformat()
 
 VARIADAS = [
     {"url": "https://e/nueva", "title": "Recien publicada", "aplicado": None,
-     "posted_at": "2026-09-04", "found_at": HOY_ISO},
+     "posted_at": HOY_YMD, "found_at": HOY_ISO},
     {"url": "https://e/semana", "title": "De esta semana", "aplicado": None,
      "posted_at": "hace 3 dias", "found_at": HOY_ISO},
     {"url": "https://e/mes", "title": "Del mes pasado", "aplicado": None,
      "posted_at": "hace 1 mes", "found_at": HOY_ISO},
     {"url": "https://e/antigua", "title": "Del ano pasado", "aplicado": None,
      "posted_at": "hace 11 meses", "found_at": HOY_ISO},
-    {"url": "https://e/sinfecha", "title": "Sin fecha", "aplicado": None,
+    # El aviso no dice cuándo se publicó, pero sí sabemos cuándo lo vimos: la
+    # tarjeta tiene que decir "visto", no "publicado".
+    {"url": "https://e/solovisto", "title": "Solo visto", "aplicado": None,
      "posted_at": "", "found_at": HOY_ISO},
+    # Sin NINGUNA de las dos fechas: es el caso que no se tiene que esconder.
+    # Con `found_at` puesto no probaba nada, porque se caía a esa fecha.
+    {"url": "https://e/sinfecha", "title": "Sin fecha", "aplicado": None,
+     "posted_at": "", "found_at": ""},
 ]
 
 

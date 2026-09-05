@@ -17,6 +17,10 @@ que la modalidad y el país no dependen de que el LLM los deduzca bien. Se
 completan acá y `scoring.py` respeta lo que ya viene cargado.
 """
 
+import contextlib
+import io
+import logging
+import sys
 import time
 from datetime import date
 
@@ -125,6 +129,50 @@ def build_searches(profile: dict, config: dict) -> list[tuple[str, str]]:
     return combos
 
 
+@contextlib.contextmanager
+def _sin_stderr():
+    """Nada de lo que pase acá adentro sale por stderr; va a `vacantia.log`.
+
+    JobSpy le engancha un `StreamHandler(stderr)` a cada logger suyo y por ahí
+    manda hasta los mensajes de éxito ("finished scraping", nivel INFO).
+    **PowerShell pinta de rojo cualquier cosa que un programa escriba en
+    stderr**, con su bloque de `NativeCommandError` y `CategoryInfo`: durante la
+    instalación eso se lee como si el programa se hubiera roto, cuando la
+    corrida está saliendo bien.
+
+    Se hacen las dos cosas porque no alcanza con una:
+
+    - A los loggers que ya existen se les cambian los handlers por los nuestros
+      (consola por stdout y archivo).
+    - Se reemplaza `sys.stderr` mientras dura la llamada, porque JobSpy crea un
+      logger más recién al scrapear (`JobSpy:Linkedin`, distinto del
+      `JobSpy:LinkedIn` que arma al importarse) y ése engancha su handler al
+      stderr que encuentre en ese momento.
+
+    No se pierde nada: lo capturado se escribe en el log como DEBUG.
+    """
+    guardados = {}
+    for nombre in list(logging.root.manager.loggerDict):
+        if nombre.lower().startswith("jobspy"):
+            ajeno = logging.getLogger(nombre)
+            guardados[nombre] = (ajeno.handlers, ajeno.propagate)
+            ajeno.handlers = list(logger.handlers)
+            ajeno.propagate = False
+
+    capturado, original = io.StringIO(), sys.stderr
+    sys.stderr = capturado
+    try:
+        yield
+    finally:
+        sys.stderr = original
+        for nombre, (handlers, propagate) in guardados.items():
+            ajeno = logging.getLogger(nombre)
+            ajeno.handlers, ajeno.propagate = handlers, propagate
+        for linea in capturado.getvalue().splitlines():
+            if linea.strip():
+                logger.debug(f"[linkedin] (jobspy) {linea.strip()}")
+
+
 class LinkedInJobsSource(Source):
     name = "linkedin"
 
@@ -154,6 +202,7 @@ class LinkedInJobsSource(Source):
     def _scrape(self, term: str, location: str):
         from jobspy import scrape_jobs
 
+
         kwargs = {
             "site_name": ["linkedin"],
             "search_term": term,
@@ -169,7 +218,8 @@ class LinkedInJobsSource(Source):
             kwargs["job_type"] = self.job_type
         if self.proxies:
             kwargs["proxies"] = self.proxies
-        return scrape_jobs(**kwargs)
+        with _sin_stderr():
+            return scrape_jobs(**kwargs)
 
     def _to_job(self, row) -> Job | None:
         url = _val(row, "job_url")

@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**248 tests pasan.**
+**251 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  248 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  251 passed
 ```
 
 Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
@@ -16,12 +16,14 @@ las empresas, seguir reclutadores, el scoring con Gemini y la pantalla.
 
 | # | Qué | Dónde | Cuánto lleva |
 |---|---|---|---|
-| 1 | **Correr `instalar.bat`** para que empiece a buscar solo. Todavía no lo corriste | doble clic | 5 min |
-| 2 | **Usarlo una semana** y anotar qué falla antes de pasárselo a nadie | — | tuyo |
+| 1 | **Usarlo una semana** y anotar qué falla antes de pasárselo a nadie | — | tuyo |
 
-La corrida de punta a punta ya salió bien (4/9/2026, ver 2.3). Lo de armarle la
-carpeta a cada persona queda para después de la semana de prueba: no tiene
-sentido repartir algo que todavía no sabés si tiene bugs.
+**Ya está instalado y corriendo solo** (5/9/2026). La tarea `Vacantia - isaias`
+quedó registrada, con la próxima corrida a las 12:00 y los cuatro disparadores:
+uno al iniciar sesión y tres diarios. No hay que prender nada.
+
+Lo de armarle la carpeta a cada persona queda para después de la semana de
+prueba: no tiene sentido repartir algo que todavía no sabés si tiene bugs.
 
 Sin empezar, y afuera a propósito: **que el sistema aprenda de tus descartes**.
 `State.feedback_jobs(aplicado=False, limit=15)` ya devuelve las últimas
