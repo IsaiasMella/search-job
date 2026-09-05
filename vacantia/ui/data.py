@@ -458,3 +458,18 @@ def consejo_con_llm(nombre_perfil: str, job: Job) -> tuple[str, bool]:
 
     perfil = load_profile(nombre_perfil)
     return consejo_mod.consejo_con_llm(job, load_resume(perfil), perfil)
+
+
+def marca_de_cambio(nombre_perfil: str) -> str:
+    """Un valor que cambia cuando entran ofertas nuevas, y sólo entonces.
+
+    Es la fecha de modificación del historial más su tamaño. Alcanza para que la
+    pantalla se entere de que hubo una corrida sin leer el archivo entero cada
+    veinte segundos: el historial son 207 ofertas y crece.
+    """
+    archivo = State(nombre_perfil).history_file
+    try:
+        st = archivo.stat()
+    except OSError:
+        return ""
+    return f"{st.st_mtime_ns}-{st.st_size}"

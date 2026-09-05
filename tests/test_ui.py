@@ -603,3 +603,29 @@ def test_como_me_presento_es_un_campo_aparte_del_perfil_largo():
     html = formulario.render("ana", {"candidate": {"headline": "AI Engineer"}}, [])
     assert '<label for="cand_headline">Cómo me presento</label>' in html
     assert 'value="AI Engineer"' in html
+
+
+def test_avisa_de_las_ofertas_nuevas_sin_recargar_sola(sitio):
+    """Tener que apretar F5 para ver si entró algo es una porquería.
+
+    Pero recargar sola tampoco: si alguien está escribiendo el motivo de un
+    descarte, la recarga se lo borra. Avisa con un cartel y decide la persona.
+    """
+    base, tmp = sitio
+    _, html, _ = get(base, "/trabajos?perfil=test")
+
+    assert 'id="novedades"' in html
+    assert "vigilarNovedades('test'" in html
+    assert "location.reload()" in html          # lo dispara el botón, no el timer
+
+    # La marca cambia sólo cuando cambia el historial.
+    import json as _json
+    antes = _json.loads(get(base, "/novedades?perfil=test")[1])
+    ruta = tmp / "state" / "test" / "job_history.json"
+    ruta.write_text(_json.dumps(OFERTAS + [
+        {"url": "https://e/3", "title": "Nueva", "aplicado": None,
+         "found_at": "2026-09-04T10:00:00+00:00"}]), encoding="utf-8")
+    despues = _json.loads(get(base, "/novedades?perfil=test")[1])
+
+    assert despues["marca"] != antes["marca"]
+    assert despues["pendientes"] == antes["pendientes"] + 1

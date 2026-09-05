@@ -98,6 +98,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._get_mensajes(perfil, params)
             if ruta == "/consejo":
                 return self._get_consejo(perfil, params)
+            if ruta == "/novedades":
+                return self._get_novedades(perfil)
         except FileNotFoundError as e:
             return self._pagina("Error", render.avisos([("error", str(e))]), perfil,
                                 "trabajos", 404)
@@ -124,8 +126,24 @@ class Handler(BaseHTTPRequestHandler):
             ver, mensajes, desde,
             conteo_fecha=data.contar_por_fecha(perfil, ver),
             pena=data.pena_de_ingles(perfil, desde),
+            marca=data.marca_de_cambio(perfil),
         )
         self._pagina("Trabajos", cuerpo, perfil, "trabajos")
+
+    def _get_novedades(self, perfil: str) -> None:
+        """¿Entraron ofertas desde que se abrió la página? JSON, para el poll.
+
+        Deliberadamente NO recarga la pantalla sola: si alguien está escribiendo
+        el motivo de un descarte, una recarga se lo borra. Se avisa y decide la
+        persona.
+        """
+        import json as _json
+
+        cuerpo = _json.dumps({
+            "marca": data.marca_de_cambio(perfil),
+            "pendientes": data.contar_ofertas(perfil).get("pendientes", 0),
+        }).encode("utf-8")
+        self._responder(cuerpo, tipo="application/json")
 
     def _get_mensajes(self, perfil: str, params: dict, con_llm: bool = False) -> None:
         """Los moldes para escribirle a quien publicó. Con `con_llm`, se los

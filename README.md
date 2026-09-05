@@ -103,9 +103,11 @@ Abajo de todo se crea el perfil de otra persona de la casa.
 **Muestra siempre lo último que dejó la última búsqueda.** `abrir.bat` no busca:
 sólo abre la pantalla, que lee el archivo donde quedaron guardadas las ofertas.
 
-Y lo relee **en cada carga de página**. Si una búsqueda programada entra mientras
-tenés la pantalla abierta, apretás **F5** y las ofertas nuevas aparecen. No hace
-falta cerrar nada.
+**Y si entran ofertas mientras la mirás, te avisa sola.** Aparece un cartel
+abajo: *"Entraron 3 ofertas nuevas · Ver"*. Lo apretás y se actualiza.
+
+No se recarga sola a propósito: si estás escribiendo el motivo de un descarte,
+una recarga te lo borraría. Avisa, y decidís vos cuándo.
 
 Para buscar en el momento, sin esperar el horario, es el otro archivo:
 `buscar_ahora.bat`.
@@ -537,7 +539,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  247 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  248 passed
 ```
 
 ---

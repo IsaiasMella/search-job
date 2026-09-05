@@ -126,6 +126,21 @@ h3 { letter-spacing: -.01em; }
 .pista .mal { color: var(--rojo); font-weight: 700; }
 .pista .bien { color: var(--verde); font-weight: 700; }
 
+/* Aviso de que entraron ofertas mientras la pantalla estaba abierta. Va fijo
+   abajo para no empujar la lista ni tapar lo que se está leyendo. */
+.novedades { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+             display: none; align-items: center; gap: 14px; z-index: 20;
+             background: var(--acento); color: #fff; padding: 11px 18px;
+             border-radius: 999px; box-shadow: 0 4px 20px rgb(0 0 0 / .28);
+             font-size: 14px; }
+.novedades.visible { display: flex; }
+.novedades button { background: #fff; color: var(--acento); border: 0;
+                    font-weight: 600; padding: 7px 14px; min-height: 34px; }
+@media (prefers-color-scheme: dark) {
+  .novedades { color: #10151a; }
+  .novedades button { background: #10151a; color: var(--acento); }
+}
+
 /* --- ofertas --- */
 .filtros { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 .filtros a { display: inline-block; padding: 7px 14px; border: 1px solid var(--borde);
@@ -318,6 +333,35 @@ function descartar(boton) {
   if (error) error.classList.remove('visible');
   return true;
 }
+
+// Avisa cuando entraron ofertas mientras la pantalla estaba abierta, para no
+// tener que apretar F5. Le pregunta al servidor cada 20 segundos si el archivo
+// del historial cambió; es una request local y no lee el archivo entero.
+//
+// NO recarga sola a propósito: si alguien está escribiendo el motivo de un
+// descarte, una recarga se lo borra. Avisa, y decide la persona.
+function vigilarNovedades(perfil, marca, pendientesAlAbrir) {
+  var cartel = document.getElementById('novedades');
+  if (!cartel) { return; }
+  setInterval(function () {
+    fetch('/novedades?perfil=' + encodeURIComponent(perfil))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.marca || d.marca === marca) { return; }
+        // La diferencia contra lo que habia al abrir, no el total: "entraron
+        // 211 ofertas" cuando entraron 3 es peor que no decir nada.
+        var nuevas = d.pendientes - pendientesAlAbrir;
+        var texto = document.getElementById('novedades-texto');
+        if (texto) {
+          texto.textContent = nuevas > 0
+            ? ('Entraron ' + nuevas + (nuevas === 1 ? ' oferta nueva' : ' ofertas nuevas'))
+            : 'La lista cambió';
+        }
+        cartel.classList.add('visible');
+      })
+      .catch(function () { /* la ventana negra se cerro: se reintenta solo */ });
+  }, 20000);
+}
 """
 
 
@@ -504,7 +548,8 @@ def _ingles(pena: dict) -> str:
 
 def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
              mensajes: list[tuple[str, str]], desde: str = "todo",
-             conteo_fecha: dict | None = None, pena: dict | None = None) -> str:
+             conteo_fecha: dict | None = None, pena: dict | None = None,
+             marca: str = "") -> str:
     def chips(opciones, activo, param, cuentas, otro_param, otro_valor):
         return "".join(
             f'<a href="/trabajos?perfil={esc(perfil)}&{otro_param}={esc(otro_valor)}'
@@ -529,7 +574,19 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
         titulo, detalle = VACIO.get(ver, VACIO["todas"])
         listado = f'<div class="vacio"><b>{titulo}</b><br>{detalle}</div>'
 
+    # El vigilante avisa si entran ofertas con la pantalla abierta. `marca` es
+    # cómo estaba el historial al servir esta página: si cambia, hubo corrida.
+    vigilante = ""
+    if marca:
+        pendientes = int((conteo or {}).get("pendientes", 0))
+        vigilante = f"""<div class="novedades" id="novedades">
+  <span id="novedades-texto">Entraron ofertas nuevas</span>
+  <button type="button" onclick="location.reload()">Ver</button>
+</div>
+<script>vigilarNovedades({esc(perfil)!r}, {esc(marca)!r}, {pendientes});</script>"""
+
     return f"""{avisos(mensajes)}
+{vigilante}
 <h2>Trabajos</h2>
 {_ingles(pena)}
 <div class="filtros">{por_estado}</div>

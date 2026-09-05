@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**247 tests pasan.**
+**248 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  247 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  248 passed
 ```
 
 Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
@@ -283,6 +283,8 @@ Sin detalle, para no volver a discutirlo:
 - **La pantalla local** (`abrir.bat`), con las pestañas Trabajos y Mis datos.
   Modo oscuro, navegable con teclado, usable en celular.
 - **Marcar ofertas** con verde y rojo, con motivo obligatorio al descartar.
+- **Aviso de ofertas nuevas sin apretar F5**: si entra una corrida con la
+  pantalla abierta, aparece un cartel abajo y vos decidís cuándo actualizar.
 - **Filtro por antigüedad del aviso**: hoy, 7 días, 30 días, sin filtro. Lee las
   cuatro formas distintas en que los portales escriben la fecha.
 - **Cartel de cuántas ofertas se pierden por no saber inglés**, con cuánto
