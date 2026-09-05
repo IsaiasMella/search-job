@@ -151,7 +151,30 @@ Lo que **decide el código y no el modelo**:
 porque ahí tenías cargado el stack entero y en el mensaje tiene que entrar en
 media frase. Te lo dejé en `AI Engineer`.
 
-## 2.5. Si un portal deja de traer nada
+## 2.5. Computrabajo devuelve 403 en el navegador
+
+Probado el 5/9/2026, con la URL que me pasaste y con otras:
+
+| | |
+|---|---|
+| El aviso, desde el navegador | ❌ **403 Forbidden** |
+| **Cualquier página del sitio**, desde el navegador | ❌ **403 Forbidden** |
+| La misma URL con una request HTTP común | ✅ 200, 173 KB |
+
+O sea que **no es esa URL ni es nuestro código**: Computrabajo le contesta 403 a
+tu navegador y 200 a un script. Al revés de lo normal. Es su detección de bots,
+y desde acá no hay nada que hacer.
+
+**Consecuencia práctica**: sus avisos entran a la lista pero después no los podés
+abrir para postularte, que es lo único que importa. Por eso la fuente está
+**apagada** y saqué de tu historial los 18 que habían quedado de las corridas de
+verificación.
+
+Si algún día querés reintentarla, prendé el tilde de Computrabajo en *Mis datos*,
+corré `buscar_ahora.bat` y probá abrir un aviso. Si sigue dando 403, apagala de
+nuevo: juntar avisos que no se pueden leer no sirve.
+
+## 2.6. Si un portal deja de traer nada
 
 Los portales cambian sus direcciones sin avisar. Se arregla sin programar, en
 `profiles/isaias.json`, en el bloque de esa fuente:
@@ -171,7 +194,7 @@ tienen en común sus direcciones: eso va en `job_url_pattern`.
 
 El síntoma es `0 aviso(s)` en `vacantia.log`.
 
-## 2.6. LinkedIn: cómo se lo esquiva
+## 2.7. LinkedIn: cómo se lo esquiva
 
 Probado el 4/9/2026 contra un perfil real:
 
@@ -201,7 +224,7 @@ LinkedIn, pero busca por puesto ("AI Engineer" y señales de que contratan), de
 cualquiera. Esto otro busca por persona, la que vos elegiste seguir. Son
 complementarias.
 
-## 2.7. La cuenta de Gemini
+## 2.8. La cuenta de Gemini
 
 Si un día el log dice que fallaron los modelos, son dos causas distintas:
 
@@ -220,7 +243,7 @@ cuenta keywords en el título. **Los puntajes de esas corridas no significan
 nada** y se reconocen porque salen todos apelotonados y el log dice
 `[heurística, sin LLM]`.
 
-## 2.8. Qué pasa cuando corrés `instalar.bat`
+## 2.9. Qué pasa cuando corrés `instalar.bat`
 
 **No queda ningún proceso corriendo, y no tenés que prender nada a mano.**
 
@@ -249,7 +272,7 @@ Tres detalles que están resueltos y conviene saber:
 Para ver si está programada, cuándo corrió y cómo le fue: doble clic en
 `estado.bat`. Para que deje de correr: `desinstalar.bat`.
 
-## 2.9. AI Engineer no es Machine Learning
+## 2.10. AI Engineer no es Machine Learning
 
 Es la distinción que más plata cuesta si se confunde, y estaba mal cargada.
 
@@ -276,7 +299,7 @@ Machine Learning Engineer"*.
 ⚠️ **Las 207 ofertas que ya tenés guardadas conservan su puntaje viejo.** Se
 puntuaron con el perfil equivocado. Sólo las corridas nuevas salen bien.
 
-## 2.9. Los puestos que no querés ni pagar por puntuar
+## 2.11. Los puestos que no querés ni pagar por puntuar
 
 Los filtros de ubicación corren **después** del scoring, porque el país y la
 ciudad los saca el modelo leyendo el aviso. Eso significaba pagar por puntuar un
@@ -354,12 +377,12 @@ Sin detalle, para no volver a discutirlo:
   LinkedIn vía buscador, Bumeran, Zonajobs, Computrabajo, y reclutadores que
   seguís. Los tres portales argentinos verificados contra los sitios.
 - **Seguir a un reclutador de LinkedIn** aunque LinkedIn no deje leer su perfil:
-  se buscan sus publicaciones en Google y se leen ésas (2.6).
+  se buscan sus publicaciones en Google y se leen ésas (2.7).
 - **Scoring con Gemini** leyendo tu CV contra cada aviso, con cadena de modelos
   de respaldo.
 - **Regla de ubicación** (2.1) y filtro de idioma.
 - **Descarte antes del scoring** por título y por país, para no pagar por
-  puntuar lo que ya se sabe que no sirve (2.9).
+  puntuar lo que ya se sabe que no sirve (2.10).
 - **Duplicados**: por URL, por empresa más título, y entre fuentes distintas.
 - **Vacantes ya cubiertas** se descartan antes de gastar una llamada al modelo.
 - **Multi-perfil**: cada persona su perfil, su CV, su Telegram y su horario.

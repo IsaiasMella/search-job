@@ -427,6 +427,13 @@ que se baja igual para la descripción. Normalmente esos campos los completa el
 modelo al puntuar; leerlos también en la fuente es lo que mantiene viva la regla
 de ubicación cuando el modelo se cae.
 
+> ⚠️ **Computrabajo puede responder `403 Forbidden` en el navegador** aunque el
+> scraping funcione. Verificado el 5/9/2026: el sitio **entero** devuelve 403 al
+> abrirlo desde el navegador, mientras que una request HTTP común desde la misma
+> máquina devuelve 200. O sea que los avisos entran a la lista pero después no se
+> pueden abrir para postularse, que es lo único que importa. Si te pasa, apagá
+> la fuente: no sirve de nada juntar avisos que no vas a poder leer.
+
 ### `linkedin`
 
 Sí scrapea LinkedIn, sin login. Rate-limitea por IP y se corta cerca de la página
