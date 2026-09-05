@@ -313,8 +313,12 @@ def _por_estado(historial: list[dict], ver: str) -> list[dict]:
         return [h for h in historial if h.get("aplicado") is True]
     if ver == "descartadas":
         return [h for h in historial if h.get("aplicado") is False]
+    if ver == "archivadas":
+        return [h for h in historial if h.get("archivada")]
     if ver == "pendientes":
-        return [h for h in historial if h.get("aplicado") is None]
+        # Las archivadas salen de acá: es el punto de archivarlas.
+        return [h for h in historial
+                if h.get("aplicado") is None and not h.get("archivada")]
     return historial
 
 
@@ -333,12 +337,15 @@ def ofertas(nombre_perfil: str, ver: str = "pendientes", desde: str = "todo",
     """
     historial = _por_estado(State(nombre_perfil).load_history(), ver)
     historial = [h for h in historial if _entra_por_fecha(h, desde)]
-    if ver in ("aplicadas", "descartadas"):
+    if ver in ("aplicadas", "descartadas", "archivadas"):
         # Estas dos pestañas no son para elegir, son para revisar: "¿a quién le
         # mandé el CV?", "¿por qué había descartado ésta?". Lo último que hiciste
         # primero. Ordenarlas por puntaje, como la de pendientes, dejaba lo de
         # ayer mezclado con lo de hace tres semanas.
-        historial.sort(key=lambda h: h.get("fecha_feedback") or "", reverse=True)
+        historial.sort(
+            key=lambda h: h.get("fecha_archivada") or h.get("fecha_feedback") or "",
+            reverse=True,
+        )
     else:
         historial.sort(
             key=lambda h: (
@@ -361,9 +368,11 @@ def contar_ofertas(nombre_perfil: str, desde: str = "todo") -> dict[str, int]:
                  if _entra_por_fecha(h, desde)]
     return {
         "todas": len(historial),
-        "pendientes": sum(1 for h in historial if h.get("aplicado") is None),
+        "pendientes": sum(1 for h in historial
+                          if h.get("aplicado") is None and not h.get("archivada")),
         "aplicadas": sum(1 for h in historial if h.get("aplicado") is True),
         "descartadas": sum(1 for h in historial if h.get("aplicado") is False),
+        "archivadas": sum(1 for h in historial if h.get("archivada")),
     }
 
 
@@ -491,3 +500,22 @@ def marca_de_cambio(nombre_perfil: str) -> str:
     except OSError:
         return ""
     return f"{st.st_mtime_ns}-{st.st_size}"
+
+
+def archivar(nombre_perfil: str, urls: list[str], archivada: bool = True) -> int:
+    return State(nombre_perfil).archivar(urls, archivada)
+
+
+def viejas_sin_marcar(nombre_perfil: str, dias: int) -> list[str]:
+    """Las URLs sin marcar cuyo aviso tiene más de `dias`, para archivar de una.
+
+    Las que no dicen cuándo se publicaron quedan afuera: no se sabe si están
+    viejas, y archivar por las dudas es tirar una oferta que puede ser de ayer.
+    """
+    historial = _por_estado(State(nombre_perfil).load_history(), "pendientes")
+    salida = []
+    for h in historial:
+        antiguedad = dias_desde(fecha_de(h)[0])
+        if antiguedad is not None and antiguedad > dias:
+            salida.append(h.get("url", ""))
+    return [u for u in salida if u]

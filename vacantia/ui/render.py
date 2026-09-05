@@ -141,6 +141,13 @@ h3 { letter-spacing: -.01em; }
   .novedades button { background: #10151a; color: var(--acento); }
 }
 
+.encajonar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+             background: var(--papel); border: 1px dashed var(--borde-2);
+             border-radius: var(--r-caja); padding: 12px 16px; margin-bottom: 18px;
+             font-size: 13px; color: var(--gris); }
+.encajonar button { font-size: 13px; min-height: 34px; padding: 6px 12px; }
+.encajonar .ayuda { flex-basis: 100%; margin: 0; }
+
 .paginas { display: flex; align-items: center; justify-content: center; gap: 10px;
            margin: 22px 0 0; flex-wrap: wrap; }
 .paginas a, .paginas span.quieto {
@@ -236,6 +243,10 @@ button.verde:hover, button.rojo:hover { filter: brightness(1.08); }
          background: var(--papel-2); }
 .marca.si { background: var(--verde-luz); color: var(--verde); font-weight: 600; }
 .marca.no { background: var(--rojo-luz); color: var(--rojo); }
+.marca.archivada { background: var(--papel-2); color: var(--gris); }
+button.archivar { font-size: 12.5px; min-height: 34px; padding: 6px 10px;
+                  color: var(--gris); border-style: dashed; }
+button.archivar:hover { color: var(--texto); border-style: solid; }
 .marca small { color: var(--texto); font-weight: 400; }
 
 /* --- formularios --- */
@@ -461,6 +472,7 @@ FILTROS = (
     ("pendientes", "Sin marcar"),
     ("aplicadas", "Apliqué"),
     ("descartadas", "Descarté"),
+    ("archivadas", "Archivadas"),
     ("todas", "Todas"),
 )
 
@@ -530,6 +542,25 @@ def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
 
     aplicado = oferta.get("aplicado")
     marcada, detalle_marca = _cuando_marcada(oferta)
+    if oferta.get("archivada") and aplicado is None:
+        cuando_arch, det = _cuando_marcada({"fecha_feedback": oferta.get("fecha_archivada")})
+        return f"""<article class="oferta">
+  <div class="{clase}">{esc(score if score is not None else '?')}<span class="de">de 100</span></div>
+  <div class="datos">
+    <h3><a href="{esc(url)}" target="_blank" rel="noopener">{esc(titulo)}</a></h3>
+    <ul class="datos-meta">{etiquetas}</ul>
+  </div>
+  <form class="acciones" method="post" action="/archivar">
+    <input type="hidden" name="perfil" value="{esc(perfil)}">
+    <input type="hidden" name="ver" value="{esc(ver)}">
+    <input type="hidden" name="desde" value="{esc(desde)}">
+    <input type="hidden" name="p" value="{pagina}">
+    <input type="hidden" name="url" value="{esc(url)}">
+    <div class="marca archivada" title="{esc(det)}">Archivada{f" {esc(cuando_arch)}" if cuando_arch else ""}</div>
+    <button name="archivar" value="0">Devolver a la lista</button>
+  </form>
+</article>"""
+
     if aplicado is True:
         acciones = (f'<div class="marca si" title="{esc(detalle_marca)}">Aplicaste'
                     f'{f"<br><small>{esc(marcada)}</small>" if marcada else ""}</div>')
@@ -554,6 +585,10 @@ def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
       <input type="text" name="motivo" placeholder="Por qué no apliqué (obligatorio)">
       <p class="error-motivo">Escribí el motivo. Es lo que hace que el sistema aprenda
       qué no mostrarte.</p>
+      <button class="archivar" name="archivar" value="1"
+              formaction="/archivar" formnovalidate
+              title="El aviso ya no está o quedó viejo. La saca de la lista sin
+enseñarle nada al sistema sobre lo que te gusta.">Ya no está</button>
     </form>"""
 
     razon = oferta.get("reason") or ""
@@ -587,6 +622,10 @@ VACIO = {
     "descartadas": ("Todavía no descartaste ninguna.",
                     "Cuando una no sirva, tocá <b>No apliqué</b> y escribí por qué. "
                     "Ese motivo es lo que después afina las búsquedas."),
+    "archivadas": ("No archivaste ninguna todavía.",
+                   "Archivar es para los avisos que ya no están o quedaron viejos. "
+                   "No es lo mismo que descartar: no le enseña nada al sistema "
+                   "sobre tus gustos, sólo los saca de la lista."),
     "todas": ("Todavía no hay ofertas guardadas.",
               "Doble clic en <code>buscar_ahora.bat</code> para correr la primera "
               "búsqueda. Tarda unos minutos."),
@@ -638,10 +677,35 @@ def _paginas(perfil: str, ver: str, desde: str, pagina: int, paginas: int,
 </nav>"""
 
 
+def _archivar_viejas(perfil: str, ver: str, desde: str, cuantas: dict) -> str:
+    """El botón para encajonar de una todas las que quedaron viejas.
+
+    Un aviso de hace tres semanas casi siempre está cubierto, y con 43 en esa
+    situación archivarlas de a una es trabajo al pedo. Sólo aparece si hay algo
+    que archivar, y dice cuántas son antes de apretar.
+    """
+    if ver != "pendientes" or not cuantas:
+        return ""
+    opciones = "".join(
+        f'<button name="dias" value="{dias}">Más de {dias} días ({n})</button>'
+        for dias, n in sorted(cuantas.items()) if n
+    )
+    if not opciones:
+        return ""
+    return f"""<form class="encajonar" method="post" action="/archivar-viejas">
+  <input type="hidden" name="perfil" value="{esc(perfil)}">
+  <input type="hidden" name="desde" value="{esc(desde)}">
+  <span>Archivar los avisos viejos:</span>{opciones}
+  <span class="ayuda">Los saca de la lista sin enseñarle nada al sistema sobre
+  lo que te gusta. Se pueden devolver.</span>
+</form>"""
+
+
 def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
              mensajes: list[tuple[str, str]], desde: str = "todo",
              conteo_fecha: dict | None = None, pena: dict | None = None,
-             marca: str = "", pagina: int = 1, paginas: int = 1) -> str:
+             marca: str = "", pagina: int = 1, paginas: int = 1,
+             viejas: dict | None = None) -> str:
     def chips(opciones, activo, param, cuentas, otro_param, otro_valor):
         return "".join(
             f'<a href="/trabajos?perfil={esc(perfil)}&{otro_param}={esc(otro_valor)}'
@@ -687,6 +751,7 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
 <div class="filtros fechas">
   <span class="rotulo">Antigüedad del aviso</span>{por_fecha}
 </div>
+{_archivar_viejas(perfil, ver, desde, viejas or {})}
 {listado}"""
 
 

@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**273 tests pasan.**
+**285 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  273 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  285 passed
 ```
 
 Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
@@ -350,6 +350,32 @@ El backup quedó en `state/isaias/job_history.bak-20260905-004107.json`. Si alg�
 día agregás términos a "Puestos que NO quiero" y querés volver a limpiar,
 avisame y corro lo mismo.
 
+## 2.12. Archivar: el aviso ya no está
+
+Los avisos de más de una semana suelen estar cubiertos, o directamente los
+bajaron. Pero **descartarlos sería mentirle al sistema**: el motivo de un
+descarte va al prompt de scoring como ejemplo negativo, y "el aviso ya no está"
+no dice nada de si el puesto te servía. Le enseñarías una preferencia que nunca
+tuviste.
+
+Por eso archivar es un estado aparte:
+
+- **Botón "Ya no está"** en cada oferta. No pide motivo, no toca el veredicto.
+- **Pestaña "Archivadas"**, con un botón para devolverlas a la lista.
+- **Atajo arriba de la lista**: *Más de 7 días (43) · Más de 14 días (23) · Más
+  de 30 días (14)*. Dice cuántas son antes de que aprietes.
+
+**No vuelven a entrar en las corridas siguientes**, y no es por archivarlas: su
+clave ya está en `seen_jobs.json` desde la primera vez que se guardaron, y el
+dedupe las saca antes de gastar nada. Por eso archivar no borra nada y se puede
+deshacer.
+
+Dos cosas que **no** archiva el atajo:
+
+- **Las que no dicen cuándo se publicaron.** No se sabe si están viejas, y
+  archivar por las dudas es tirar una oferta que puede ser de ayer.
+- **Las que ya marcaste** con verde o rojo. Ésas ya las decidiste.
+
 ---
 
 # 3. LO QUE YA ESTÁ HECHO
@@ -361,6 +387,8 @@ Sin detalle, para no volver a discutirlo:
 - **Marcar ofertas** con verde y rojo, con motivo obligatorio al descartar. Al
   marcarla se va de *Sin marcar* con una animación, y el cartel de arriba la
   nombra: con dos ofertas de 90 pegadas no se notaba cuál había desaparecido.
+- **Archivar** los avisos vencidos, de a uno o todos los de más de N días, sin
+  ensuciar lo que el sistema aprende de tus descartes (2.12).
 - **Apliqué y Descarté sirven para revisar**: ordenadas por cuándo las marcaste,
   con la fecha en la tarjeta. Para cuando te llaman y no te acordás a qué
   empresa le mandaste el CV.

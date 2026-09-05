@@ -857,3 +857,66 @@ def test_al_descartar_el_aviso_tambien_la_nombra(sitio):
         "perfil": "test", "ver": "pendientes", "url": "https://empresa.com/jobs/2",
         "aplicado": "no", "motivo": "es junior"})
     assert "Descartaste" in url and "Analista+de+Datos" in url
+
+
+# --- archivar --------------------------------------------------------------
+
+def test_archivar_saca_de_sin_marcar_sin_descartar(sitio):
+    """Archivar no es descartar: no pide motivo y no toca el veredicto.
+
+    Si se guardara como descarte, el motivo "el aviso ya no está" iría al
+    prompt de scoring como ejemplo negativo y le enseñaría al sistema una
+    preferencia que nadie tuvo.
+    """
+    base, _ = sitio
+    post(base, "/archivar", {"perfil": "test", "ver": "pendientes",
+                             "url": "https://empresa.com/jobs/1", "archivar": "1"})
+
+    historial = {h["url"]: h for h in State("test").load_history()}
+    guardada = historial["https://empresa.com/jobs/1"]
+    assert guardada["archivada"] is True
+    assert guardada["aplicado"] is None          # sigue sin veredicto
+
+    assert "Data Scientist" not in get(base, "/trabajos?perfil=test&ver=pendientes")[1]
+    assert "Data Scientist" in get(base, "/trabajos?perfil=test&ver=archivadas")[1]
+    assert "Data Scientist" not in get(base, "/trabajos?perfil=test&ver=descartadas")[1]
+
+
+def test_se_puede_devolver_una_archivada_a_la_lista(sitio):
+    base, _ = sitio
+    post(base, "/archivar", {"perfil": "test", "url": "https://empresa.com/jobs/1",
+                             "archivar": "1"})
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=archivadas")
+    assert "Devolver a la lista" in html
+
+    post(base, "/archivar", {"perfil": "test", "url": "https://empresa.com/jobs/1",
+                             "archivar": "0"})
+    assert "Data Scientist" in get(base, "/trabajos?perfil=test&ver=pendientes")[1]
+
+
+def test_archivar_las_viejas_de_una(sitio):
+    """Con 43 avisos de más de una semana, archivarlos de a uno es al pedo."""
+    from datetime import date, timedelta
+
+    base, tmp = sitio
+    viejo = (date.today() - timedelta(days=20)).isoformat()
+    _con_historial(tmp, [
+        {"url": "https://e/vieja", "title": "De hace 20 días", "aplicado": None,
+         "score": 70, "posted_at": viejo, "found_at": HOY_ISO},
+        {"url": "https://e/nueva", "title": "De hoy", "aplicado": None,
+         "score": 70, "posted_at": HOY_YMD, "found_at": HOY_ISO},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert "Archivar los avisos viejos" in html
+    assert "Más de 14 días (1)" in html          # dice cuántas antes de apretar
+
+    _, html, _ = post(base, "/archivar-viejas", {"perfil": "test", "dias": "14"})
+    assert "De hace 20 días" not in html
+    assert "De hoy" in html
+
+
+def test_el_boton_de_archivar_solo_aparece_donde_sirve(sitio):
+    """En Apliqué o Descarté ya decidiste: ahí no hay nada que encajonar."""
+    base, _ = sitio
+    assert "Archivar los avisos viejos" not in get(
+        base, "/trabajos?perfil=test&ver=aplicadas")[1]

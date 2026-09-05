@@ -133,6 +133,7 @@ class Handler(BaseHTTPRequestHandler):
             pena=data.pena_de_ingles(perfil, desde),
             marca=data.marca_de_cambio(perfil),
             pagina=pagina, paginas=paginas,
+            viejas={d: len(data.viejas_sin_marcar(perfil, d)) for d in (7, 14, 30)},
         )
         self._pagina("Trabajos", cuerpo, perfil, "trabajos")
 
@@ -225,6 +226,10 @@ class Handler(BaseHTTPRequestHandler):
             if ruta == "/consejo":
                 return self._get_consejo(perfil, {"url": [form.get("url", "")]},
                                          con_llm=True)
+            if ruta == "/archivar":
+                return self._post_archivar(form)
+            if ruta == "/archivar-viejas":
+                return self._post_archivar_viejas(form)
             if ruta == "/perfil-nuevo":
                 nuevo = data.crear_perfil(form.get("nombre", ""))
                 return self._redirigir(
@@ -238,6 +243,47 @@ class Handler(BaseHTTPRequestHandler):
             return self._redirigir("/datos", perfil=perfil, error=f"Algo falló: {e}")
 
         self._html("<h1>404</h1>", 404)
+
+    def _post_archivar(self, form: dict) -> None:
+        """Una sola oferta: el aviso ya no está, o quedó viejo.
+
+        No pide motivo y no toca `aplicado`: archivar no es descartar. Ver
+        `State.archivar`.
+        """
+        perfil = form.get("perfil", "")
+        url = form.get("url", "").strip()
+        volver = {"ver": form.get("ver", "pendientes"),
+                  "desde": form.get("desde", "todo"), "p": form.get("p", "1")}
+        archivar = form.get("archivar", "1") != "0"
+
+        oferta = data.buscar_oferta(perfil, url) or {}
+        titulo = (oferta.get("scored_title") or oferta.get("title") or "")[:70]
+        if not data.archivar(perfil, [url], archivar):
+            return self._redirigir("/trabajos", perfil=perfil, **volver,
+                                   error="No encontré esa oferta en el historial.")
+        que = "Archivada" if archivar else "De vuelta en la lista"
+        self._redirigir("/trabajos", perfil=perfil, **volver,
+                        ok=f"{que}: «{titulo}»." if titulo else f"{que}.")
+
+    def _post_archivar_viejas(self, form: dict) -> None:
+        """Todas las que pasaron cierta antigüedad, de una."""
+        perfil = form.get("perfil", "")
+        desde = form.get("desde", "todo")
+        try:
+            dias = int(form.get("dias", "14"))
+        except ValueError:
+            dias = 14
+
+        urls = data.viejas_sin_marcar(perfil, dias)
+        cuantas = data.archivar(perfil, urls) if urls else 0
+        if not cuantas:
+            return self._redirigir("/trabajos", perfil=perfil, desde=desde,
+                                   ok=f"No había ninguna de más de {dias} días.")
+        self._redirigir(
+            "/trabajos", perfil=perfil, desde=desde,
+            ok=f"Archivadas {cuantas} de más de {dias} días. Están en la pestaña "
+               f"Archivadas y se pueden devolver.",
+        )
 
     def _post_feedback(self, form: dict) -> None:
         perfil = form.get("perfil", "")

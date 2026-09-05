@@ -97,6 +97,14 @@ class Job:
     motivo_descarte: str = ""      # por qué no sirve. Obligatorio cuando aplicado=False
     fecha_feedback: str = ""       # ISO-8601 UTC. "" = nunca se lo miró
 
+    # Archivada: la publicación venció o ya la bajaron. **No es lo mismo que
+    # descartada**, y por eso es un campo aparte y no un valor más de
+    # `aplicado`. El motivo de un descarte dice algo del puesto y va al prompt
+    # de scoring como ejemplo negativo; "el aviso ya no está" no dice nada de
+    # si servía, y meterlo ahí le enseñaría al sistema una preferencia falsa.
+    archivada: bool = False
+    fecha_archivada: str = ""      # ISO-8601 UTC
+
     # --- Trazabilidad ---
     found_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()

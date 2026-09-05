@@ -100,6 +100,12 @@ Arriba hay dos filas de filtros que se combinan:
 Y un cartel en ámbar con **cuántas ofertas se pierden por no saber inglés**, y
 cuánto puntuaba la mejor. Está para que moleste.
 
+- **Un tercer botón: "Ya no está".** Para el aviso que bajaron o que quedó
+  viejo. **No es lo mismo que descartar**: no pide motivo y no le enseña nada al
+  sistema sobre lo que te gusta. Va a la pestaña *Archivadas* y se puede
+  devolver. Arriba de la lista hay además un atajo para archivar de una todas
+  las de más de 7, 14 o 30 días, que dice cuántas son antes de apretar.
+
 **Apliqué y Descarté son para revisar, no para elegir**, así que se ordenan por
 cuándo las marcaste, lo último arriba, y cada tarjeta dice cuándo fue. Sirven
 para cuando te llaman y no te acordás a qué empresa le mandaste el CV, o para
@@ -588,7 +594,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  273 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  285 passed
 ```
 
 ---

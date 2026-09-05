@@ -219,6 +219,37 @@ class State:
         logger.info(f"Feedback guardado: aplicado={aplicado} — {url}")
         return True
 
+    def archivar(self, urls: list[str], archivada: bool = True) -> int:
+        """Guarda (o saca) el archivado de varias ofertas. Devuelve cuántas tocó.
+
+        **Archivar no es descartar.** Un descarte lleva un motivo que dice algo
+        del puesto, y ése va al prompt de scoring como ejemplo negativo. "El
+        aviso ya no está" no dice nada de si el puesto servía: mezclarlos le
+        enseñaría al sistema una preferencia que nadie tuvo.
+
+        Las archivadas **no vuelven a entrar** en las corridas siguientes, pero
+        no porque se archiven: sus claves ya están en `seen_jobs.json` desde que
+        se guardaron por primera vez, y el dedupe las saca antes de nada. Por eso
+        archivar no las borra del historial y se puede deshacer.
+        """
+        claves = {_url_key(u) for u in urls if u}
+        if not claves:
+            return 0
+        cambios = {
+            "archivada": bool(archivada),
+            "fecha_archivada": datetime.now(timezone.utc).isoformat() if archivada else "",
+        }
+
+        history = self.load_history()
+        tocadas = [h for h in history if _url_key(h.get("url", "")) in claves]
+        for entrada in tocadas:
+            entrada.update(cambios)
+        if tocadas:
+            self._write_history(history)
+            logger.info(f"{'Archivadas' if archivada else 'Desarchivadas'} "
+                        f"{len(tocadas)} oferta(s)")
+        return len(tocadas)
+
     def _read_last_run(self) -> list[dict]:
         if not self.last_run_file.exists():
             return []
