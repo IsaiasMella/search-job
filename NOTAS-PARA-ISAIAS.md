@@ -312,6 +312,21 @@ Dos decisiones que conviene conocer:
 Medido sobre tus datos, con sólo lo que la fuente sabe antes de puntuar:
 **75 de 267 se van sin pagar**, un 28% de las llamadas.
 
+**El historial viejo ya se limpió** (5/9/2026). Tenía 267 ofertas puntuadas con
+el perfil de antes: quedaron **147**. Se fueron 86 por título y 34 por ubicación.
+
+Lo que **no** se tocó, a propósito:
+
+- **Las 75 que piden inglés.** Son las del cartel, y el cartel está para que
+  moleste. Borrarlas sería taparte el número.
+- **Las que marques con verde o rojo.** Ese feedback no se puede recuperar.
+- **`seen_jobs.json`**, que es la lista de lo ya visto. Las borradas siguen
+  marcadas como vistas, así que no vuelven a entrar ni a costar plata.
+
+El backup quedó en `state/isaias/job_history.bak-20260905-004107.json`. Si algún
+día agregás términos a "Puestos que NO quiero" y querés volver a limpiar,
+avisame y corro lo mismo.
+
 ---
 
 # 3. LO QUE YA ESTÁ HECHO
