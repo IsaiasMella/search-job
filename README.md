@@ -262,6 +262,27 @@ huecos marcados.
 
 ## Filtros
 
+### Antes del scoring, para no pagar de más
+
+`filters.excluir_titulos` es una lista de puestos. Si el **título** del aviso
+nombra alguno, se descarta sin llamar al modelo. Sobre un historial real de 267
+ofertas eso son 75 llamadas menos, un 28%.
+
+```jsonc
+"filters": { "excluir_titulos": ["Machine Learning", "MLOps", "Data Steward"] }
+```
+
+Mira **sólo el título**: un aviso de AI Engineer nombra "machine learning" entre
+las tecnologías del equipo todo el tiempo, y descartarlo por eso sería tirar una
+oferta buena.
+
+También se descarta antes lo que la fuente ya dijo que es de otro país. **Sólo
+el país, y a propósito**: un híbrido en tu ciudad tiene que entrar aunque pidas
+sólo remoto, y para saber en qué ciudad es hace falta el dato que completa el
+modelo. Filtrar por modalidad antes de tenerlo tiraría justo ésas.
+
+### Después del scoring
+
 Se aplican después del scoring, sobre lo que el modelo extrae **del aviso** (no
 de `companies.json`, que describe a la empresa: Globant publica ofertas de
 Bologna y Pune bajo una entrada que dice "Buenos Aires").
@@ -549,7 +570,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  258 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  267 passed
 ```
 
 ---

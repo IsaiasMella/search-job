@@ -21,7 +21,26 @@
       "allow_english": false,
       "max_english_level": "A2",
       "scan_description": true
-    }
+    },
+    "excluir_titulos": [
+      "Machine Learning",
+      "MLOps",
+      "Data Scientist",
+      "Data Science",
+      "Data Steward",
+      "Data Engineer",
+      "Data Governance",
+      "Data Analyst",
+      "Custodio",
+      "Deep Learning",
+      "Computer Vision",
+      "Quality Assurance",
+      "QA Automation",
+      "Power BI",
+      "Big Data",
+      "Científico de Datos",
+      "Analista de Datos"
+    ]
   },
   "report": {
     "english_pain": true

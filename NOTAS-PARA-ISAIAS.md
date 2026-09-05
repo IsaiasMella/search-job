@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**258 tests pasan.**
+**267 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  258 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  267 passed
 ```
 
 Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
@@ -276,6 +276,42 @@ Machine Learning Engineer"*.
 ⚠️ **Las 207 ofertas que ya tenés guardadas conservan su puntaje viejo.** Se
 puntuaron con el perfil equivocado. Sólo las corridas nuevas salen bien.
 
+## 2.9. Los puestos que no querés ni pagar por puntuar
+
+Los filtros de ubicación corren **después** del scoring, porque el país y la
+ciudad los saca el modelo leyendo el aviso. Eso significaba pagar por puntuar un
+Data Steward de Lima para tirarlo después.
+
+Sobre tus 267: **86 traían en el título un puesto que no hacés**, y 34 de ésos
+igual pasaron el min_score y te llegaron por Telegram.
+
+**Campo nuevo en la pantalla: "Puestos que NO quiero"**, en *Qué busco*. Si el
+título del aviso dice alguno de esos términos, se descarta **sin gastar una
+llamada al modelo**. Te lo dejé cargado con 17:
+
+```
+Machine Learning, MLOps, Data Scientist, Data Science, Data Steward,
+Data Engineer, Data Governance, Data Analyst, Custodio, Deep Learning,
+Computer Vision, Quality Assurance, QA Automation, Power BI, Big Data,
+Científico de Datos, Analista de Datos
+```
+
+**Agregá los que veas.** Cada término que sumás es plata que no se gasta.
+
+Dos decisiones que conviene conocer:
+
+1. **Mira sólo el TÍTULO, nunca la descripción.** Un aviso de AI Engineer
+   nombra "machine learning" entre las tecnologías del equipo todo el tiempo, y
+   descartarlo por eso sería tirar una oferta buena.
+2. **Antes de puntuar sólo se filtra por título y por país**, aunque el sistema
+   sepa filtrar por modalidad. Un híbrido en Bahía Blanca tiene que entrar
+   aunque pidas sólo remoto, y para saber que es en Bahía Blanca hace falta la
+   ciudad, que la completa el modelo. Descartar por modalidad antes de tener la
+   ciudad tiraría justo ésas.
+
+Medido sobre tus datos, con sólo lo que la fuente sabe antes de puntuar:
+**75 de 267 se van sin pagar**, un 28% de las llamadas.
+
 ---
 
 # 3. LO QUE YA ESTÁ HECHO
@@ -302,6 +338,8 @@ Sin detalle, para no volver a discutirlo:
 - **Scoring con Gemini** leyendo tu CV contra cada aviso, con cadena de modelos
   de respaldo.
 - **Regla de ubicación** (2.1) y filtro de idioma.
+- **Descarte antes del scoring** por título y por país, para no pagar por
+  puntuar lo que ya se sabe que no sirve (2.9).
 - **Duplicados**: por URL, por empresa más título, y entre fuentes distintas.
 - **Vacantes ya cubiertas** se descartan antes de gastar una llamada al modelo.
 - **Multi-perfil**: cada persona su perfil, su CV, su Telegram y su horario.

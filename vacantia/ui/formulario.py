@@ -134,6 +134,12 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
 <div class="grilla">
   {_campo("keywords", "Palabras clave", _lista(perfil.get("keywords")),
           ayuda="Separadas por coma. Es lo que se busca en los portales.")}
+  {_campo("excluir_titulos", "Puestos que NO quiero",
+          _lista((filtros.get("excluir_titulos")) or []),
+          ayuda="Separados por coma. Si el TÍTULO del aviso dice alguno de éstos, "
+                "se descarta sin gastar una llamada al modelo. Sólo mira el título: "
+                "un aviso de AI Engineer puede nombrar 'machine learning' entre las "
+                "tecnologías del equipo y ése no se pierde.")}
   {_campo("min_score", "Puntaje mínimo para avisarme", perfil.get("min_score", 60),
           tipo="number", ayuda="0 a 100. 60 es un buen punto de partida.", min="0", max="100")}
   {_campo("top_n", "Cuántas ofertas por aviso", perfil.get("top_n", 5), tipo="number", min="1")}
@@ -301,6 +307,10 @@ def aplicar(nombre: str, form: dict) -> list[tuple[str, str]]:
     idioma = filtros.setdefault("language", {})
     idioma["allow_english"] = "allow_english" in form
     idioma["max_english_level"] = form.get("max_english_level", "A2").strip().upper()[:2]
+
+    # Los puestos que la persona no hace. Se descartan antes del scoring, así
+    # que cada término que se agrega acá es plata que no se gasta.
+    filtros["excluir_titulos"] = _lista_desde(form.get("excluir_titulos", ""))
 
     cand = perfil.setdefault("candidate", {})
     for campo in ("name", "headline", "profile", "seeking", "not_suitable"):

@@ -731,3 +731,24 @@ def test_marcar_una_oferta_te_deja_en_la_misma_pagina(sitio):
         "url": "https://e/25", "aplicado": "si",
     })
     assert "p=2" in url
+
+
+def test_los_puestos_excluidos_se_editan_desde_la_pantalla(sitio):
+    """Cada término que se agrega acá es una llamada al modelo que no se paga."""
+    base, tmp = sitio
+    post(base, "/datos", {
+        "perfil": "test", "keywords": "Python",
+        "min_score": "60", "top_n": "5", "max_new_per_run": "30",
+        "pais": "Argentina", "ciudad": "", "max_english_level": "A2",
+        "excluir_titulos": "Data Steward, MLOps , Machine Learning",
+        "cv": "# CV", "empresas": "", "rrhh": "",
+        "cand_name": "Test", "cand_headline": "", "cand_profile": "",
+        "cand_seeking": "", "cand_not_suitable": "",
+    })
+    perfil = json.loads((tmp / "profiles" / "test.json").read_text(encoding="utf-8"))
+    assert perfil["filters"]["excluir_titulos"] == [
+        "Data Steward", "MLOps", "Machine Learning"]
+
+    _, html, _ = get(base, "/datos?perfil=test")
+    assert 'name="excluir_titulos"' in html
+    assert "Data Steward, MLOps, Machine Learning" in html

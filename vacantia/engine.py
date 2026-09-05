@@ -8,7 +8,12 @@ import time
 from dataclasses import dataclass, field
 
 from vacantia.config import load_resume
-from vacantia.filters import apply_filters, drop_filled, english_pain_lines
+from vacantia.filters import (
+    apply_filters,
+    descartar_antes_de_puntuar,
+    drop_filled,
+    english_pain_lines,
+)
 from vacantia.log import get_logger
 from vacantia.models import Job
 from vacantia.notifiers import build_notifiers
@@ -164,6 +169,17 @@ def run(profile: dict, dry_run: bool = False) -> RunResult:
     #        cerrada es gastar una llamada al LLM para descartarla después.
     new_jobs, cubiertas = drop_filled(new_jobs)
     result.filled = len(cubiertas)
+    result.new = len(new_jobs)
+
+    # 2 ter) lo que ya se sabe que no sirve, antes de pagar por puntuarlo. El
+    #        título que nombra un puesto que la persona no hace, y la ubicación
+    #        cuando la fuente ya la trajo. Va antes del triaje para que el tope
+    #        de la corrida se gaste en candidatas de verdad.
+    new_jobs, descartadas = descartar_antes_de_puntuar(new_jobs, profile)
+    if descartadas:
+        logger.info(f"Descartadas {len(descartadas)} sin gastar una llamada al modelo")
+        for job, motivo in descartadas:
+            logger.debug(f"    sin puntuar: {job.display_title[:60]} — {motivo}")
     result.new = len(new_jobs)
 
     # 3) triaje: si entraron muchas de golpe (cargaste empresas nuevas, cambiaste

@@ -412,6 +412,71 @@ def english_pain_lines(stats: FilterStats, limit: int = 3) -> list[str]:
     return lines
 
 
+# --- lo que se descarta ANTES de gastar una llamada al modelo ---------------
+#
+# `apply_filters` corre después del scoring, porque el país, la ciudad y la
+# modalidad los saca el LLM leyendo el aviso. Pero hay avisos que no hacía falta
+# leer: sobre un historial real, 86 de 267 traían en el TÍTULO un puesto que la
+# persona no hace (Data Steward, MLOps, Data Scientist), y 34 de ésos igual
+# pasaron el min_score y llegaron a la notificación. Se pagó por puntuarlos, se
+# gastó lugar del tope por corrida, y encima molestaron.
+#
+# Acá se tira lo que ya se sabe sin preguntarle a nadie.
+
+
+def excluido_por_titulo(job: Job, terminos: list[str]) -> str:
+    """El término que lo excluye, o "" si no hay ninguno.
+
+    Mira **sólo el título**, no la descripción. Un aviso de AI Engineer puede
+    nombrar "machine learning" al pasar entre las tecnologías del equipo, y
+    descartarlo por eso sería tirar una oferta buena. En el título, en cambio,
+    el puesto es lo que dice que es.
+    """
+    titulo = norm(job.scored_title or job.title)
+    if not titulo:
+        return ""
+    return next((t for t in terminos if (t_n := norm(t)) and t_n in titulo), "")
+
+
+def descartar_antes_de_puntuar(
+    jobs: list[Job], profile: dict
+) -> tuple[list[Job], list[tuple[Job, str]]]:
+    """(las que valen una llamada al modelo, las descartadas con su motivo).
+
+    Dos motivos, los dos gratis:
+
+    1. **El título dice un puesto que la persona no hace.** Sale de
+       `filters.excluir_titulos` en el perfil. Vacío = no descarta nada, así que
+       un perfil que no lo configure sigue funcionando igual que antes.
+    2. **La fuente ya dijo el país y no es el que se busca.** LinkedIn Jobs lo
+       trae como campo propio y los portales lo leen de la página del aviso.
+
+    **Sólo el país, y a propósito.** Acá no se filtra por modalidad ni por
+    ciudad, aunque `passes_place` sepa hacerlo: un híbrido en Bahía Blanca tiene
+    que entrar aunque el perfil pida sólo remoto, y para saber que es en Bahía
+    Blanca hace falta la ciudad, que la completa el LLM al puntuar. Descartar
+    por modalidad antes de tener la ciudad tiraría justo esas. El país no tiene
+    ese problema: si el aviso es de Colombia, ninguna regla de ciudad lo salva.
+
+    Lo que la fuente no sabe queda con el campo vacío y no filtra: ese aviso se
+    puntúa igual, y después lo agarra `apply_filters`, como siempre.
+    """
+    cfg = profile.get("filters") or {}
+    terminos = _as_list(cfg.get("excluir_titulos"))
+    paises = _as_list((cfg.get("location") or {}).get("country"))
+
+    quedan: list[Job] = []
+    fuera: list[tuple[Job, str]] = []
+    for job in jobs:
+        if termino := excluido_por_titulo(job, terminos):
+            fuera.append((job, f"el título dice '{termino}', que no es lo que hace"))
+        elif paises and job.country and not _country_matches(job.country, paises):
+            fuera.append((job, f"la fuente ya dijo que es de {job.country}"))
+        else:
+            quedan.append(job)
+    return quedan, fuera
+
+
 def apply_filters(jobs: list[Job], profile: dict) -> tuple[list[Job], FilterStats]:
     """Aplica los tres filtros. Devuelve (las que pasan, estadísticas)."""
     stats = FilterStats()
