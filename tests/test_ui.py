@@ -752,3 +752,74 @@ def test_los_puestos_excluidos_se_editan_desde_la_pantalla(sitio):
     _, html, _ = get(base, "/datos?perfil=test")
     assert 'name="excluir_titulos"' in html
     assert "Data Steward, MLOps, Machine Learning" in html
+
+
+# --- las pestañas de marcadas, para revisar después ------------------------
+
+def _marcada(url, titulo, empresa, aplicado, cuando, motivo=""):
+    return {"url": url, "title": titulo, "company": empresa, "score": 70,
+            "aplicado": aplicado, "motivo_descarte": motivo,
+            "fecha_feedback": cuando, "found_at": HOY_ISO}
+
+
+def test_al_marcarla_se_va_de_sin_marcar_y_aparece_en_su_pestana(sitio):
+    """Es lo que evita perder la cuenta de a cuáles ya les diste bola."""
+    base, _ = sitio
+    post(base, "/feedback", {"perfil": "test", "ver": "pendientes",
+                             "url": "https://empresa.com/jobs/1", "aplicado": "si"})
+
+    _, pendientes, _ = get(base, "/trabajos?perfil=test&ver=pendientes")
+    _, aplicadas, _ = get(base, "/trabajos?perfil=test&ver=aplicadas")
+    assert "Data Scientist" not in pendientes
+    assert "Data Scientist" in aplicadas
+
+
+def test_las_marcadas_van_por_cuando_las_marcaste_y_no_por_puntaje(sitio):
+    """Estas pestañas son para revisar, no para elegir.
+
+    "¿A quién le mandé el CV esta semana?" se contesta con lo último arriba.
+    Ordenarlas por puntaje mezclaba lo de ayer con lo de hace tres semanas.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {**_marcada("https://e/vieja", "Postulada hace tiempo", "ACME", True,
+                    "2026-08-01T10:00:00+00:00"), "score": 95},
+        {**_marcada("https://e/nueva", "Postulada recién", "Otra SA", True,
+                    "2026-09-04T10:00:00+00:00"), "score": 60},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=aplicadas")
+    assert html.index("Postulada recién") < html.index("Postulada hace tiempo")
+
+
+def test_la_tarjeta_dice_cuando_la_marcaste(sitio):
+    """Sin la fecha, "Aplicaste" no sirve para saber si ya pasó el tiempo de
+    esperar respuesta."""
+    from datetime import datetime, timedelta, timezone
+
+    base, tmp = sitio
+    ayer = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    _con_historial(tmp, [
+        _marcada("https://e/1", "Le mandé el CV", "ACME", True, ayer),
+        _marcada("https://e/2", "No servía", "Otra SA", False, ayer, "pide inglés"),
+    ])
+
+    _, aplicadas, _ = get(base, "/trabajos?perfil=test&ver=aplicadas")
+    assert "Aplicaste" in aplicadas and "ayer" in aplicadas
+
+    _, descartadas, _ = get(base, "/trabajos?perfil=test&ver=descartadas")
+    assert "Descartada ayer" in descartadas
+    assert "pide inglés" in descartadas      # el motivo, para acordarse por qué
+
+
+def test_el_cartel_del_ingles_no_aparece_cuando_estas_revisando(sitio):
+    """En "Apliqué" y "Descarté" ya decidiste: ahí el cartel es ruido."""
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/1", "title": "Con ingles", "score": 88, "aplicado": True,
+         "requires_english": True, "fecha_feedback": HOY_ISO, "found_at": HOY_ISO},
+        {"url": "https://e/2", "title": "Pendiente", "score": 70, "aplicado": None,
+         "requires_english": True, "found_at": HOY_ISO},
+    ])
+    assert 'class="duele"' in get(base, "/trabajos?perfil=test&ver=pendientes")[1]
+    assert 'class="duele"' not in get(base, "/trabajos?perfil=test&ver=aplicadas")[1]
+    assert 'class="duele"' not in get(base, "/trabajos?perfil=test&ver=descartadas")[1]

@@ -8,7 +8,7 @@ azul). El verde y el rojo no decoran: significan "apliqué" y "descarté".
 from html import escape
 from urllib.parse import quote
 
-from vacantia.fechas import dias_desde, fecha_de
+from vacantia.fechas import dias_desde, fecha_de, parse_posted
 
 CSS = """
 /* Tokens. Un solo juego de nombres semánticos, con su equivalente oscuro más
@@ -458,6 +458,16 @@ def _cuando(oferta: dict) -> tuple[str, str]:
                    "bastante más viejo.")
 
 
+def _cuando_marcada(oferta: dict) -> tuple[str, str]:
+    """(texto, título) de cuándo se marcó. Vacío si no hay fecha guardada."""
+    momento = parse_posted((oferta.get("fecha_feedback") or "")[:10])
+    if momento is None:
+        return "", ""
+    dias = dias_desde(momento) or 0
+    cuando = ("hoy" if dias <= 0 else "ayer" if dias == 1 else f"hace {dias} días")
+    return cuando, f"El {momento.isoformat()}"
+
+
 def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
              pagina: int = 1) -> str:
     score = oferta.get("score")
@@ -483,11 +493,15 @@ def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
                   f'{esc(cuando)}</li>')
 
     aplicado = oferta.get("aplicado")
+    marcada, detalle_marca = _cuando_marcada(oferta)
     if aplicado is True:
-        acciones = '<div class="marca si">Aplicaste</div>'
+        acciones = (f'<div class="marca si" title="{esc(detalle_marca)}">Aplicaste'
+                    f'{f"<br><small>{esc(marcada)}</small>" if marcada else ""}</div>')
     elif aplicado is False:
         motivo = esc(oferta.get("motivo_descarte") or "sin motivo")
-        acciones = f'<div class="marca no">Descartada<br><small>{motivo}</small></div>'
+        acciones = (f'<div class="marca no" title="{esc(detalle_marca)}">Descartada'
+                    f'{f" {esc(marcada)}" if marcada else ""}'
+                    f'<br><small>{motivo}</small></div>')
     else:
         acciones = f"""<form class="acciones" method="post" action="/feedback">
       <input type="hidden" name="perfil" value="{esc(perfil)}">
@@ -542,13 +556,17 @@ VACIO = {
 }
 
 
-def _ingles(pena: dict) -> str:
+def _ingles(pena: dict, ver: str = "pendientes") -> str:
     """El cartel de lo que cuesta no saber inglés.
 
     Va arriba de la lista y no se puede cerrar, por pedido: la idea es
     justamente que moleste. Sin esto, la lista filtrada da la impresión de que
     el mercado no pide inglés, cuando lo que se ve es el recorte del filtro.
     """
+    # Sólo donde se eligen ofertas. En "Apliqué" y "Descarté" se está
+    # revisando lo ya decidido, y ahí el cartel es ruido.
+    if ver not in ("pendientes", "todas"):
+        return ""
     cuantas = (pena or {}).get("cuantas") or 0
     if not cuantas:
         return ""
@@ -627,7 +645,7 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
     return f"""{avisos(mensajes)}
 {vigilante}
 <h2>Trabajos</h2>
-{_ingles(pena)}
+{_ingles(pena, ver)}
 <div class="filtros">{por_estado}</div>
 <div class="filtros fechas">
   <span class="rotulo">Antigüedad del aviso</span>{por_fecha}

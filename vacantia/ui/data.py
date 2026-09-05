@@ -325,7 +325,7 @@ def ofertas(nombre_perfil: str, ver: str = "pendientes", desde: str = "todo",
     `ver`:   pendientes (sin marcar) | aplicadas | descartadas | todas.
     `desde`: hoy | 7d | 30d | todo, por antigüedad del aviso.
 
-    **Se ordena por puntaje, no por fecha.** Ordenar por fecha ponía arriba las
+    En **Sin marcar** y **Todas** se ordena por puntaje, no por fecha. Ordenar por fecha ponía arriba las
     que acababan de entrar, y como el puntaje 0 lo sacan las que directamente no
     son para uno, la lista abría con lo peor: tres avisos de Lima puntuados 0
     antes que 29 ofertas de 80 para arriba. A igual puntaje manda la fecha del
@@ -333,14 +333,21 @@ def ofertas(nombre_perfil: str, ver: str = "pendientes", desde: str = "todo",
     """
     historial = _por_estado(State(nombre_perfil).load_history(), ver)
     historial = [h for h in historial if _entra_por_fecha(h, desde)]
-    historial.sort(
-        key=lambda h: (
-            h.get("score") if h.get("score") is not None else -1,
-            fecha_de(h)[0] or _SIN_FECHA,
-            h.get("found_at", ""),
-        ),
-        reverse=True,
-    )
+    if ver in ("aplicadas", "descartadas"):
+        # Estas dos pestañas no son para elegir, son para revisar: "¿a quién le
+        # mandé el CV?", "¿por qué había descartado ésta?". Lo último que hiciste
+        # primero. Ordenarlas por puntaje, como la de pendientes, dejaba lo de
+        # ayer mezclado con lo de hace tres semanas.
+        historial.sort(key=lambda h: h.get("fecha_feedback") or "", reverse=True)
+    else:
+        historial.sort(
+            key=lambda h: (
+                h.get("score") if h.get("score") is not None else -1,
+                fecha_de(h)[0] or _SIN_FECHA,
+                h.get("found_at", ""),
+            ),
+            reverse=True,
+        )
 
     paginas = max(1, -(-len(historial) // POR_PAGINA))   # división para arriba
     pagina = min(max(1, pagina), paginas)

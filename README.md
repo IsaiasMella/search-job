@@ -88,12 +88,20 @@ vos, así que terminan al final.
 
 Arriba hay dos filas de filtros que se combinan:
 
-- **Por estado**: sin marcar, apliqué, descarté, todas.
+- **Por estado**: sin marcar, apliqué, descarté, todas. Al marcar una oferta se
+  va de *Sin marcar* y aparece en su pestaña, así no perdés la cuenta de a
+  cuáles ya les diste bola.
 - **Por antigüedad del aviso**: hoy, últimos 7 días, últimos 30 días, sin filtro.
   Los avisos de hace un mes suelen estar cubiertos.
 
 Y un cartel en ámbar con **cuántas ofertas se pierden por no saber inglés**, y
 cuánto puntuaba la mejor. Está para que moleste.
+
+**Apliqué y Descarté son para revisar, no para elegir**, así que se ordenan por
+cuándo las marcaste, lo último arriba, y cada tarjeta dice cuándo fue. Sirven
+para cuando te llaman y no te acordás a qué empresa le mandaste el CV, o para
+releer por qué habías descartado algo. El cartel del inglés no aparece ahí:
+esas ya las decidiste.
 
 ### Pestaña Mis datos
 
@@ -570,7 +578,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  267 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  271 passed
 ```
 
 ---
