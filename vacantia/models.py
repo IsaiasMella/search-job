@@ -95,6 +95,11 @@ class Job:
     # como positivos. Se guardan en job_history.json vía State.record_feedback.
     aplicado: bool | None = None   # True verde, False rojo, None todavía sin mirar
     motivo_descarte: str = ""      # por qué no sirve. Obligatorio cuando aplicado=False
+    # Cuál de los motivos del desplegable (ver `ui.data.MOTIVOS`). "" = texto
+    # libre. Separado del texto porque un motivo elegido se puede contar y
+    # agrupar, y uno escrito a mano no: las mismas 46 razones habían entrado
+    # con cuatro redacciones distintas.
+    motivo_clave: str = ""
     fecha_feedback: str = ""       # ISO-8601 UTC. "" = nunca se lo miró
 
     # Archivada: la publicación venció o ya la bajaron. **No es lo mismo que

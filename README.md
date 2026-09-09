@@ -8,7 +8,7 @@ datos no salen de acá.
 
 Este archivo tiene dos partes:
 
-- **Parte 1: cómo se usa.** Para cualquiera. Cinco archivos y una pantalla.
+- **Parte 1: cómo se usa.** Para cualquiera. Tres archivos y una pantalla.
 - **Parte 2: cómo se configura.** Para quien lo instala.
 
 ---
@@ -50,15 +50,18 @@ Tres cosas que están resueltas y conviene saber:
 - **No se pisan entre sí**: si una corrida todavía no terminó, la siguiente se
   saltea en vez de encimarse.
 
-## Los cinco archivos
+## Los tres archivos
 
 | Archivo | Para qué | Cuándo |
 |---|---|---|
 | `instalar.bat` | Instala y programa las búsquedas | Una vez. Y de nuevo si agregás una persona o movés la carpeta |
-| `abrir.bat` | **La pantalla**: ver ofertas y cargar tus datos | Todos los días |
-| `buscar_ahora.bat` | Buscar ya, sin esperar el horario | Cuando no querés esperar |
-| `estado.bat` | "¿Esto anda?" | Cuando algo parece raro |
+| `abrir.bat` | **La pantalla**: todo lo demás | Todos los días |
 | `desinstalar.bat` | Deja de buscar y borra el programa | Cuando conseguiste trabajo |
+
+Eran cinco. *Buscar ahora* y *"¿esto anda?"* eran dos archivos más que había que
+ir a abrir al Explorador, y ahora son un botón y una sección adentro de la
+pantalla: **Buscar ahora**, al pie de la barra lateral, y **Cómo viene
+funcionando**, abajo de todo en Métricas.
 
 ## La pantalla
 
@@ -68,51 +71,87 @@ Doble clic en `abrir.bat`. Se abre el navegador solo en `http://localhost:8756`.
 No sale a internet: sirve la página desde tu propia máquina. Por eso no pide
 contraseña y nadie más la puede ver.
 
-### Pestaña Trabajos
+A la izquierda, fija, la barra de navegación: arriba el perfil (cada persona de
+la casa tiene el suyo), después **Trabajos** y **LinkedIn URLs**, y abajo,
+separadas, **Métricas** y **Mi perfil**.
+
+Al pie de esa barra, siempre a la vista, **el estado del sistema**: cuándo buscó
+por última vez, cuándo vuelve a buscar y de cuántos días de antigüedad trae
+avisos. Está ahí para contestar la única pregunta que importa cuando la lista se
+ve corta: *"¿esto es todo lo que hay?"*. Y abajo, el botón **Buscar ahora**, que
+es la salida de ese dato.
+
+### Trabajos
 
 La lista de ofertas, ordenadas por qué tan bien te quedan. Cada una tiene:
 
 - **El puntaje** de 0 a 100, y abajo la razón que escribió el modelo.
-- **Dos botones: Apliqué (verde) y No apliqué (rojo).** El rojo te pide el
-  motivo, y es obligatorio. Ese texto es lo único que después sirve para que el
-  sistema aprenda qué no mostrarte.
+- **Un botón: Apliqué.** Es la acción que venís a hacer, y es el único en color.
   Al marcarla, **la tarjeta se va con una animación** y arriba aparece un cartel
   que la nombra: *"Aplicaste a «Python Senior Developer»"*. Con dos ofertas del
   mismo puntaje pegadas, sin eso no se nota cuál desapareció.
-- **"Mensaje para escribirle"**: el mensaje para mandarle a quien publicó, por
-  LinkedIn o por mail, escrito a partir del aviso y tu CV.
-- **"Consejo para el CV"**: qué reordenar y qué palabra falta para pasar el
-  filtro automático de la empresa. **Nunca reescribe tu CV**: te dice qué mover
-  para que lo edites vos.
+- **Al lado, No apliqué.** Al tocarlo se abre, adentro de la misma tarjeta, el
+  motivo: un desplegable con los cuatro de siempre y un campo para escribir. Con
+  cualquiera de los dos alcanza. Ese motivo es lo único que después sirve para
+  que el sistema aprenda qué no mostrarte.
+- **Un menú de tres puntos** en la esquina, con lo que no se usa todos los días:
+  - **"Mensaje para escribirle"**: el mensaje para mandarle a quien publicó, por
+    LinkedIn o por mail, escrito a partir del aviso y tu CV.
+  - **"Consejo para el CV"**: qué reordenar y qué palabra falta para pasar el
+    filtro automático de la empresa. **Nunca reescribe tu CV**: te dice qué mover
+    para que lo edites vos.
+  - **"Ya no está"**: para el aviso que bajaron o que quedó viejo. **No es lo
+    mismo que descartar**: no pide motivo y no le enseña nada al sistema sobre lo
+    que te gusta. Va a *Archivadas* y se puede devolver.
+
+Lo demás está escondido a propósito: con seis controles a la vista por oferta,
+cada tarjeta era una decisión de seis opciones en vez de una.
 
 La lista va **ordenada por puntaje**, de la que mejor encaja a la que menos, y
 **de a 20 por página**. El puntaje 0 lo sacan las que directamente no son para
 vos, así que terminan al final.
 
-Arriba hay dos filas de filtros que se combinan:
+Arriba hay dos filtros que se combinan:
 
-- **Por estado**: sin marcar, apliqué, descarté, todas. Al marcar una oferta se
-  va de *Sin marcar* y aparece en su pestaña, así no perdés la cuenta de a
-  cuáles ya les diste bola.
+- **Por estado**: sin marcar, apliqué, descarté, archivadas, todas. Al marcar una
+  oferta se va de *Sin marcar* y aparece en su pestaña, así no perdés la cuenta
+  de a cuáles ya les diste bola.
 - **Por antigüedad del aviso**: hoy, últimos 7 días, últimos 30 días, sin filtro.
-  Los avisos de hace un mes suelen estar cubiertos.
-
-Y un cartel en ámbar con **cuántas ofertas se pierden por no saber inglés**, y
-cuánto puntuaba la mejor. Está para que moleste.
-
-- **Un tercer botón: "Ya no está".** Para el aviso que bajaron o que quedó
-  viejo. **No es lo mismo que descartar**: no pide motivo y no le enseña nada al
-  sistema sobre lo que te gusta. Va a la pestaña *Archivadas* y se puede
-  devolver. Arriba de la lista hay además un atajo para archivar de una todas
-  las de más de 7, 14 o 30 días, que dice cuántas son antes de apretar.
+  Los avisos de hace un mes suelen estar cubiertos. Y hay un atajo para archivar
+  de una todas las de más de 7, 14 o 30 días, que dice cuántas son antes de
+  apretar.
 
 **Apliqué y Descarté son para revisar, no para elegir**, así que se ordenan por
 cuándo las marcaste, lo último arriba, y cada tarjeta dice cuándo fue. Sirven
 para cuando te llaman y no te acordás a qué empresa le mandaste el CV, o para
-releer por qué habías descartado algo. El cartel del inglés no aparece ahí:
-esas ya las decidiste.
+releer por qué habías descartado algo. Esas tarjetas pierden el relieve y quedan
+planas: de un vistazo se ve qué falta hacer y qué ya está hecho.
 
-### Pestaña Mis datos
+### LinkedIn URLs
+
+El buscador trae lo que se publicó hace uno a tres días. Lo de hoy todavía no lo
+indexó nadie, y son justo los avisos a los que menos gente se postuló. Acá van a
+salir las direcciones de búsqueda de LinkedIn que los muestran, en dos pestañas:
+**Jobs** y **Publicaciones**.
+
+Por ahora es el lugar: las pestañas andan y dice qué va en cada una, pero todavía
+no genera ninguna dirección.
+
+### Métricas
+
+Los totales, qué descartó el sistema sin preguntarte, por qué descartaste vos y
+de qué portal viene cada oferta.
+
+Y abajo de todo, **Cómo viene funcionando**: si está programado y cuándo vuelve,
+cuánto tardó la última corrida y qué encontró, cuándo fue el último aviso por
+Telegram, y las últimas quejas del registro.
+
+Acá está también **cuántas ofertas se pierden por no saber inglés** y cuánto
+puntuaba la mejor, con el link para cambiar tu nivel declarado al lado. Vive acá
+y no arriba de la lista de trabajos a propósito: un número que no podés accionar,
+leído todos los días antes de la primera oferta, es un reproche.
+
+### Mi perfil
 
 Todo lo tuyo, sin tocar ningún archivo: el CV, qué buscás, dónde, qué idioma,
 de qué sitios traer ofertas, y tus claves.
@@ -130,8 +169,9 @@ abajo: *"Entraron 3 ofertas nuevas · Ver"*. Lo apretás y se actualiza.
 No se recarga sola a propósito: si estás escribiendo el motivo de un descarte,
 una recarga te lo borraría. Avisa, y decidís vos cuándo.
 
-Para buscar en el momento, sin esperar el horario, es el otro archivo:
-`buscar_ahora.bat`.
+Para buscar en el momento, sin esperar el horario, está el botón **Buscar
+ahora**, al pie de la barra lateral. Tarda unos minutos y podés seguir usando la
+pantalla mientras tanto: cuando entren, el cartel de abajo te avisa.
 
 > **Distinto es cuando cambia el código.** La pantalla carga el programa una sola
 > vez, al arrancar: si alguien edita el código con la pantalla abierta, los
@@ -143,8 +183,9 @@ Para buscar en el momento, sin esperar el horario, es el otro archivo:
 
 ## Cuando algo no anda
 
-**Primero, `estado.bat`.** Te dice si está programado, cuándo corrió por última
-vez y cómo le fue.
+**Primero, Métricas, abajo de todo: *Cómo viene funcionando*.** Te dice si está
+programado, cuándo corrió por última vez, qué encontró, si te avisó por Telegram
+y de qué se quejó.
 
 **Después, `vacantia.log`.** Está todo ahí, incluso lo que no se ve en pantalla.
 Lo que suele aparecer:
@@ -169,7 +210,7 @@ Lo que suele aparecer:
 
 # PARTE 2 — CÓMO SE CONFIGURA
 
-Todo lo de acá se puede hacer desde la pantalla, en *Mis datos*. Lo que sigue es
+Todo lo de acá se puede hacer desde la pantalla, en *Mi perfil*. Lo que sigue es
 el detalle de qué hace cada cosa y qué pasa por debajo.
 
 ## Cómo funciona por dentro
@@ -371,6 +412,28 @@ mirar.
 | `bumeran` / `zonajobs` / `computrabajo` | Portales de empleo argentinos | `TINYFISH_API_KEY` | no |
 | `dummy` | Ofertas de ejemplo para probar el pipeline | ninguna | no |
 
+### Antigüedad máxima
+
+`filters.max_age_days` en el perfil. **Una sola, de la persona, no de cada
+fuente**: lo que sirve depende del rubro y no del portal. Para un AI Engineer una
+búsqueda de hace 7 días ya está cubierta de postulantes; para un supervisor de
+seguridad e higiene en el campo una de hace un mes sigue viva. Repartida en seis
+bloques de fuente, quedaba desincronizada sin que nadie se enterara.
+
+La resuelve `Source._resolver_antiguedad`, en este orden:
+
+1. `max_age_days` en el bloque de la fuente — el escape para el caso puntual.
+2. `filters.max_age_days` del perfil — **la que se configura**, desde *Mi perfil*.
+3. `max_age_days_default` de la clase (`rrhh` usa 30; el resto, 7).
+
+`0` apaga la ventana. Se compara contra `None` y no por verdadero/falso, porque
+`0` es un valor válido y no "sin configurar".
+
+Cada fuente la aplica como puede: `google_posts` y `rrhh` se la pasan al buscador
+(`recency_minutes` / `dateRestrict`), `linkedin` la traduce a `hours_old`, y los
+portales argentinos filtran después de bajar el detalle, que es donde aparece la
+fecha. **Un aviso sin fecha nunca se descarta**: lo que no dice, no filtra.
+
 ### `google_posts`
 
 Le pega a una search API con `site:linkedin.com/posts`: no hay login ni scraping,
@@ -387,6 +450,30 @@ Si el perfil tiene `allow_english: false` busca sólo con términos en español:
 filtrar en la query evita traer decenas de posts que el filtro va a descartar
 igual.
 
+**Ventana de tiempo — `filters.max_age_days` del perfil, 7 por defecto.** La
+búsqueda pide sólo lo publicado en esos días. La resuelve `Source`, así que la
+heredan todas las fuentes; ver **Antigüedad máxima** más abajo. Sin ella el buscador ordena por relevancia y la fecha le
+da igual: medido sobre el historial real el 7/9/2026, de 75 publicaciones 28
+tenían más de un mes y había posts de 2020, 2023 y 2024. Cada uno de ésos se
+puntúa con el LLM antes de descartarse.
+
+La ventana va **en la búsqueda**, no después de recibir los resultados: filtrar
+al final devolvería una página de 10 posts viejos y cero utilizables. El chequeo
+posterior (`es_reciente`) existe igual, para lo que se cuela — el buscador
+aproxima el borde. Un post **sin fecha** pasa: lo que el aviso no dice, no filtra.
+
+Segunda razón para pedirla, menos evidente: **la API sólo devuelve el campo
+`date` cuando se le pide una ventana.** Sin ella los 10 resultados venían sin
+fecha, y por eso más de la mitad del historial no tenía `posted_at`.
+
+Cuanto más angosta, menos resultados: la misma query devolvió 10 publicaciones
+con 7 días y 2 con 1 día. `"max_age_days": 0` la apaga.
+
+| Proveedor | Cómo se pide |
+|---|---|
+| `tinyfish` | `recency_minutes` (días × 1440) |
+| `google_cse` | `dateRestrict=d7` — el equivalente del `&tbs=qdr:` que se le pone a mano a una búsqueda de Google |
+
 ### `rrhh`
 
 Vigila **personas**, no palabras clave. Para nichos chicos suele rendir más que
@@ -398,7 +485,10 @@ buscar por keyword. Sirven dos tipos de URL:
   indexa, así que la fuente no entra al perfil: busca
   `site:linkedin.com/posts "Nombre Apellido"` y lee esos posts. Filtra por el
   identificador del perfil y no por el nombre, porque hay homónimos. Cuesta una
-  búsqueda por persona y por corrida; se apaga con `"buscar_posts": false`.
+  búsqueda por persona y por corrida; se apaga con `"buscar_posts": false`. Esa
+  búsqueda tiene su propia ventana de tiempo, `"max_age_days": 30`, más ancha que
+  la de `google_posts` a propósito: acá se sigue a alguien puntual, que puede
+  pasarse tres semanas sin publicar.
 - **La página de una consultora**, la que lista los puestos y no la de inicio. De
   ahí salen los links a publicaciones, los links con pinta de aviso, o —si no hay
   ninguno— los párrafos del texto que anuncian una búsqueda. Esos párrafos se
@@ -428,17 +518,44 @@ tienen en común sus direcciones: eso va en `job_url_pattern`.
 devuelven los mismos puestos con el mismo id. **Prendé uno de los dos.** La
 pantalla lo avisa abajo del tilde de cada uno.
 
-De cada aviso se leen **empresa, ciudad y modalidad** de la página del detalle,
-que se baja igual para la descripción. Normalmente esos campos los completa el
-modelo al puntuar; leerlos también en la fuente es lo que mantiene viva la regla
-de ubicación cuando el modelo se cae.
+De cada aviso se leen **empresa, ciudad, modalidad y fecha de publicación** de la
+página del detalle, que se baja igual para la descripción. Los tres primeros los
+completa normalmente el modelo al puntuar; leerlos también en la fuente es lo que
+mantiene viva la regla de ubicación cuando el modelo se cae.
 
-> ⚠️ **Computrabajo puede responder `403 Forbidden` en el navegador** aunque el
-> scraping funcione. Verificado el 5/9/2026: el sitio **entero** devuelve 403 al
-> abrirlo desde el navegador, mientras que una request HTTP común desde la misma
-> máquina devuelve 200. O sea que los avisos entran a la lista pero después no se
-> pueden abrir para postularse, que es lo único que importa. Si te pasa, apagá
-> la fuente: no sirve de nada juntar avisos que no vas a poder leer.
+La **fecha** no la llenaba nadie: medido el 7/9/2026 sobre 216 avisos, los tres
+portales reportaban `posted_at` en **cero** de sus 20. Eso dejaba ciego al filtro
+de antigüedad de la pantalla justo ahí — un aviso de Bumeran de dos meses pasaba
+el filtro de "hoy" por no tener con qué compararse. Formatos:
+
+| Portal | Cómo la escribe |
+|---|---|
+| Computrabajo | `Hace 6 días (actualizada)`, `Ayer` — suelta, al final de la descripción |
+| Bumeran / Zonajobs | `## Publicado hace más de 15 días` (tope, impreciso) y `Publicado el 20/08/2026` (exacta, más abajo) — se prefiere la exacta |
+
+⚠️ **La trampa**: al pie, los tres listan *ofertas similares* con **sus** fechas.
+La primera fecha del documento puede ser de otro aviso. `_solo_este_aviso` corta
+el texto donde arrancan los ajenos.
+
+> ⚠️ **Computrabajo devolvía `403 Forbidden` en el navegador, y la causa era la
+> UI. Arreglado con `rel="noreferrer"` en los links al aviso** (ver
+> `ABRIR_EL_AVISO` en `ui/render.py`, que lleva la medición completa).
+>
+> Al abrir un aviso desde la pantalla, el navegador mandaba el referrer
+> `http://127.0.0.1:8756`. Computrabajo lo guarda en su cookie `extrfr`, y desde
+> ahí **todos** los pedidos del navegador al sitio llevaban una URL a loopback
+> dentro de una cookie — firma de SSRF. El WAF que tiene delante
+> (`server: awselb/2.0`) respondía 403 en el sitio entero hasta borrar la cookie.
+> No fallaba un aviso: el primer clic desde la UI rompía todos los siguientes.
+>
+> Verificado el 7/9/2026 armando la cookie a mano:
+> `extrfr=http://127.0.0.1:8756/trabajos` → 403; `extrfr=http://localhost:...` →
+> 403; escapada → 403; `extrfr=https://ejemplo.com/x` → 200; sin esquema → 200;
+> sin cookie → 200.
+>
+> Nunca afectó al scraping: la fuente lee por TinyFish, con otra IP y sin cookies.
+> Corrige dos diagnósticos previos equivocados (5/9: "el sitio 403ea a cualquier
+> navegador"; 7/9 temprano: "lo rompe una ráfaga de pedidos").
 
 ### `linkedin`
 
@@ -551,8 +668,10 @@ vacantia/
 ├── ui/
 │   ├── server.py     el servidor y las rutas
 │   ├── data.py       todo lo que toca disco
-│   ├── formulario.py la pestaña Mis datos
-│   └── render.py     el HTML y el CSS
+│   ├── formulario.py la pestaña Mi perfil
+│   ├── render.py     el HTML
+│   ├── estilos.py    el CSS: los tokens de DESIGN.md, una sola vez
+│   └── corrida.py    buscar ahora, y como viene funcionando el motor
 ├── sources/
 │   ├── base.py            interfaz Source: fetch() -> list[Job]
 │   ├── careers.py         páginas de empleo vía TinyFish
@@ -594,7 +713,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  285 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  401 passed
 ```
 
 ---

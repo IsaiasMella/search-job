@@ -1,367 +1,165 @@
 """El HTML de la UI. Sin plantillas ni librerías: strings y f-strings.
 
-El CSS son tokens semánticos con su juego oscuro, definidos una sola vez arriba.
-Regla de formas: contenedores 10px, controles 8px, chips redondos. Un acento (el
-azul). El verde y el rojo no decoran: significan "apliqué" y "descarté".
+La hoja de estilos vive en `estilos.py` y es la implementación de `DESIGN.md`.
+Acá sólo se arma el marcado, y hay tres reglas que mandan sobre cualquier otra
+consideración cuando se toca una pantalla:
+
+1. **Una decisión por vez.** En pantalla está la acción que la persona vino a
+   hacer. Los controles secundarios aparecen cuando se necesitan, no antes. En
+   la tarjeta de oferta eso es una regla dura: **más de dos controles visibles
+   por oferta es un error de diseño.**
+2. **Nunca mostrar lo que la persona se pierde antes de lo que puede hacer.**
+   Los recuentos de ofertas inalcanzables son información legítima y viven en
+   Métricas, con la explicación y con el link a la sección donde se arregla.
+   Arriba de la lista de trabajos no va ningún recuento de pérdidas.
+3. **El estado del sistema es siempre visible.** Cuándo buscó, cuándo vuelve a
+   buscar, qué ventana de días cubre. Tiene lugar fijo al pie de la barra
+   lateral, en castellano llano, y es texto estático: cambia cuando cambia el
+   dato, no solo.
 """
 
+from datetime import date, datetime  # noqa: F401  (date, para la anotación)
 from html import escape
 from urllib.parse import quote
 
 from vacantia.fechas import dias_desde, fecha_de, parse_posted
+from vacantia.ui.estilos import CSS  # noqa: F401  (lo importan los tests y `pagina`)
 
-CSS = """
-/* Tokens. Un solo juego de nombres semánticos, con su equivalente oscuro más
-   abajo: nunca se escribe un color suelto en una regla, así el modo oscuro no
-   se puede olvidar a la mitad.
+#: Cómo se abre el aviso en el portal. **`noreferrer` no es cosmético ni está
+#: por privacidad: sin él, Computrabajo se rompe.**
+#:
+#: Sin `noreferrer` el navegador le cuenta al portal que venís de
+#: `http://127.0.0.1:8756`, y Computrabajo guarda esa dirección en una cookie
+#: propia (`extrfr`, de *external referrer*). A partir de ahí, **todos** los
+#: pedidos de ese navegador al sitio llevan una URL a localhost adentro de una
+#: cookie, que es la firma clásica de un ataque SSRF, y el firewall que tiene
+#: delante contesta `403 Forbidden` en el sitio entero hasta que se borre la
+#: cookie. No es un aviso el que falla: es uno que rompe todos los siguientes.
+#:
+#: Verificado el 7/9/2026 pegándole a un aviso con la cookie armada a mano:
+#:
+#:     extrfr=http://127.0.0.1:8756/trabajos       -> 403
+#:     extrfr=http://localhost:8756/trabajos       -> 403
+#:     extrfr=http%3A%2F%2F127.0.0.1%3A8756%2F...  -> 403  (tampoco zafa escapada)
+#:     extrfr=https://ejemplo.com/x                -> 200  (un referrer normal no molesta)
+#:     extrfr=127.0.0.1:8756/trabajos              -> 200  (sin el esquema no dispara)
+#:     sin la cookie                               -> 200
+#:
+#: `noreferrer` implica `noopener`, así que reemplazarlo no pierde nada.
+ABRIR_EL_AVISO = 'target="_blank" rel="noreferrer"'
 
-   Escala de radios, con la regla escrita para no mezclar formas porque sí:
-     contenedores 10px · controles 8px · chips y píldoras redondas.
+# --- iconos -----------------------------------------------------------------
+#
+# Lucide, dibujados a mano acá adentro: son cuatro trazos y bajar una librería
+# entera para eso sería pedirle a la red algo que la app no necesita. Todos con
+# el mismo grosor de línea, que es lo que hace que se vean de la misma familia.
 
-   Un solo acento, el azul que ya tenía el proyecto. Verde y rojo NO son
-   decoración: significan "apliqué" y "descarté", y no se usan para otra cosa. */
-:root {
-  color-scheme: light;
-  --fondo:      #f4f6f8;
-  --papel:      #ffffff;
-  --papel-2:    #eef1f5;
-  --borde:      #d5dae1;
-  --borde-2:    #c2c9d2;
-  --texto:      #14181d;
-  --gris:       #5a636e;
-  --acento:     #14509b;
-  --acento-fte: #0f3f7d;
-  --acento-luz: #e7eefa;
-  --verde:      #1b7f3b;
-  --verde-luz:  #e6f4ea;
-  --rojo:       #b3261e;
-  --rojo-luz:   #fdecea;
-  --ambar:      #8a6100;
-  --ambar-luz:  #fff8e1;
-  --ambar-bde:  #e6cf7a;
-  --sombra:     0 1px 2px rgb(20 24 29 / .05), 0 1px 3px rgb(20 24 29 / .06);
-  --r-caja:     10px;
-  --r-control:  8px;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --fondo:      #11151a;
-    --papel:      #181d24;
-    --papel-2:    #212831;
-    --borde:      #2c343e;
-    --borde-2:    #3a444f;
-    --texto:      #e6eaef;
-    --gris:       #9aa4b1;
-    --acento:     #6aa5f0;
-    --acento-fte: #8dbcf7;
-    --acento-luz: #16243a;
-    --verde:      #5cc47f;
-    --verde-luz:  #14291c;
-    --rojo:       #f08b83;
-    --rojo-luz:   #2e1614;
-    --ambar:      #e3b64a;
-    --ambar-luz:  #2a2313;
-    --ambar-bde:  #5c4a1c;
-    --sombra:     0 1px 2px rgb(0 0 0 / .3), 0 1px 3px rgb(0 0 0 / .25);
-  }
+def _icono(trazos: str) -> str:
+    return (f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            f'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" '
+            f'aria-hidden="true">{trazos}</svg>')
+
+
+ICONOS = {
+    "trabajos": _icono('<rect width="20" height="14" x="2" y="7" rx="2"/>'
+                       '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'),
+    "linkedin": _icono('<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.8 1.7"/>'
+                       '<path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.8-1.7"/>'),
+    "estadisticas": _icono('<path d="M3 3v18h18"/><path d="M18 17V9"/>'
+                           '<path d="M13 17V5"/><path d="M8 17v-3"/>'),
+    "datos": _icono('<circle cx="12" cy="8" r="4.5"/><path d="M20 21a8 8 0 0 0-16 0"/>'),
+    "mas": _icono('<circle cx="5" cy="12" r=".6"/><circle cx="12" cy="12" r=".6"/>'
+                  '<circle cx="19" cy="12" r=".6"/>'),
 }
 
-* { box-sizing: border-box; }
-body { font: 15px/1.5 system-ui, "Segoe UI", Roboto, Arial, sans-serif; margin: 0;
-       color: var(--texto); background: var(--fondo);
-       -webkit-text-size-adjust: 100%; }
-a { color: var(--acento); }
-
-/* Foco visible en todo lo que se puede tabular. Sin esto, quien navega con
-   teclado no sabe dónde está parado. */
-:where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--acento); outline-offset: 2px; border-radius: 4px; }
-
-.saltar { position: absolute; left: -9999px; top: 0; background: var(--acento);
-          color: #fff; padding: 10px 14px; z-index: 10; border-radius: 0 0 8px 0; }
-.saltar:focus { left: 0; }
-
-/* --- cabecera --- */
-header { background: var(--papel); border-bottom: 1px solid var(--borde);
-         padding: 0 20px; position: sticky; top: 0; z-index: 5; }
-.barra { display: flex; align-items: center; gap: 8px 18px; flex-wrap: wrap;
-         max-width: 1100px; margin: 0 auto; min-height: 60px; }
-.barra h1 { font-size: 15px; margin: 0; letter-spacing: .10em; font-weight: 700;
-            color: var(--gris); }
-nav { display: flex; gap: 4px; }
-nav a { display: inline-block; padding: 8px 14px; border-radius: var(--r-control);
-        text-decoration: none; color: var(--gris); font-weight: 500; }
-nav a:hover { background: var(--papel-2); color: var(--texto); }
-nav a.activa { background: var(--acento); color: #fff; }
-.perfil-sel { margin-left: auto; display: flex; align-items: center; gap: 8px;
-              font-size: 13px; color: var(--gris); }
-
-main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 64px; }
-h2 { font-size: 17px; margin: 28px 0 12px; letter-spacing: -.01em; }
-h2:first-child { margin-top: 0; }
-h3 { letter-spacing: -.01em; }
-
-.aviso { padding: 11px 14px; border-radius: var(--r-control); margin-bottom: 16px;
-         border: 1px solid var(--borde); background: var(--papel);
-         border-left: 4px solid var(--borde-2); }
-.aviso.ok { border-color: var(--borde); border-left-color: var(--verde);
-            background: var(--verde-luz); }
-.aviso.error { border-color: var(--borde); border-left-color: var(--rojo);
-               background: var(--rojo-luz); }
-
-/* Instrucciones que hay que volver a leer cada vez que se usa el campo.
-   Ámbar y con borde grueso a la izquierda: en una pantalla de formulario
-   gris y blanca, es lo único que salta. */
-.pista { background: var(--ambar-luz); border: 1px solid var(--ambar-bde);
-         border-left: 4px solid var(--ambar); border-radius: var(--r-control);
-         padding: 11px 14px; margin: 8px 0 0; font-size: 13px; line-height: 1.55; }
-.pista b { display: block; margin-bottom: 4px; }
-.pista li b, .pista p b { display: inline; margin: 0; }
-.pista code { background: var(--papel); border: 1px solid var(--ambar-bde);
-              border-radius: 4px; padding: 1px 5px; font-size: 12px;
-              font-family: ui-monospace, Consolas, monospace; }
-.pista ul { margin: 6px 0 0; padding-left: 18px; }
-.pista li { margin: 5px 0; }
-.pista .mal { color: var(--rojo); font-weight: 700; }
-.pista .bien { color: var(--verde); font-weight: 700; }
-
-/* Aviso de que entraron ofertas mientras la pantalla estaba abierta. Va fijo
-   abajo para no empujar la lista ni tapar lo que se está leyendo. */
-.novedades { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
-             display: none; align-items: center; gap: 14px; z-index: 20;
-             background: var(--acento); color: #fff; padding: 11px 18px;
-             border-radius: 999px; box-shadow: 0 4px 20px rgb(0 0 0 / .28);
-             font-size: 14px; }
-.novedades.visible { display: flex; }
-.novedades button { background: #fff; color: var(--acento); border: 0;
-                    font-weight: 600; padding: 7px 14px; min-height: 34px; }
-@media (prefers-color-scheme: dark) {
-  .novedades { color: #10151a; }
-  .novedades button { background: #10151a; color: var(--acento); }
-}
-
-.encajonar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-             background: var(--papel); border: 1px dashed var(--borde-2);
-             border-radius: var(--r-caja); padding: 12px 16px; margin-bottom: 18px;
-             font-size: 13px; color: var(--gris); }
-.encajonar button { font-size: 13px; min-height: 34px; padding: 6px 12px; }
-.encajonar .ayuda { flex-basis: 100%; margin: 0; }
-
-.paginas { display: flex; align-items: center; justify-content: center; gap: 10px;
-           margin: 22px 0 0; flex-wrap: wrap; }
-.paginas a, .paginas span.quieto {
-    display: inline-block; padding: 8px 14px; border: 1px solid var(--borde);
-    border-radius: var(--r-control); background: var(--papel);
-    text-decoration: none; color: var(--gris); font-size: 13px; min-height: 38px; }
-.paginas a:hover { border-color: var(--gris); color: var(--texto); }
-.paginas span.quieto { opacity: .4; }
-.paginas .donde { border: 0; background: none; font-variant-numeric: tabular-nums; }
-
-/* --- ofertas --- */
-.filtros { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
-.filtros a { display: inline-block; padding: 7px 14px; border: 1px solid var(--borde);
-             border-radius: 999px; background: var(--papel); text-decoration: none;
-             color: var(--gris); font-size: 13px; font-weight: 500; }
-.filtros a:hover { border-color: var(--borde-2); color: var(--texto); }
-.filtros a.activa { background: var(--acento); color: #fff; border-color: var(--acento); }
-.filtros .cuenta { font-variant-numeric: tabular-nums; opacity: .75; }
-.filtros.fechas { align-items: center; margin-bottom: 20px; }
-.filtros .rotulo { font-size: 12px; color: var(--gris); text-transform: uppercase;
-                   letter-spacing: .06em; margin-right: 4px; }
-
-/* El costo de no saber inglés. Se pidió que incomode, así que el número va
-   grande y el cartel no se puede cerrar. */
-.duele { display: flex; align-items: center; gap: 16px; margin: 0 0 18px;
-         background: var(--ambar-luz); border: 1px solid var(--ambar-bde);
-         border-left: 4px solid var(--ambar); border-radius: var(--r-caja);
-         padding: 14px 18px; }
-.duele .numero { font-size: 34px; font-weight: 800; line-height: 1;
-                 color: var(--ambar); font-variant-numeric: tabular-nums; }
-.duele .dice { font-size: 13.5px; line-height: 1.5; }
-@media (max-width: 560px) { .duele { flex-direction: column; align-items: flex-start;
-                                     gap: 8px; } }
-
-/* Al marcarla, la tarjeta se va antes de que la página se recargue. Sin esto
-   no se nota cuál desapareció: con dos ofertas de 90 al lado, la lista queda
-   igual y no sabés a cuál le diste. */
-.oferta.yendose { animation: sale .26s ease forwards; pointer-events: none; }
-@keyframes sale {
-  to { opacity: 0; transform: translateX(28px) scale(.98); }
-}
-
-.oferta { display: grid; grid-template-columns: 60px 1fr 260px; gap: 16px;
-          background: var(--papel); border: 1px solid var(--borde);
-          border-radius: var(--r-caja); padding: 16px; margin-bottom: 12px;
-          align-items: start; box-shadow: var(--sombra); }
-.puntaje { font-size: 21px; font-weight: 700; text-align: center;
-           font-variant-numeric: tabular-nums; border-radius: var(--r-control);
-           padding: 8px 0; background: var(--papel-2); color: var(--gris);
-           line-height: 1.1; }
-.puntaje .de { display: block; font-size: 10px; font-weight: 500; letter-spacing: .06em;
-               text-transform: uppercase; opacity: .7; }
-.puntaje.alto { background: var(--verde-luz); color: var(--verde); }
-.oferta h3 { font-size: 16px; margin: 0 0 6px; line-height: 1.35; }
-.oferta h3 a { text-decoration: none; color: var(--texto); }
-.oferta h3 a:hover { color: var(--acento); text-decoration: underline; }
-.meta { color: var(--gris); font-size: 13px; margin: 3px 0; }
-.datos-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px;
-              list-style: none; padding: 0; }
-.datos-meta li { font-size: 12px; color: var(--gris); background: var(--papel-2);
-                 border-radius: 999px; padding: 3px 9px; }
-.datos-meta li.fuente { font-variant-numeric: tabular-nums; }
-.datos-meta li.cuando { font-variant-numeric: tabular-nums; cursor: help;
-                        border: 1px solid var(--borde); }
-.razon { font-size: 13.5px; margin: 8px 0 0; color: var(--texto); }
-.enlaces { margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 14px; }
-
-.acciones { display: flex; flex-direction: column; gap: 8px; }
-.acciones .fila { display: flex; gap: 8px; }
-.acciones .fila button { flex: 1; }
-button { font: inherit; font-weight: 500; padding: 9px 14px;
-         border-radius: var(--r-control); cursor: pointer; min-height: 40px;
-         border: 1px solid var(--borde-2); background: var(--papel);
-         color: var(--texto); transition: background .12s, border-color .12s,
-         transform .06s; }
-button:hover { border-color: var(--gris); }
-button:active { transform: translateY(1px); }
-button.verde { background: var(--verde); border-color: var(--verde); color: #fff; }
-button.rojo  { background: var(--rojo);  border-color: var(--rojo);  color: #fff; }
-@media (prefers-color-scheme: dark) {
-  /* En oscuro el verde y el rojo son claros: el texto blanco no se leería. */
-  button.verde, button.rojo { color: #10151a; font-weight: 700; }
-}
-button.verde:hover, button.rojo:hover { filter: brightness(1.08); }
-.acciones input[type=text] { width: 100%; padding: 9px 10px; border: 1px solid var(--borde-2);
-                             border-radius: var(--r-control); font: inherit; font-size: 13px;
-                             background: var(--papel); color: var(--texto); }
-.acciones input[type=text]::placeholder { color: var(--gris); opacity: .85; }
-.acciones input.mal { border-color: var(--rojo); background: var(--rojo-luz); }
-.error-motivo { display: none; font-size: 12.5px; color: var(--rojo); margin: 0; }
-.error-motivo.visible { display: block; }
-.marca { font-size: 13px; padding: 10px 12px; border-radius: var(--r-control);
-         background: var(--papel-2); }
-.marca.si { background: var(--verde-luz); color: var(--verde); font-weight: 600; }
-.marca.no { background: var(--rojo-luz); color: var(--rojo); }
-.marca.archivada { background: var(--papel-2); color: var(--gris); }
-button.archivar { font-size: 12.5px; min-height: 34px; padding: 6px 10px;
-                  color: var(--gris); border-style: dashed; }
-button.archivar:hover { color: var(--texto); border-style: solid; }
-.marca small { color: var(--texto); font-weight: 400; }
-
-/* --- formularios --- */
-form.datos { background: var(--papel); border: 1px solid var(--borde);
-             border-radius: var(--r-caja); padding: 20px; box-shadow: var(--sombra); }
-form.datos h2 { border-top: 1px solid var(--borde); padding-top: 20px; }
-form.datos h2:first-of-type { border-top: 0; padding-top: 0; }
-.grilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-          gap: 16px 20px; }
-.campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.campo label { font-size: 13px; color: var(--gris); font-weight: 500; }
-.campo input[type=text], .campo input[type=number], .campo input[type=password],
-.campo select, textarea {
-    padding: 9px 10px; border: 1px solid var(--borde-2);
-    border-radius: var(--r-control); font: inherit; min-height: 40px;
-    background: var(--papel); color: var(--texto); }
-.campo input::placeholder, textarea::placeholder { color: var(--gris); opacity: .8; }
-textarea { width: 100%; font-family: ui-monospace, Consolas, monospace;
-           font-size: 13px; line-height: 1.55; resize: vertical; }
-.ancho { grid-column: 1 / -1; }
-.checks { display: flex; gap: 10px 20px; flex-wrap: wrap; align-items: flex-start; }
-.checks label { font-size: 14px; display: flex; align-items: center; gap: 7px;
-                min-height: 32px; cursor: pointer; }
-.checks input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--acento);
-                               margin: 0; cursor: pointer; }
-.tilde { display: flex; flex-direction: column; gap: 1px; }
-.tilde .nota { font-size: 12px; color: var(--gris); max-width: 34ch;
-               padding-left: 24px; line-height: 1.45; }
-.ayuda { font-size: 12.5px; color: var(--gris); margin: 3px 0 0; line-height: 1.5; }
-
-/* La barra de guardar se pega abajo: el formulario es largo y el botón
-   quedaba fuera de pantalla, así que se guardaba a ciegas o no se guardaba. */
-.guardar { position: sticky; bottom: 0; margin: 24px -20px -20px;
-           padding: 14px 20px; background: var(--papel);
-           border-top: 1px solid var(--borde);
-           border-radius: 0 0 var(--r-caja) var(--r-caja); }
-.guardar button { padding: 11px 24px; background: var(--acento);
-                  border-color: var(--acento); color: #fff; font-size: 15px;
-                  font-weight: 600; }
-@media (prefers-color-scheme: dark) { .guardar button { color: #10151a; } }
-.guardar button:hover { background: var(--acento-fte); border-color: var(--acento-fte); }
-
-.herramientas { margin: 0 0 16px; display: flex; flex-wrap: wrap; gap: 10px; }
-a.boton { display: inline-block; padding: 9px 16px; border-radius: var(--r-control);
-          background: var(--acento); color: #fff; text-decoration: none;
-          font-size: 14px; font-weight: 500; }
-@media (prefers-color-scheme: dark) { a.boton { color: #10151a; } }
-a.boton:hover { background: var(--acento-fte); }
-a.chico { font-size: 13px; }
-.terminos { display: flex; flex-wrap: wrap; gap: 7px; list-style: none;
-            padding: 0; margin: 0 0 10px; }
-.terminos li { background: var(--acento-luz); color: var(--acento-fte);
-               border-radius: 999px; padding: 4px 11px; font-size: 13px;
-               font-weight: 500; }
-@media (prefers-color-scheme: dark) { .terminos li { color: var(--acento-fte); } }
-pre.consejo { white-space: pre-wrap; font: inherit; margin: 0; line-height: 1.6; }
-.mensaje textarea { min-height: 160px; }
-.mensaje { background: var(--papel); border: 1px solid var(--borde);
-           border-radius: var(--r-caja); padding: 16px; margin-bottom: 14px;
-           box-shadow: var(--sombra); }
-.mensaje h3 { margin-top: 0; }
-.vacio { color: var(--gris); background: var(--papel);
-         border: 1px dashed var(--borde-2); border-radius: var(--r-caja);
-         padding: 40px 24px; text-align: center; line-height: 1.6; }
-.vacio b { color: var(--texto); }
-.vacio code { background: var(--papel-2); border-radius: 4px; padding: 2px 6px;
-              font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
-
-@media (max-width: 860px) {
-  .oferta { grid-template-columns: 52px 1fr; gap: 12px; }
-  .acciones { grid-column: 1 / -1; }
-  .acciones .fila button { min-height: 44px; }   /* dedo, no mouse */
-}
-@media (max-width: 560px) {
-  main { padding: 16px 14px 56px; }
-  .oferta { grid-template-columns: 1fr; padding: 14px; }
-  .puntaje { width: 60px; }
-  form.datos { padding: 16px; }
-  .guardar { margin: 20px -16px -16px; padding: 12px 16px; }
-  .guardar button { width: 100%; }
-  .barra { min-height: 52px; }
-  .perfil-sel { margin-left: 0; width: 100%; }
-}
-
-/* MOTION_INTENSITY 2: sólo hover y active. Aun así, quien pide menos
-   movimiento no recibe ninguno. */
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; animation: none !important; }
-}
-"""
-
-# Lo único que necesita JavaScript: que el motivo sea obligatorio al descartar.
-# `required` no sirve porque el mismo formulario tiene un botón que no lo pide.
+# Lo único que necesita JavaScript: que el motivo sea obligatorio al descartar,
+# volver al mismo lugar de la lista después de marcar, y avisar si entraron
+# ofertas con la pantalla abierta. Todo lo demás anda sin JavaScript: el bloque
+# de motivo y el menú de tres puntos son `<details>`, que se abren solos.
 #
 # El error se muestra al lado del campo, no con un alert(): el alert tapa la
 # pantalla, hay que sacarlo antes de poder escribir, y no deja ver cuál de las
 # ofertas lo pidió cuando hay veinte en la lista. El servidor lo valida igual
 # (`_post_feedback`), así que esto es comodidad, no la garantía.
 JS = """
-function descartar(boton) {
-  var form  = boton.closest('form');
+function marcarBien(form) {
   var campo = form.querySelector('input[name=motivo]');
   var error = form.querySelector('.error-motivo');
-  if (!campo.value.trim()) {
-    campo.classList.add('mal');
-    campo.setAttribute('aria-invalid', 'true');
-    if (error) error.classList.add('visible');
-    campo.focus();
-    return false;
-  }
-  campo.classList.remove('mal');
-  campo.removeAttribute('aria-invalid');
-  if (error) error.classList.remove('visible');
-  return true;
+  var select = form.querySelector('select[name=motivo_clave]');
+  [campo, select].forEach(function (el) {
+    if (!el) { return; }
+    el.classList.remove('mal');
+    el.removeAttribute('aria-invalid');
+  });
+  if (error) { error.classList.remove('visible'); }
 }
+
+// Alcanza con CUALQUIERA de los dos: elegir un motivo de la lista, o
+// escribirlo. No hay opción "Otro motivo" en el desplegable a propósito —
+// obligaba a abrirlo, bajar hasta "Otro" y recién ahí escribir, tres pasos de
+// más justo cuando ya tenías la mano en el teclado.
+function descartar(boton) {
+  var form   = boton.closest('form');
+  var select = form.querySelector('select[name=motivo_clave]');
+  var campo  = form.querySelector('input[name=motivo]');
+  var error  = form.querySelector('.error-motivo');
+  if ((select && select.value) || (campo && campo.value.trim())) {
+    marcarBien(form);
+    return true;
+  }
+  var flojo = select || campo;
+  flojo.classList.add('mal');
+  flojo.setAttribute('aria-invalid', 'true');
+  if (error) { error.classList.add('visible'); }
+  flojo.focus();
+  return false;
+}
+
+// Volver al mismo lugar de la lista después de marcar una oferta.
+//
+// Marcar es un POST que redirige a un GET (si no, recargar reenviaría el
+// formulario), y el navegador abre esa página nueva arriba de todo. Con 40
+// ofertas eso significa que después de marcar la número 30 hay que volver a
+// bajar hasta ahí. Se guarda dónde estabas justo antes de enviar y se vuelve
+// al llegar; la clave se consume una sola vez, así un F5 posterior no te
+// mueve.
+var CLAVE_SCROLL = 'vacantia:scroll';
+
+function recordarScroll() {
+  try { sessionStorage.setItem(CLAVE_SCROLL, String(window.scrollY)); } catch (e) {}
+}
+
+function volverAlScroll() {
+  var y;
+  try {
+    y = sessionStorage.getItem(CLAVE_SCROLL);
+    sessionStorage.removeItem(CLAVE_SCROLL);
+  } catch (e) { return; }
+  if (y === null) { return; }
+  // 'instant' y no 'smooth': ya estabas ahí, no es un viaje.
+  window.scrollTo({ top: parseInt(y, 10) || 0, behavior: 'instant' });
+}
+
+// El menú de tres puntos se cierra al tocar afuera. Sin esto quedan tres menús
+// abiertos tapando la lista y hay que cerrarlos de a uno.
+function cerrarMenus(salvo) {
+  document.querySelectorAll('details.menu[open]').forEach(function (m) {
+    if (m !== salvo) { m.removeAttribute('open'); }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  volverAlScroll();
+  // Para los envíos que sí pasan por 'submit': archivar, y marcar cuando la
+  // animación está apagada por prefers-reduced-motion.
+  document.querySelectorAll('form.acciones').forEach(function (form) {
+    form.addEventListener('submit', recordarScroll);
+  });
+  document.addEventListener('click', function (ev) {
+    var dentro = ev.target.closest ? ev.target.closest('details.menu') : null;
+    cerrarMenus(dentro);
+  });
+});
 
 // Marcar una oferta: se la ve irse antes de que la página se recargue.
 //
@@ -387,7 +185,11 @@ function marcar(boton, esDescarte) {
   form.appendChild(oculto);
 
   tarjeta.classList.add('yendose');
-  setTimeout(function () { form.submit(); }, 260);
+  // OJO: `form.submit()` NO dispara el evento 'submit', así que el listener de
+  // más abajo no alcanza y hay que guardar la posición a mano. Es exactamente
+  // lo que hacía que después de marcar volvieras arriba de todo.
+  recordarScroll();
+  setTimeout(function () { form.submit(); }, 220);
   return false;
 }
 
@@ -396,7 +198,8 @@ function marcar(boton, esDescarte) {
 // del historial cambió; es una request local y no lee el archivo entero.
 //
 // NO recarga sola a propósito: si alguien está escribiendo el motivo de un
-// descarte, una recarga se lo borra. Avisa, y decide la persona.
+// descarte, una recarga se lo borra. Avisa, y decide la persona. El cartel es
+// texto quieto: no parpadea, no pulsa y no cuenta nada hacia atrás.
 function vigilarNovedades(perfil, marca, pendientesAlAbrir) {
   var cartel = document.getElementById('novedades');
   if (!cartel) { return; }
@@ -432,31 +235,109 @@ def esc(texto) -> str:
     return escape("" if texto is None else str(texto), quote=True)
 
 
-def pagina(titulo: str, cuerpo: str, perfil: str, perfiles: list[str], tab: str) -> str:
+# --- el shell ---------------------------------------------------------------
+
+#: (ruta, etiqueta, clave). El sidebar agrupa por lo que la persona hace, no por
+#: lo que la sección es: primero buscar, después revisar y configurar.
+SECCIONES_BUSCAR = (
+    ("trabajos", "Trabajos", "trabajos"),
+    ("linkedin", "LinkedIn URLs", "linkedin"),
+)
+SECCIONES_RESTO = (
+    ("estadisticas", "Métricas", "estadisticas"),
+    ("datos", "Mi perfil", "datos"),
+)
+
+
+def _boton_buscar(perfil: str, corriendo: bool, primario: bool = False) -> str:
+    """El botón que arranca una búsqueda sin esperar el horario.
+
+    Antes esto era un archivo `.bat` que había que ir a buscar al Explorador, y
+    la pantalla te lo nombraba por su nombre de archivo. Si hay que ejecutar
+    algo, es un botón con nombre humano.
+
+    Al pie de la barra lateral va en secundario: la acción de esa pantalla es
+    aplicar a una oferta, y dos primarios enfrentados obligan a decidir antes de
+    leer. En un estado vacío no hay ninguna oferta que aplicar, así que ahí sí
+    es el primario.
+    """
+    if corriendo:
+        return ('<button type="button" disabled>Buscando ofertas</button>')
+    clase = "primario" if primario else ""
+    return f"""<form method="post" action="/buscar">
+  <input type="hidden" name="perfil" value="{esc(perfil)}">
+  <button class="{clase}" type="submit">Buscar ahora</button>
+</form>"""
+
+
+def _estado_del_sistema(perfil: str, estado: dict | None) -> str:
+    """El pie fijo de la barra lateral.
+
+    Cuándo buscó, cuándo vuelve, qué ventana cubre, y el botón para buscar ya.
+    Es la respuesta a "¿esto es todo lo que hay?", que es de donde sale la mayor
+    parte de la ansiedad de buscar trabajo, y por eso tiene un lugar fijo y no
+    un tooltip. El botón va acá y no arriba porque es la acción sobre este dato:
+    la salida de "la última búsqueda fue hace seis horas".
+
+    El punto medio se reserva para esta línea y no se usa en ninguna otra.
+    """
+    if not estado:
+        return ""
+    ultima = estado.get("ultima") or "todavía no buscó"
+    proxima = estado.get("proxima") or ""
+    ventana = estado.get("ventana")
+    linea = f"Última búsqueda: {esc(ultima)}"
+    if proxima:
+        linea += f" &middot; Próxima: {esc(proxima)}"
+    if ventana:
+        cubre = (f"<p>Trae avisos de los últimos <span class='valor'>{esc(ventana)}</span> "
+                 f"días.</p>")
+    else:
+        cubre = "<p>Trae avisos sin límite de antigüedad.</p>"
+    return (f'<div class="estado"><p>{linea}</p>{cubre}'
+            f'{_boton_buscar(perfil, bool(estado.get("corriendo")))}</div>')
+
+
+def pagina(titulo: str, cuerpo: str, perfil: str, perfiles: list[str], tab: str,
+           estado: dict | None = None) -> str:
+    """El shell: barra lateral a la izquierda, una sola columna a la derecha."""
     opciones = "".join(
         f'<option value="{esc(p)}"{" selected" if p == perfil else ""}>{esc(p)}</option>'
         for p in perfiles
     )
+
     def link(destino, etiqueta, clave):
-        activa = " class='activa'" if clave == tab else ""
-        return f'<a href="/{destino}?perfil={esc(perfil)}"{activa}>{etiqueta}</a>'
+        activa = " activa" if clave == tab else ""
+        ahi = ' aria-current="page"' if clave == tab else ""
+        return (f'<a class="nav-item{activa}" href="/{destino}?perfil={esc(perfil)}"{ahi}>'
+                f'{ICONOS[clave]}<span class="etiqueta">{etiqueta}</span></a>')
+
+    buscar = "".join(link(*s) for s in SECCIONES_BUSCAR)
+    resto = "".join(link(*s) for s in SECCIONES_RESTO)
 
     return f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Las ofertas de trabajo de varios portales, en una sola lista y con un puntaje de ajuste.">
 <title>{esc(titulo)} · vacantia</title>
 <style>{CSS}</style><script>{JS}</script>
-</head><body>
+</head><body class="app">
 <a class="saltar" href="#contenido">Saltar al contenido</a>
-<header><div class="barra">
-  <h1>VACANTIA</h1>
-  <nav>{link('trabajos', 'Trabajos', 'trabajos')}{link('datos', 'Mis datos', 'datos')}</nav>
+<aside class="lateral">
+  <a href="/trabajos?perfil={esc(perfil)}" class="marca-app">
+    <span class="sello" aria-hidden="true">V</span><span class="nombre">VACANTIA</span>
+  </a>
   <form class="perfil-sel" method="get" action="/{esc(tab)}">
     <label for="perfil-sel">Perfil</label>
     <select id="perfil-sel" name="perfil" onchange="this.form.submit()">{opciones}</select>
-    <noscript><button type="submit">Cambiar</button></noscript>
+    <noscript><button type="submit">Cambiar de perfil</button></noscript>
   </form>
-</div></header>
+  <p class="grupo">Buscar</p>
+  <nav aria-label="Buscar">{buscar}</nav>
+  <hr class="separador">
+  <nav aria-label="Revisar y configurar">{resto}</nav>
+  {_estado_del_sistema(perfil, estado)}
+</aside>
 <main id="contenido">{cuerpo}</main>
 </body></html>"""
 
@@ -506,9 +387,34 @@ def _cuando(oferta: dict) -> tuple[str, str]:
                    "bastante más viejo.")
 
 
+def _en_hora_local(guardada) -> "date | None":
+    """El día local de una marca de tiempo guardada en UTC.
+
+    Si no trae hora, o no se entiende, cae en `parse_posted`, que ya sabe leer
+    todos los formatos que aparecen en el historial.
+    """
+    crudo = str(guardada or "").strip()
+    if not crudo:
+        return None
+    try:
+        momento = datetime.fromisoformat(crudo.replace("Z", "+00:00"))
+    except ValueError:
+        return parse_posted(crudo[:10])
+    if momento.tzinfo is None:      # una fecha sola, sin hora ni zona
+        return momento.date()
+    return momento.astimezone().date()
+
+
 def _cuando_marcada(oferta: dict) -> tuple[str, str]:
-    """(texto, título) de cuándo se marcó. Vacío si no hay fecha guardada."""
-    momento = parse_posted((oferta.get("fecha_feedback") or "")[:10])
+    """(texto, título) de cuándo se marcó. Vacío si no hay fecha guardada.
+
+    La fecha se guarda en UTC y hay que pasarla a la hora de acá **antes** de
+    quedarse con el día. Cortando los primeros diez caracteres del texto, todo
+    lo que marcabas entre las 21:00 y la medianoche quedaba con la fecha de
+    mañana en UTC, y al día siguiente la tarjeta decía "Aplicaste hoy" a algo de
+    ayer. Son tres horas por día, justo las que más se usa la pantalla.
+    """
+    momento = _en_hora_local(oferta.get("fecha_feedback"))
     if momento is None:
         return "", ""
     dias = dias_desde(momento) or 0
@@ -516,8 +422,31 @@ def _cuando_marcada(oferta: dict) -> tuple[str, str]:
     return cuando, f"El {momento.isoformat()}"
 
 
-def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
-             pagina: int = 1) -> str:
+def _select_de_motivos() -> str:
+    """El desplegable de por qué no apliqué.
+
+    Con 60 descartes se vio en qué se convierte un campo de texto obligatorio:
+    46 veces la misma frase escrita a mano. Los cuatro motivos salen de lo que
+    de verdad se escribió, no de lo que uno imagina que se va a escribir.
+
+    Al lado queda el campo de texto, **opcional**: con cualquiera de los dos
+    alcanza para descartar. No hay una opción "Otro motivo" en la lista a
+    propósito — obligaba a abrir el desplegable, bajar hasta "Otro" y recién ahí
+    escribir, tres pasos de más justo en el caso en que ya tenías la mano en el
+    teclado.
+    """
+    from vacantia.ui.data import MOTIVOS
+
+    opciones = "".join(
+        f'<option value="{esc(clave)}" title="{esc(ayuda)}">{esc(etiqueta)}</option>'
+        for clave, etiqueta, ayuda in MOTIVOS
+    )
+    return (f'<select name="motivo_clave" aria-label="Motivo del descarte">'
+            f'<option value="">Por qué no apliqué…</option>{opciones}</select>')
+
+
+def _cabecera_de_tarjeta(oferta: dict) -> str:
+    """Puntaje, título y etiquetas: lo que se lee de un vistazo."""
     score = oferta.get("score")
     clase = "puntaje alto" if isinstance(score, int) and score >= 70 else "puntaje"
     titulo = oferta.get("scored_title") or oferta.get("title") or "(sin título)"
@@ -540,122 +469,217 @@ def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
     etiquetas += (f'<li class="cuando" title="{esc(detalle_fecha)}">'
                   f'{esc(cuando)}</li>')
 
+    return f"""  <div class="{clase}">{esc(score if score is not None else '?')}<span class="de">de 100</span></div>
+  <div class="datos">
+    <h3><a href="{esc(url)}" {ABRIR_EL_AVISO}>{esc(titulo)}</a></h3>
+    <ul class="datos-meta">{etiquetas}</ul>"""
+
+
+def _ocultos(perfil: str, ver: str, desde: str, pagina: int, url: str) -> str:
+    return (f'<input type="hidden" name="perfil" value="{esc(perfil)}">'
+            f'<input type="hidden" name="ver" value="{esc(ver)}">'
+            f'<input type="hidden" name="desde" value="{esc(desde)}">'
+            f'<input type="hidden" name="p" value="{pagina}">'
+            f'<input type="hidden" name="url" value="{esc(url)}">')
+
+
+def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
+             pagina: int = 1) -> str:
+    """Una oferta.
+
+    Es el componente central de la app y el que más disciplina necesita. Por
+    defecto se ven **dos controles y nada más**: "Apliqué" en primario y "No
+    apliqué" en secundario. El bloque de motivo se despliega adentro de la misma
+    tarjeta recién cuando se marca "No apliqué"; "Ya no está" y los links
+    auxiliares viven en el menú de tres puntos de la esquina.
+
+    Una vez marcada, la tarjeta pierde el vidrio esmerilado y baja a superficie
+    plana: así se distingue de un vistazo lo que queda por hacer de lo que ya
+    está hecho.
+    """
+    url = oferta.get("url", "")
     aplicado = oferta.get("aplicado")
     marcada, detalle_marca = _cuando_marcada(oferta)
+    cabecera = _cabecera_de_tarjeta(oferta)
+
     if oferta.get("archivada") and aplicado is None:
         cuando_arch, det = _cuando_marcada({"fecha_feedback": oferta.get("fecha_archivada")})
-        return f"""<article class="oferta">
-  <div class="{clase}">{esc(score if score is not None else '?')}<span class="de">de 100</span></div>
-  <div class="datos">
-    <h3><a href="{esc(url)}" target="_blank" rel="noopener">{esc(titulo)}</a></h3>
-    <ul class="datos-meta">{etiquetas}</ul>
+        etiqueta = f"Archivada {cuando_arch}" if cuando_arch else "Archivada"
+        return f"""<article class="oferta marcada">
+{cabecera}
+    <form class="acciones" method="post" action="/archivar">
+      {_ocultos(perfil, ver, desde, pagina, url)}
+      <span class="marca" title="{esc(det)}">{esc(etiqueta)}</span>
+      <button class="fantasma" name="archivar" value="0">Devolver a la lista</button>
+    </form>
   </div>
-  <form class="acciones" method="post" action="/archivar">
-    <input type="hidden" name="perfil" value="{esc(perfil)}">
-    <input type="hidden" name="ver" value="{esc(ver)}">
-    <input type="hidden" name="desde" value="{esc(desde)}">
-    <input type="hidden" name="p" value="{pagina}">
-    <input type="hidden" name="url" value="{esc(url)}">
-    <div class="marca archivada" title="{esc(det)}">Archivada{f" {esc(cuando_arch)}" if cuando_arch else ""}</div>
-    <button name="archivar" value="0">Devolver a la lista</button>
-  </form>
 </article>"""
 
     if aplicado is True:
-        acciones = (f'<div class="marca si" title="{esc(detalle_marca)}">Aplicaste'
-                    f'{f"<br><small>{esc(marcada)}</small>" if marcada else ""}</div>')
-    elif aplicado is False:
-        motivo = esc(oferta.get("motivo_descarte") or "sin motivo")
-        acciones = (f'<div class="marca no" title="{esc(detalle_marca)}">Descartada'
-                    f'{f" {esc(marcada)}" if marcada else ""}'
-                    f'<br><small>{motivo}</small></div>')
-    else:
-        acciones = f"""<form class="acciones" method="post" action="/feedback">
-      <input type="hidden" name="perfil" value="{esc(perfil)}">
-      <input type="hidden" name="ver" value="{esc(ver)}">
-      <input type="hidden" name="desde" value="{esc(desde)}">
-      <input type="hidden" name="p" value="{pagina}">
-      <input type="hidden" name="url" value="{esc(url)}">
-      <div class="fila">
-        <button class="verde" name="aplicado" value="si"
-                onclick="return marcar(this, false)">Apliqué</button>
-        <button class="rojo" name="aplicado" value="no"
-                onclick="return marcar(this, true)">No apliqué</button>
-      </div>
-      <input type="text" name="motivo" placeholder="Por qué no apliqué (obligatorio)">
-      <p class="error-motivo">Escribí el motivo. Es lo que hace que el sistema aprenda
-      qué no mostrarte.</p>
-      <button class="archivar" name="archivar" value="1"
-              formaction="/archivar" formnovalidate
-              title="El aviso ya no está o quedó viejo. La saca de la lista sin
-enseñarle nada al sistema sobre lo que te gusta.">Ya no está</button>
-    </form>"""
+        etiqueta = f"Aplicaste {marcada}" if marcada else "Aplicaste"
+        return f"""<article class="oferta marcada">
+{cabecera}
+    <p class="marca si" title="{esc(detalle_marca)}">{esc(etiqueta)}</p>
+  </div>
+</article>"""
+
+    if aplicado is False:
+        from vacantia.ui.data import partes_del_motivo
+        etiqueta = f"Descartada {marcada}" if marcada else "Descartada"
+        # El motivo de la lista y el escrito a mano van en elementos separados:
+        # unirlos con un punto medio los convierte en una sola frase larga, y
+        # el punto medio está reservado para la línea de estado del sistema.
+        de_la_lista, escrito = partes_del_motivo(oferta)
+        motivo = ""
+        if de_la_lista:
+            motivo += f'<span class="motivo-elegido">{esc(de_la_lista)}</span>'
+        if escrito:
+            motivo += f'<span class="motivo-escrito">{esc(escrito)}</span>'
+        return f"""<article class="oferta marcada">
+{cabecera}
+    <p class="marca" title="{esc(detalle_marca)}">{esc(etiqueta)}</p>
+    <p class="marca-motivo">{motivo or "sin motivo"}</p>
+  </div>
+</article>"""
 
     razon = oferta.get("reason") or ""
     stack = oferta.get("stack") or ""
     enlace = quote(url, safe="")
     return f"""<article class="oferta">
-  <div class="{clase}">{esc(score if score is not None else '?')}<span class="de">de 100</span></div>
-  <div class="datos">
-    <h3><a href="{esc(url)}" target="_blank" rel="noopener">{esc(titulo)}</a></h3>
-    <ul class="datos-meta">{etiquetas}</ul>
-    {f'<p class="meta">{esc(stack)}</p>' if stack else ''}
+{cabecera}
+    {f'<p class="stack">{esc(stack)}</p>' if stack else ''}
     {f'<p class="razon">{esc(razon)}</p>' if razon else ''}
-    <p class="enlaces">
-      <a class="chico" href="/mensajes?perfil={esc(perfil)}&url={enlace}">Mensaje para escribirle</a>
-      <a class="chico" href="/consejo?perfil={esc(perfil)}&url={enlace}">Consejo para el CV</a>
-    </p>
+    <form class="acciones" method="post" action="/feedback">
+      {_ocultos(perfil, ver, desde, pagina, url)}
+      <button class="primario" name="aplicado" value="si"
+              onclick="return marcar(this, false)">Apliqué</button>
+      <details class="motivo">
+        <summary>No apliqué</summary>
+        <div class="cuerpo">
+          {_select_de_motivos()}
+          <input type="text" name="motivo" placeholder="...o escribí otro motivo">
+          <p class="error-motivo">Elegí uno de la lista o escribí el motivo. Con
+          cualquiera de los dos alcanza.</p>
+          <button name="aplicado" value="no"
+                  onclick="return marcar(this, true)">Descartar la oferta</button>
+        </div>
+      </details>
+      <details class="menu">
+        <summary title="Más opciones" aria-label="Más opciones">{ICONOS['mas']}</summary>
+        <div class="panel">
+          <a href="/mensajes?perfil={esc(perfil)}&url={enlace}">Mensaje para escribirle</a>
+          <a href="/consejo?perfil={esc(perfil)}&url={enlace}">Consejo para el CV</a>
+          <button class="fantasma" name="archivar" value="1"
+                  formaction="/archivar" formnovalidate>Ya no está</button>
+          <p class="nota">Archivar saca el aviso de la lista sin enseñarle nada al
+          sistema sobre lo que te gusta. Se puede devolver.</p>
+        </div>
+      </details>
+    </form>
   </div>
-  {acciones}
 </article>"""
 
 
 # Cada filtro vacío significa algo distinto, y decir siempre "no hay ofertas"
 # desperdicia el único momento en que la pantalla tiene toda la atención puesta.
+#
+# El tercer elemento dice si ese vacío se arregla buscando. Cuando sí, la
+# pantalla ofrece el botón en vez de nombrar un archivo que hay que ir a abrir
+# al Explorador.
 VACIO = {
     "pendientes": ("No te queda ninguna sin mirar.",
                    "Cuando entren ofertas nuevas van a aparecer acá. "
-                   "Si querés buscar ahora sin esperar el horario, "
-                   "doble clic en <code>buscar_ahora.bat</code>."),
+                   "Si no querés esperar al próximo horario, buscá ahora.", True),
     "aplicadas": ("Todavía no marcaste ninguna como aplicada.",
-                  "Cuando mandes un CV, tocá <b>Apliqué</b> en esa oferta."),
+                  "Cuando mandes un CV, tocá <b>Apliqué</b> en esa oferta.", False),
     "descartadas": ("Todavía no descartaste ninguna.",
                     "Cuando una no sirva, tocá <b>No apliqué</b> y escribí por qué. "
-                    "Ese motivo es lo que después afina las búsquedas."),
+                    "Ese motivo es lo que después afina las búsquedas.", False),
     "archivadas": ("No archivaste ninguna todavía.",
                    "Archivar es para los avisos que ya no están o quedaron viejos. "
                    "No es lo mismo que descartar: no le enseña nada al sistema "
-                   "sobre tus gustos, sólo los saca de la lista."),
+                   "sobre tus gustos, sólo los saca de la lista.", False),
     "todas": ("Todavía no hay ofertas guardadas.",
-              "Doble clic en <code>buscar_ahora.bat</code> para correr la primera "
-              "búsqueda. Tarda unos minutos."),
+              "Buscá ahora para correr la primera búsqueda. Tarda unos minutos y "
+              "podés seguir usando la pantalla mientras tanto.", True),
 }
 
 
-def _ingles(pena: dict, ver: str = "pendientes") -> str:
-    """El cartel de lo que cuesta no saber inglés.
+def _desplegable_de_fecha(perfil: str, ver: str, desde: str, cuentas: dict) -> str:
+    """La antigüedad como desplegable y no como cuatro botones.
 
-    Va arriba de la lista y no se puede cerrar, por pedido: la idea es
-    justamente que moleste. Sin esto, la lista filtrada da la impresión de que
-    el mercado no pide inglés, cuando lo que se ve es el recorte del filtro.
+    Eran cuatro chips que ocupaban una fila entera para algo que se toca una vez
+    por semana, compitiendo por atención con lo que sí importa mientras uno
+    trabaja: cuántas quedan por mirar. Un desplegable dice lo mismo en un renglón.
+
+    Sin JavaScript sigue funcionando: es un `<form method=get>` con su botón,
+    que el `onchange` sólo adelanta.
     """
-    # Sólo donde se eligen ofertas. En "Apliqué" y "Descarté" se está
-    # revisando lo ya decidido, y ahí el cartel es ruido.
-    if ver not in ("pendientes", "todas"):
-        return ""
-    cuantas = (pena or {}).get("cuantas") or 0
-    if not cuantas:
-        return ""
-    mejor, titulo = pena.get("mejor"), pena.get("mejor_titulo") or ""
-    detalle = ""
-    if mejor is not None:
-        detalle = (f' La mejor puntuaba <b>{esc(mejor)}</b>'
-                   f'{f", <i>{esc(titulo)}</i>" if titulo else ""}.')
-    return f"""<div class="duele">
-  <span class="numero">{esc(cuantas)}</span>
-  <span class="dice">ofertas que no podés tomar porque piden inglés.{detalle}
-  <br>No están filtradas por gusto: es lo que hoy te queda afuera.</span>
+    opciones = "".join(
+        f'<option value="{esc(clave)}"{" selected" if clave == desde else ""}>'
+        f'{esc(etiqueta)} ({(cuentas or {}).get(clave, 0)})</option>'
+        for clave, etiqueta in RANGOS
+    )
+    return f"""<form class="filtro-fecha" method="get" action="/trabajos">
+  <input type="hidden" name="perfil" value="{esc(perfil)}">
+  <input type="hidden" name="ver" value="{esc(ver)}">
+  <label for="desde">Antigüedad del aviso</label>
+  <select id="desde" name="desde" onchange="this.form.submit()">{opciones}</select>
+  <noscript><button>Filtrar por antigüedad</button></noscript>
+</form>"""
+
+
+def _encabezado(ver: str, conteo: dict, filtro_fecha: str) -> str:
+    """El número grande a la izquierda y el filtro de fecha a la derecha.
+
+    El número es el único dato que importa mientras uno revisa: cuántas faltan.
+    Estaba adentro de un chip, del mismo tamaño que los otros cuatro contadores,
+    compitiendo con "Archivadas 83" — que no es una tarea, es un archivo.
+    """
+    cuantas = int((conteo or {}).get(ver, 0))
+    # Sólo en "Sin marcar" el número es una tarea pendiente. En las otras
+    # pestañas es un archivo, y no merece el tamaño.
+    if ver != "pendientes":
+        return f'<div class="encabezado"><div></div>{filtro_fecha}</div>'
+    return f"""<div class="encabezado">
+  <p class="cuantas"><span class="numero">{cuantas}</span>
+     <span class="que">sin mirar</span></p>
+  {filtro_fecha}
 </div>"""
+
+
+def _con_banda_de_recientes(ofertas: list[dict], perfil: str, ver: str,
+                            desde: str, pagina: int) -> str:
+    """Las tarjetas, con un rótulo que separa lo recién publicado del resto.
+
+    `data.ofertas` ya las ordenó con las recientes arriba; acá sólo se dibuja
+    dónde termina ese grupo. Se hace en dos rótulos y no en un color de tarjeta
+    porque lo que hay que contestar es "¿hasta dónde miro hoy?", y una línea que
+    cruza la lista lo dice mejor que un borde en cada una.
+
+    Si no hay ninguna reciente, o si son todas, no se dibuja nada: un rótulo que
+    encabeza la lista entera no separa nada y sólo ocupa lugar.
+    """
+    from vacantia.ui.data import DIAS_RECIEN
+
+    tarjetas = [_tarjeta(o, perfil, ver, desde, pagina) for o in ofertas]
+    cuantas = sum(1 for o in ofertas if o.get("_recien"))
+    if not 0 < cuantas < len(ofertas):
+        return "".join(tarjetas)
+
+    def rotulo(texto: str, cuenta: str, detalle: str) -> str:
+        numero = f'<span class="cuenta">{cuenta}</span>' if cuenta else ""
+        return (f'<h3 class="banda"><span>{texto}</span>{numero}'
+                f'<span class="detalle">{detalle}</span></h3>')
+
+    dias = "de hoy o ayer" if DIAS_RECIEN <= 2 else f"de los últimos {DIAS_RECIEN} días"
+    return (
+        rotulo("Recién publicadas", str(cuantas),
+               f"Avisos {dias}. Son a los que menos gente se postuló todavía.")
+        + "".join(tarjetas[:cuantas])
+        + rotulo("El resto", "", "Ordenadas por puntaje, como siempre.")
+        + "".join(tarjetas[cuantas:])
+    )
 
 
 def _paginas(perfil: str, ver: str, desde: str, pagina: int, paginas: int,
@@ -671,9 +695,10 @@ def _paginas(perfil: str, ver: str, desde: str, pagina: int, paginas: int,
                 f'&desde={esc(desde)}&p={destino}">{etiqueta}</a>')
 
     return f"""<nav class="paginas" aria-label="Páginas">
-  {link(pagina - 1, "&larr; Anteriores")}
-  <span class="donde">Página {pagina} de {paginas} &middot; {total} ofertas</span>
-  {link(pagina + 1, "Siguientes &rarr;")}
+  {link(pagina - 1, "Anteriores")}
+  {link(pagina + 1, "Siguientes")}
+  <span class="donde">Página {pagina} de {paginas}</span>
+  <span class="donde">{total} ofertas</span>
 </nav>"""
 
 
@@ -682,12 +707,13 @@ def _archivar_viejas(perfil: str, ver: str, desde: str, cuantas: dict) -> str:
 
     Un aviso de hace tres semanas casi siempre está cubierto, y con 43 en esa
     situación archivarlas de a una es trabajo al pedo. Sólo aparece si hay algo
-    que archivar, y dice cuántas son antes de apretar.
+    que archivar, y dice cuántas son antes de apretar. Todo en fantasma: es
+    mantenimiento y no compite con la acción de la pantalla.
     """
     if ver != "pendientes" or not cuantas:
         return ""
     opciones = "".join(
-        f'<button name="dias" value="{dias}">Más de {dias} días ({n})</button>'
+        f'<button class="fantasma" name="dias" value="{dias}">Más de {dias} días ({n})</button>'
         for dias, n in sorted(cuantas.items()) if n
     )
     if not opciones:
@@ -703,9 +729,15 @@ def _archivar_viejas(perfil: str, ver: str, desde: str, cuantas: dict) -> str:
 
 def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
              mensajes: list[tuple[str, str]], desde: str = "todo",
-             conteo_fecha: dict | None = None, pena: dict | None = None,
+             conteo_fecha: dict | None = None,
              marca: str = "", pagina: int = 1, paginas: int = 1,
-             viejas: dict | None = None) -> str:
+             viejas: dict | None = None, corriendo: bool = False) -> str:
+    """La lista.
+
+    Arriba no va ningún recuento de lo que se pierde: cuántas ofertas quedan
+    afuera por el inglés es información legítima, pero vive en Métricas, con la
+    explicación y con el link a donde se cambia el nivel declarado.
+    """
     def chips(opciones, activo, param, cuentas, otro_param, otro_valor):
         return "".join(
             f'<a href="/trabajos?perfil={esc(perfil)}&{otro_param}={esc(otro_valor)}'
@@ -717,42 +749,270 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
     # Cada botón conserva el valor del otro eje: cambiar de "Sin marcar" a
     # "Descarté" no tiene por qué devolverte a ver los avisos de hace un año.
     por_estado = chips(FILTROS, ver, "ver", conteo, "desde", desde)
-    por_fecha = chips(RANGOS, desde, "desde", conteo_fecha, "ver", ver)
+    por_fecha = _desplegable_de_fecha(perfil, ver, desde, conteo_fecha)
 
     if ofertas:
-        listado = ("".join(_tarjeta(o, perfil, ver, desde, pagina) for o in ofertas)
+        listado = (_con_banda_de_recientes(ofertas, perfil, ver, desde, pagina)
                    + _paginas(perfil, ver, desde, pagina, paginas,
                               int((conteo or {}).get(ver, 0))))
     elif desde != "todo":
         listado = (
-            '<div class="vacio"><b>Ninguna en ese rango de fechas.</b><br>'
+            '<div class="vacio"><b>Ninguna en ese rango de fechas.</b>'
             'Probá con <b>Sin filtro</b> para ver también las más viejas.</div>'
         )
     else:
-        titulo, detalle = VACIO.get(ver, VACIO["todas"])
-        listado = f'<div class="vacio"><b>{titulo}</b><br>{detalle}</div>'
+        titulo, detalle, se_arregla_buscando = VACIO.get(ver, VACIO["todas"])
+        salida = (f'<div class="salida">{_boton_buscar(perfil, corriendo, primario=True)}</div>'
+                  if se_arregla_buscando else "")
+        listado = f'<div class="vacio"><b>{titulo}</b>{detalle}{salida}</div>'
 
     # El vigilante avisa si entran ofertas con la pantalla abierta. `marca` es
     # cómo estaba el historial al servir esta página: si cambia, hubo corrida.
     vigilante = ""
     if marca:
         pendientes = int((conteo or {}).get("pendientes", 0))
-        vigilante = f"""<div class="novedades" id="novedades">
+        vigilante = f"""<div class="novedades" id="novedades" role="status">
   <span id="novedades-texto">Entraron ofertas nuevas</span>
-  <button type="button" onclick="location.reload()">Ver</button>
+  <button type="button" onclick="location.reload()">Ver las nuevas</button>
 </div>
 <script>vigilarNovedades({esc(perfil)!r}, {esc(marca)!r}, {pendientes});</script>"""
 
     return f"""{avisos(mensajes)}
 {vigilante}
-<h2>Trabajos</h2>
-{_ingles(pena, ver)}
+<h1>Trabajos</h1>
 <div class="filtros">{por_estado}</div>
-<div class="filtros fechas">
-  <span class="rotulo">Antigüedad del aviso</span>{por_fecha}
-</div>
+{_encabezado(ver, conteo, por_fecha)}
 {_archivar_viejas(perfil, ver, desde, viejas or {})}
 {listado}"""
+
+
+# --- pestaña LinkedIn URLs --------------------------------------------------
+#
+# El scraper trae lo publicado hace uno a tres días; los avisos de hoy no los
+# indexó todavía ningún buscador y por eso no aparecen en Trabajos. Esta sección
+# es la otra mitad: armar la dirección de búsqueda de LinkedIn que los muestra.
+#
+# Todavía no genera nada: por ahora es el lugar, con sus dos pestañas y lo que
+# va en cada una escrito, para que se pueda ver dónde va a caer cada cosa.
+
+#: (clave, etiqueta). La primera es la que se abre por defecto.
+PESTANIAS_LINKEDIN = (
+    ("jobs", "Jobs"),
+    ("publicaciones", "Publicaciones"),
+)
+
+
+def linkedin(perfil: str, tab: str, mensajes: list[tuple[str, str]]) -> str:
+    """Las direcciones de búsqueda de LinkedIn, en dos pestañas.
+
+    Las pestañas son navegación adentro de la sección, no un filtro, y por eso
+    van arriba del contenido y no adentro de una tarjeta. Para filtrar están las
+    píldoras de la lista de trabajos.
+    """
+    if tab not in dict(PESTANIAS_LINKEDIN):
+        tab = PESTANIAS_LINKEDIN[0][0]
+
+    botones = "".join(
+        f'<a class="pestania{" activa" if clave == tab else ""}" '
+        f'href="/linkedin?perfil={esc(perfil)}&tab={esc(clave)}"'
+        f'{" aria-current=page" if clave == tab else ""}>{esc(etiqueta)}</a>'
+        for clave, etiqueta in PESTANIAS_LINKEDIN
+    )
+
+    if tab == "jobs":
+        cuerpo = """<div class="vacio"><b>Todavía no hay ninguna dirección armada.</b>
+Acá va a aparecer la dirección de búsqueda de LinkedIn Jobs para tu perfil, con
+las palabras clave, la ubicación y la modalidad que cargaste, y el filtro de
+publicadas hoy puesto. La vas a poder ver entera antes de usarla y copiarla de
+un toque.</div>"""
+    else:
+        cuerpo = """<div class="vacio"><b>Todavía no hay ninguna dirección armada.</b>
+Acá va a aparecer la dirección para buscar publicaciones de LinkedIn, que es por
+donde salen los avisos que nadie subió al portal: los que un reclutador escribe
+como posteo y se pierden apenas bajan del muro.</div>"""
+
+    return f"""{avisos(mensajes)}
+<h1>LinkedIn URLs</h1>
+<p class="sub">El buscador trae lo que se publicó hace uno a tres días. Lo de hoy
+todavía no lo indexó nadie, y estas direcciones son las que lo muestran.</p>
+<nav class="pestanias" aria-label="Tipo de búsqueda">{botones}</nav>
+{cuerpo}"""
+
+
+# --- pestaña Métricas -------------------------------------------------------
+
+
+def _dato(numero, que: str, destacado: bool = False) -> str:
+    clase = "dato destacado" if destacado else "dato"
+    return (f'<div class="{clase}"><span class="numero">{esc(numero)}</span>'
+            f'<span class="que">{esc(que)}</span></div>')
+
+
+def _tabla(encabezados: tuple[str, str], filas: list[tuple[str, int]]) -> str:
+    if not filas:
+        return '<p class="explica">Todavía no hay ninguna.</p>'
+    izq, der = encabezados
+    cuerpo = "".join(f'<tr><td>{esc(k)}</td><td class="n">{v}</td></tr>'
+                     for k, v in filas)
+    return (f'<table class="numeros"><thead><tr><th>{esc(izq)}</th>'
+            f'<th class="n">{esc(der)}</th></tr></thead>'
+            f'<tbody>{cuerpo}</tbody></table>')
+
+
+#: Cómo se lee cada motivo del sistema en la pantalla.
+_MOTIVOS_SISTEMA = {
+    "idioma": "Piden un inglés más alto que el tuyo",
+    "lugar": "El lugar o la modalidad no te sirven",
+}
+
+
+def _cuesta_el_ingles(perfil: str, ingles: dict) -> str:
+    """Cuántas ofertas quedan afuera por el inglés, y cómo se cambia eso.
+
+    Éste es el lugar del dato: acá se vino a mirar números, y el número viene
+    con la salida al lado. Arriba de la lista de trabajos no va, porque ahí la
+    persona vino a aplicar y lo primero que leería sería lo que se pierde.
+    """
+    cuantas = (ingles or {}).get("cuantas") or 0
+    if not cuantas:
+        return ""
+    mejor, titulo = ingles.get("mejor"), ingles.get("mejor_titulo") or ""
+    detalle = ""
+    if mejor is not None:
+        detalle = f" La mejor puntuaba {mejor} de 100"
+        detalle += f": {titulo}." if titulo else "."
+    return f"""<div class="callout atencion">
+  <p><b>{esc(cuantas)} ofertas</b> piden un inglés más alto que el que declaraste.
+  {esc(detalle)}</p>
+  <p>Ese número sube cada vez que marcás una oferta como <i>Piden inglés</i>, y
+  baja solo si subís tu nivel declarado.</p>
+  <a class="salida" href="/datos?perfil={esc(perfil)}">Cambiar mi nivel de inglés</a>
+</div>"""
+
+
+def _como_viene_funcionando(perfil: str, salud: dict | None) -> str:
+    """El "¿esto anda?" que antes había que abrir en una ventana negra aparte.
+
+    Es lo mismo que mostraba la pantalla de estado: si está programado, cuándo
+    corrió, qué encontró, si avisó por Telegram y qué se quejó. La diferencia es
+    que ahora está adentro de la app, en castellano y sin nombres de archivo.
+
+    Los avisos del registro van adentro de un desplegable: son texto de máquina,
+    interesan cuando algo falla y no tienen por qué ocupar la pantalla el resto
+    del tiempo.
+    """
+    if not salud:
+        return ""
+
+    if salud.get("corriendo"):
+        ahora = ("<p>Hay una búsqueda en curso. Cuando entren ofertas nuevas te "
+                 "avisa la pantalla de Trabajos.</p>")
+    else:
+        ahora = f'<p class="acciones-sueltas">{_boton_buscar(perfil, False)}</p>'
+
+    tareas = salud.get("programada")
+    if tareas is None:
+        programado = ('<p class="explica">No puedo consultar las búsquedas '
+                      'automáticas en este sistema. Las de esta pantalla '
+                      'funcionan igual.</p>')
+    elif not tareas:
+        programado = ('<p class="explica">No está programado para buscar solo. '
+                      'Volvé a correr la instalación para activarlo.</p>')
+    else:
+        filas = "".join(
+            f'<tr><td>{esc(t["nombre"])}</td><td>{esc(t["estado"])}</td>'
+            f'<td class="fecha">{esc(t["proxima"])}</td></tr>' for t in tareas
+        )
+        programado = (
+            '<table class="numeros"><thead><tr><th>Búsqueda automática</th>'
+            '<th>Estado</th><th class="fecha">Próxima</th></tr></thead>'
+            f'<tbody>{filas}</tbody></table>'
+        )
+
+    encontro = ""
+    if salud.get("encontro"):
+        cuando = salud.get("cuando") or ""
+        duracion = salud.get("duracion") or ""
+        pie = f"La última terminó {cuando}" if cuando else "En la última búsqueda"
+        if duracion:
+            pie += f", en {duracion}"
+        encontro = (f'<p class="explica">{esc(pie)}.</p>'
+                    + _tabla(("En la última búsqueda", "Ofertas"), salud["encontro"]))
+
+    telegram = salud.get("telegram")
+    aviso = (f'<p class="explica">Último aviso por Telegram: {esc(telegram)}.</p>'
+             if telegram else
+             '<p class="explica">Todavía no se envió ningún aviso por Telegram. '
+             'Puede ser normal si no hubo ofertas que pasen el puntaje mínimo.</p>')
+
+    problemas = ""
+    if salud.get("problemas"):
+        lineas = "".join(f"<li>{esc(p)}</li>" for p in salud["problemas"])
+        problemas = f"""<details class="como">
+  <summary>Ver los últimos avisos del registro</summary>
+  <ul class="registro">{lineas}</ul>
+  <p class="ayuda">Son las quejas que el sistema decidió no considerar graves.
+  Si siempre aparece la misma, algo hay que mirar.</p>
+</details>"""
+
+    return f"""<h2>Cómo viene funcionando</h2>
+{programado}
+{encontro}
+{aviso}
+{problemas}
+{ahora}"""
+
+
+def estadisticas(perfil: str, e: dict, desde: str, mensajes,
+                 salud: dict | None = None) -> str:
+    """Los números que antes vivían apretados en los botones de arriba.
+
+    Se separó porque compiten: mientras uno revisa ofertas, el único número que
+    importa es cuántas faltan. "Archivadas 83" no es una tarea, es un archivo, y
+    ocupaba el mismo espacio.
+    """
+    ingles = e.get("ingles") or {}
+    sistema = e.get("sistema") or {}
+
+    tarjetas = (
+        _dato(e["sin_marcar"], "sin mirar", destacado=True)
+        + _dato(e["aplicadas"], "aplicaste")
+        + _dato(e["descartadas"], "descartaste")
+        + _dato(e["archivadas"], "archivadas")
+        + _dato(e["total"], "en total")
+    )
+
+    motivos_filas = []
+    from vacantia.ui.data import MOTIVOS
+    etiquetas = {c: t for c, t, _ in MOTIVOS}
+    for clave, cuantas in sorted((e.get("motivos") or {}).items(),
+                                 key=lambda kv: -kv[1]):
+        motivos_filas.append((etiquetas.get(clave, "Escrito a mano"), cuantas))
+
+    sistema_filas = [(_MOTIVOS_SISTEMA.get(k, k), v)
+                     for k, v in sorted(sistema.items(), key=lambda kv: -kv[1])]
+
+    ventana = e.get("max_age_days")
+    return f"""{avisos(mensajes)}
+<h1>Métricas</h1>
+<div class="tarjetas">{tarjetas}</div>
+
+<h2>Lo que descartó el sistema, sin preguntarte</h2>
+<p class="explica">Son las que no llegan a <b>Sin marcar</b> porque ya hay un
+veredicto: no las borra nadie y vuelven solas si cambiás el filtro que las sacó.
+Antes aparecían en la lista y había que descartarlas a mano una por una.</p>
+{_tabla(("Motivo", "Ofertas"), sistema_filas)}
+{_cuesta_el_ingles(perfil, ingles)}
+
+<h2>Por qué descartaste vos</h2>
+{_tabla(("Motivo", "Ofertas"), motivos_filas)}
+
+<h2>De dónde vienen</h2>
+{_tabla(("Portal", "Ofertas"), list((e.get("por_fuente") or {}).items()))}
+<p class="explica">Ventana de búsqueda: los últimos
+{esc(ventana if ventana is not None else "?")} días. Se cambia en Mi perfil.</p>
+
+{_como_viene_funcionando(perfil, salud)}"""
 
 
 # --- mensajes para el reclutador -------------------------------------------
@@ -773,13 +1033,14 @@ def mensajes(perfil: str, oferta: dict, textos: dict[str, str], con_llm: bool,
     boton = "" if con_llm else f"""<form method="post" action="/mensajes">
   <input type="hidden" name="perfil" value="{esc(perfil)}">
   <input type="hidden" name="url" value="{esc(url)}">
-  <button type="submit">Completar con IA leyendo el aviso y mi CV</button>
+  <button class="primario" type="submit">Completar con IA leyendo el aviso y mi CV</button>
   <p class="ayuda">Usa una llamada al modelo. Sin esto, completá a mano lo que
   está entre llaves.</p>
 </form>"""
     return f"""{avisos(avisos_)}
-<h2>Mensaje para {esc(oferta.get('company') or 'quien publicó')}</h2>
-<p class="meta">{esc(titulo)} · <a href="{esc(url)}" target="_blank" rel="noopener">ver el aviso</a></p>
+<h1>Mensaje para {esc(oferta.get('company') or 'quien publicó')}</h1>
+<p class="sub"><span class="dato-linea">{esc(titulo)}</span>
+<a href="{esc(url)}" {ABRIR_EL_AVISO}>Ver el aviso en el portal</a></p>
 <p class="herramientas"><a class="boton" href="/trabajos?perfil={esc(perfil)}">Volver a Trabajos</a></p>
 {cajas}
 {boton}
@@ -811,15 +1072,16 @@ escribiste con otra palabra.</p>"""
         cuerpo = f"""<form method="post" action="/consejo">
   <input type="hidden" name="perfil" value="{esc(perfil)}">
   <input type="hidden" name="url" value="{esc(url)}">
-  <button type="submit">Leer el aviso y decirme qué reordenar</button>
+  <button class="primario" type="submit">Leer el aviso y decirme qué reordenar</button>
   <p class="ayuda">Usa una llamada al modelo. No reescribe el CV: dice qué subir
   y qué palabra falta.</p>
 </form>"""
 
     return f"""{avisos(avisos_)}
-<h2>Consejo para tu CV</h2>
-<p class="meta">{esc(titulo)} · {esc(oferta.get('company') or 'sin empresa')}<br>
-<a href="{esc(url)}" target="_blank" rel="noopener">ver el aviso</a></p>
+<h1>Consejo para tu CV</h1>
+<p class="sub"><span class="dato-linea">{esc(titulo)}</span>
+<span class="dato-linea">{esc(oferta.get('company') or 'sin empresa')}</span>
+<a href="{esc(url)}" {ABRIR_EL_AVISO}>Ver el aviso en el portal</a></p>
 <p class="herramientas"><a class="boton" href="/trabajos?perfil={esc(perfil)}">Volver a Trabajos</a></p>
 
 <h2>Palabras del aviso que no están en tu CV</h2>

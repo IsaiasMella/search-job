@@ -41,6 +41,7 @@ from vacantia.log import get_logger
 from vacantia.models import Job
 from vacantia.sources.base import Source
 from vacantia.sources.careers import title_from_url
+from vacantia.sources.google_posts import es_reciente
 
 logger = get_logger()
 
@@ -276,11 +277,25 @@ class PortalSource(Source):
         if jobs and self.fetch_description:
             logger.info(f"[{self.name}] Bajando el detalle de {len(jobs)} aviso(s)...")
             self._detalle(jobs)
+
+        # La ventana se aplica acá y no antes porque la fecha recién aparece en
+        # la página del detalle: el listado no la trae. Se paga la descarga
+        # igual, pero se ahorra lo caro, que es puntuar con el LLM un aviso de
+        # hace dos meses. Sin fecha no se descarta: lo que no dice, no filtra.
+        if self.max_age_days > 0:
+            quedan = [j for j in jobs if es_reciente(j.posted_at, self.max_age_days)]
+            if viejos := len(jobs) - len(quedan):
+                logger.info(
+                    f"[{self.name}] {viejos} aviso(s) de más de "
+                    f"{self.max_age_days} días, afuera"
+                )
+            jobs = quedan
+
         logger.info(f"[{self.name}] {len(jobs)} aviso(s) en total")
         return jobs
 
 
-# --- leer empresa, ciudad y modalidad de la página del aviso -------------
+# --- leer empresa, ciudad, modalidad y fecha de la página del aviso ------
 #
 # `city` y `work_mode` los completa normalmente el scoring con el LLM
 # (`scoring.py`), pero si el LLM falla quedan vacíos y entonces la regla de
@@ -291,6 +306,13 @@ class PortalSource(Source):
 # `company` no lo llena nadie más, y sin él `Job.dedupe_key` devuelve "" y el
 # dedupe por empresa+título no corre. Es lo que dejaba pasar el mismo aviso por
 # Bumeran y por Zonajobs, que comparten la base.
+#
+# `posted_at` no lo llena nadie más tampoco, y era el agujero más grande:
+# medido el 7/9/2026 sobre un historial de 216 avisos, los tres portales
+# reportaban fecha en **cero** de sus 20 avisos. No es que no la tengan — está
+# escrita en la misma página que ya bajamos— y sin ella el filtro de antigüedad
+# de la pantalla queda ciego justo ahí: un aviso de Bumeran de dos meses pasaba
+# el filtro de "hoy" porque no tenía con qué compararse.
 
 _MODOS = (
     ("remote", ("remoto", "remote", "teletrabajo", "home office")),
@@ -336,6 +358,51 @@ def _ciudad(lugar: str) -> str:
     return (lugar or "").split(",")[0].strip()
 
 
+#: Dónde arrancan los avisos que el portal recomienda al pie. Todo lo que viene
+#: después NO es de este aviso, y es la trampa que hay que esquivar para la
+#: fecha: Computrabajo lista ocho "ofertas similares" cada una con la suya, y
+#: agarrar la primera del documento daba la de otro aviso.
+_ARRANCAN_LOS_AJENOS = re.compile(
+    r"^#{1,3}\s*(?:Ofertas similares|Avisos similares|Empleos similares"
+    r"|Otras ofertas|B[uú]squedas relacionadas)", re.M | re.I
+)
+
+#: "Hace 6 días (actualizada)", "Ayer", "Publicado el 20/08/2026",
+#: "Publicado hace más de 15 días". Los lee `fechas.parse_posted`.
+_FECHA_EN_LA_PAGINA = re.compile(
+    r"(?:Publicad[oa]|Actualizad[oa])?\s*(?:el\s+)?"
+    r"(\d{1,2}/\d{1,2}/\d{4}"
+    r"|[Hh]ace\s+(?:m[aá]s\s+de\s+)?\d+\s+[a-zá-ú]+"
+    r"|\b[Aa]nteayer\b|\b[Aa]yer\b|\b[Hh]oy\b)"
+)
+
+
+def _solo_este_aviso(texto: str) -> str:
+    """El texto hasta donde empiezan los avisos que el portal recomienda."""
+    corte = _ARRANCAN_LOS_AJENOS.search(texto or "")
+    return texto[: corte.start()] if corte else (texto or "")
+
+
+def _fecha(texto: str, exacta_primero: bool = False) -> str:
+    """Cuándo se publicó el aviso, tal como lo escribe el portal, o "".
+
+    Se busca sólo en la parte de la página que habla de **este** aviso: al pie
+    los tres portales listan avisos parecidos, cada uno con su propia fecha.
+
+    `exacta_primero` es para Bumeran y Zonajobs, que dicen las dos cosas en la
+    misma página: arriba un título vago ("Publicado hace más de 15 días", que
+    deja de contar a los 15) y más abajo la fecha exacta ("Publicado el
+    20/08/2026"). La segunda es mejor y no está primera, así que se la busca
+    aparte antes de caer en el orden del documento.
+    """
+    mio = _solo_este_aviso(texto)
+    if exacta_primero:
+        if m := re.search(r"\b(\d{1,2}/\d{1,2}/\d{4})\b", mio):
+            return m.group(1)
+    m = _FECHA_EN_LA_PAGINA.search(mio)
+    return m.group(1).strip() if m else ""
+
+
 def extraer_navent(texto: str) -> dict:
     """Bumeran y Zonajobs: misma plataforma, misma maquetación.
 
@@ -350,11 +417,23 @@ def extraer_navent(texto: str) -> dict:
         Ver más avisos de la empresa
 
         Aliantec
+
+    La fecha la dicen dos veces, y las dos no valen lo mismo:
+
+        # AI Engineer - Híbrido - 1878
+        ## Publicado hace más de 15 días      <- deja de contar a los 15
+        ...
+        Publicado el 20/08/2026               <- ésta es la buena
+
+    Por eso `_fecha` acá va con `exacta_primero`.
     """
     datos: dict[str, str] = {}
 
     if m := re.search(r"^#\s+(.+?)\s*$", texto, re.M):
         datos["title"] = m.group(1)
+
+    if fecha := _fecha(texto, exacta_primero=True):
+        datos["posted_at"] = fecha
 
     if m := re.search(r"^Ubicaci[oó]n\s*$\n+^(.+)$", texto, re.M | re.I):
         datos["city"] = _ciudad(m.group(1))
@@ -377,6 +456,16 @@ def extraer_computrabajo(texto: str) -> dict:
         Kaizen Recursos Humanos - Monserrat, Capital Federal
 
     No publica la modalidad como campo aparte, así que sale del texto.
+
+    La fecha va suelta, sin etiqueta, al final de la descripción y justo antes
+    de las ofertas similares:
+
+        Palabras clave: senior, sr, ingeniero, engineers, ingeniera
+        Hace 6 días (actualizada)
+        ...
+        ## Ofertas similares
+        ...
+          Ayer                     <- ésta es de otro aviso
     """
     datos: dict[str, str] = {}
 
@@ -387,6 +476,9 @@ def extraer_computrabajo(texto: str) -> dict:
         empresa, _, lugar = cuerpo[1].partition(" - ")
         datos["company"] = empresa.strip()
         datos["city"] = _ciudad(lugar)
+
+    if fecha := _fecha(texto):
+        datos["posted_at"] = fecha
 
     # Sin campo propio: lo dice el título o el cuerpo ("Zona y horario Laboral:
     # REMOTO"). Se mira sólo el principio para no comerse los avisos

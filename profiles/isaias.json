@@ -10,6 +10,7 @@
   "max_new_per_run": 30,
   "notify_when_empty": true,
   "filters": {
+    "max_age_days": 7,
     "location": {
       "country": "Argentina",
       "city": "Bahía Blanca"
@@ -127,11 +128,11 @@
     },
     {
       "type": "zonajobs",
-      "enabled": false
+      "enabled": true
     },
     {
       "type": "computrabajo",
-      "enabled": false
+      "enabled": true
     }
   ],
   "notifiers": [

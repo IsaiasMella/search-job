@@ -443,27 +443,325 @@ def test_ninguna_pantalla_muestra_em_dash():
 def test_cada_filtro_vacio_dice_algo_distinto():
     """"No hay ofertas" desperdicia el momento de más atención de la pantalla.
 
-    Sin ninguna descartada, lo útil es explicar para qué sirve descartar; en
-    la primera corrida, lo útil es decir qué archivo hay que abrir.
+    Sin ninguna descartada, lo útil es explicar para qué sirve descartar; en la
+    primera corrida, lo útil es el botón que corre la primera búsqueda.
     """
     from vacantia.ui import render
 
     primera = render.trabajos("ana", [], {}, "todas", [])
     sin_descartes = render.trabajos("ana", [], {}, "descartadas", [])
 
-    assert "buscar_ahora.bat" in primera
-    assert "No apliqué" in sin_descartes and "buscar_ahora.bat" not in sin_descartes
+    # La salida está donde el vacío se arregla buscando, y no donde no.
+    assert "Buscar ahora" in primera and 'action="/buscar"' in primera
+    assert "No apliqué" in sin_descartes and "Buscar ahora" not in sin_descartes
 
 
-def test_la_pantalla_se_adapta_al_tema_del_sistema():
-    """Se usa de noche y de día. Sin esto, de noche encandila."""
+def test_la_pantalla_no_nombra_ningun_archivo_ni_comando():
+    """Si hay que ejecutar algo, es un botón con nombre humano.
+
+    Mientras la pantalla decía "doble clic en `buscar_ahora.bat`", la pantalla
+    no era la app: era la documentación de otro programa. Y para poder decirlo
+    hubo que construir el botón, que es lo que faltaba.
+    """
+    import html as H
+    import re
+
+    for nombre, pagina in _paginas_para_auditar().items():
+        sin_script = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", pagina,
+                            flags=re.S | re.I)
+        visible = H.unescape(re.sub(r"<[^>]+>", " ", sin_script))
+        for prohibido in (".bat", ".ps1", ".py", "python -m", "doble clic"):
+            assert prohibido not in visible, f"'{prohibido}' en la pantalla '{nombre}'"
+
+
+def test_la_pantalla_es_oscura_y_una_sola():
+    """Un solo tema, el oscuro. No hay modo claro y no se improvisa uno.
+
+    La app se usa en escritorio, la usan cinco personas y siempre de noche o
+    con la ventana al lado. Mantener dos paletas era mantener dos veces cada
+    color, y la mitad de las veces la segunda se olvidaba.
+    """
     from vacantia.ui.render import CSS
 
-    assert "prefers-color-scheme: dark" in CSS
     assert "color-scheme: dark" in CSS
-    # Los colores se declaran una sola vez, como tokens: si una regla escribe
-    # un color suelto, el modo oscuro se olvida de esa regla.
-    assert CSS.count("var(--texto)") > 3 and CSS.count("var(--papel)") > 3
+    assert "prefers-color-scheme: light" not in CSS
+    assert "filter: invert" not in CSS          # el atajo que no se toma
+
+
+def test_ninguna_regla_escribe_un_color_suelto():
+    """Los colores se declaran una vez, arriba, como tokens semánticos.
+
+    Si una regla escribe un hex propio, cambiar la paleta deja esa regla atrás
+    y nadie se entera hasta que se ve en pantalla. La única excepción es la
+    flecha del desplegable, que lleva el color adentro de un SVG.
+    """
+    import re
+
+    from vacantia.ui.render import CSS
+
+    # Todo lo que está fuera del bloque :root de tokens.
+    inicio = CSS.index(":root {")
+    reglas = CSS[:inicio] + CSS[CSS.index("\n}", inicio):]
+    sueltos = [linea.strip() for linea in reglas.splitlines()
+               if re.search(r"#[0-9A-Fa-f]{3,8}\b", linea) and "svg" not in linea]
+    assert sueltos == [], sueltos
+    assert CSS.count("var(--color-text-primary)") > 3
+    assert CSS.count("var(--color-surface)") > 3
+
+
+def _contraste(a: str, b: str) -> float:
+    """La relación de contraste de WCAG entre dos colores en hexadecimal."""
+    def luminancia(hexa):
+        canales = (int(hexa[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        r, g, b_ = (c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+                    for c in canales)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b_
+
+    la, lb = luminancia(a), luminancia(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def test_todo_par_de_texto_y_fondo_cumple_wcag_aa():
+    """4.5:1 en texto normal. El par más ajustado del sistema es el terciario
+    sobre la superficie elevada: si alguien lo baja, falla acá.
+
+    Éste es el que agarró que el índigo de acción (#6366E8) daba 4.13:1 como
+    color de texto: sirve de relleno de botón con texto blanco, pero no para un
+    link índigo sobre fondo oscuro. De ahí salió el token de link aparte.
+    """
+    import re
+
+    from vacantia.ui.estilos import TOKENS
+
+    valores = dict(re.findall(r"(--[\w-]+):\s*(#[0-9A-Fa-f]{6});", TOKENS))
+    # Los semánticos apuntan a primitivos: se resuelve una vuelta.
+    for clave, valor in re.findall(r"(--[\w-]+):\s*var\((--[\w-]+)\);", TOKENS):
+        if valor in valores:
+            valores[clave] = valores[valor]
+
+    fondos = ("--color-background", "--color-surface", "--color-surface-raised")
+    textos = ("--color-text-primary", "--color-text-secondary",
+              "--color-text-tertiary", "--color-link", "--color-success",
+              "--color-warning", "--color-danger", "--color-info")
+    for texto in textos:
+        for fondo in fondos:
+            r = _contraste(valores[texto], valores[fondo])
+            assert r >= 4.5, f"{texto} sobre {fondo}: {r:.2f}:1"
+
+    # El texto de estado sobre su propia superficie.
+    for color in ("success", "warning", "danger", "info"):
+        r = _contraste(valores[f"--color-{color}"], valores[f"--color-{color}-surface"])
+        assert r >= 4.5, f"{color} sobre su surface: {r:.2f}:1"
+
+    # Y el texto del botón primario, en reposo y en hover.
+    for fondo in ("--color-action", "--color-action-hover"):
+        r = _contraste(valores["--color-text-on-action"], valores[fondo])
+        assert r >= 4.5, f"texto del botón sobre {fondo}: {r:.2f}:1"
+
+
+def test_buscar_ahora_es_un_boton_y_no_un_archivo(sitio, monkeypatch):
+    """El `.bat` que había que ir a abrir al Explorador, adentro de la app.
+
+    Corre en un proceso aparte a propósito: la búsqueda tarda minutos y el
+    servidor atiende de a un pedido, así que hacerla adentro dejaría la pantalla
+    congelada hasta que termine.
+    """
+    from vacantia.ui import corrida
+
+    arrancadas = []
+
+    class Falso:
+        def poll(self):
+            return None if arrancadas and arrancadas[-1][1] else 0
+
+    def falso_popen(orden, **kw):
+        arrancadas.append((orden, kw.get("sigue", False)))
+        return Falso()
+
+    monkeypatch.setattr(corrida.subprocess, "Popen", falso_popen)
+    monkeypatch.setattr(corrida, "_proceso", None)
+
+    base, _ = sitio
+    _, html, url = post(base, "/buscar", {"perfil": "test"})
+    assert "/trabajos" in url and "perfil=test" in url
+    assert "Buscando ofertas" in html            # el aviso, en castellano llano
+
+    orden = arrancadas[0][0]
+    assert orden[1:3] == ["-m", "vacantia.run"]
+    assert orden[3:] == ["--profile", "test"]    # sólo el perfil que lo pidió
+
+
+def test_no_arranca_dos_busquedas_encimadas(sitio, monkeypatch):
+    """Los límites del plan gratis son de la cuenta, no del perfil."""
+    from vacantia.ui import corrida
+
+    class Corriendo:
+        def poll(self):
+            return None                      # sigue vivo
+
+    monkeypatch.setattr(corrida, "_proceso", Corriendo())
+    assert corrida.esta_corriendo()
+
+    arranco, mensaje = corrida.arrancar("test")
+    assert arranco is False
+    assert "Ya hay una búsqueda en curso" in mensaje
+
+    # Y mientras tanto el botón está apagado en vez de mentir.
+    base, _ = sitio
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert "<button type=\"button\" disabled>Buscando ofertas</button>" in html
+
+
+def test_linkedin_urls_abre_en_jobs_y_tiene_las_dos_pestanias(sitio):
+    """El scraper trae lo de hace uno a tres días; lo de hoy sale por acá.
+
+    Todavía no genera ninguna dirección: por ahora es el lugar, con las dos
+    pestañas y lo que va en cada una escrito.
+    """
+    base, _ = sitio
+
+    _, defecto, _ = get(base, "/linkedin?perfil=test")
+    assert "LinkedIn URLs" in defecto
+    assert 'class="pestania activa" href="/linkedin?perfil=test&tab=jobs"' in defecto
+    assert "Publicaciones" in defecto
+
+    _, posts, _ = get(base, "/linkedin?perfil=test&tab=publicaciones")
+    assert 'tab=publicaciones"  aria-current=page' in posts or "aria-current" in posts
+    assert "publicaciones de LinkedIn" in posts
+
+    # Una pestaña inventada cae en Jobs y no rompe.
+    _, rara, _ = get(base, "/linkedin?perfil=test&tab=cualquiera")
+    assert "LinkedIn Jobs" in rara
+
+    # Y está en la barra lateral, abajo de Trabajos, adentro de "Buscar".
+    lateral = defecto[defecto.index("<aside"):defecto.index("</aside>")]
+    assert lateral.index(">Buscar<") < lateral.index(">Trabajos<") \
+        < lateral.index(">LinkedIn URLs<") < lateral.index(">Métricas<")
+
+
+def test_las_pestanias_son_navegacion_y_no_un_filtro():
+    """Las píldoras filtran una lista; las pestañas cambian de contenido.
+
+    Por eso van arriba del contenido y no adentro de una tarjeta, y por eso son
+    links y no botones de un formulario.
+    """
+    from vacantia.ui.render import linkedin
+
+    html = linkedin("ana", "jobs", [])
+    assert '<nav class="pestanias"' in html
+    assert html.index('class="pestanias"') < html.index('class="vacio"')
+    assert "<button" not in html
+
+
+def test_como_viene_funcionando_reemplaza_la_ventana_negra(sitio):
+    """Lo que mostraba la pantalla de estado, adentro de Métricas.
+
+    Si está programado, cuándo corrió, qué encontró, si avisó por Telegram y de
+    qué se quejó. Sin nombres de archivo y sin abrir una consola.
+    """
+    from vacantia.ui import render
+
+    salud = {"corriendo": False, "cuando": "hoy 16:30", "duracion": "41 segundos",
+             "encontro": [("recolectadas", 125), ("nuevas", 78)],
+             "telegram": "hoy 16:31",
+             "problemas": ["[rrhh] sin contenido en https://a.com/x"],
+             "programada": [{"nombre": "Vacantia - ana", "estado": "Listo",
+                             "proxima": "9/9/2026 12:00:00"}]}
+    html = render.estadisticas(
+        "ana", {"sin_marcar": 1, "aplicadas": 2, "descartadas": 3, "archivadas": 4,
+                "total": 5, "ingles": {}, "sistema": {}, "motivos": {},
+                "por_fuente": {}, "max_age_days": 7},
+        "todo", [], salud=salud)
+
+    assert "Cómo viene funcionando" in html
+    assert "Vacantia - ana" in html and "9/9/2026 12:00:00" in html
+    assert "recolectadas" in html and "125" in html
+    assert "41 segundos" in html
+    assert "hoy 16:31" in html
+    # Las quejas del registro son texto de máquina: van adentro del desplegable.
+    assert "Ver los últimos avisos del registro" in html
+    assert 'class="registro"' in html
+
+    # Y sin datos no inventa nada.
+    sin_salud = render.estadisticas(
+        "ana", {"sin_marcar": 0, "aplicadas": 0, "descartadas": 0, "archivadas": 0,
+                "total": 0, "ingles": {}, "sistema": {}, "motivos": {},
+                "por_fuente": {}, "max_age_days": 7}, "todo", [])
+    assert "Cómo viene funcionando" not in sin_salud
+
+
+def test_la_fecha_de_marcado_se_lee_en_la_hora_de_aca(sitio):
+    """Se guarda en UTC, y hay que pasarla a la hora local ANTES del día.
+
+    Cortando los diez primeros caracteres del texto, todo lo que marcabas entre
+    las 21:00 y la medianoche quedaba con la fecha de mañana en UTC, y al día
+    siguiente la tarjeta decía "Aplicaste hoy" a algo de ayer. Son tres horas
+    por día, justo las que más se usa la pantalla.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from vacantia.ui.render import _cuando_marcada
+
+    ayer_local = datetime.now().astimezone() - timedelta(days=1)
+    en_utc = ayer_local.astimezone(timezone.utc).isoformat()
+    assert _cuando_marcada({"fecha_feedback": en_utc})[0] == "ayer"
+
+    ahora = datetime.now().astimezone().astimezone(timezone.utc).isoformat()
+    assert _cuando_marcada({"fecha_feedback": ahora})[0] == "hoy"
+
+    # Una fecha sola, sin hora, sigue funcionando como siempre.
+    hoy = datetime.now().astimezone().date().isoformat()
+    assert _cuando_marcada({"fecha_feedback": hoy})[0] == "hoy"
+    assert _cuando_marcada({"fecha_feedback": ""})[0] == ""
+
+
+def test_las_fuentes_las_sirve_la_app_y_nunca_un_cdn(sitio):
+    """La máquina puede estar sin internet, y una fuente que tarda tres segundos
+    en llegar es una pantalla que parpadea al abrir.
+
+    Si los archivos no están en `vacantia/ui/fuentes/`, el CSS ni siquiera
+    declara las `@font-face` y todo cae en la pila del sistema. Lo que no puede
+    pasar nunca es que la pantalla salga a buscar algo a internet.
+    """
+    from vacantia.ui import estilos
+    from vacantia.ui.render import CSS
+
+    for prohibido in ("fonts.googleapis", "fonts.gstatic", "cdn.", "//http", "https://"):
+        assert prohibido not in CSS, prohibido
+    # Inter primero y la pila del sistema atrás, para que se vea algo igual.
+    assert "--font-sans: Inter," in CSS and "system-ui" in CSS
+    assert '--font-mono: "JetBrains Mono"' in CSS and "monospace" in CSS
+
+    # Las declara sólo si están en disco, y las sirve la propia app.
+    if not any((estilos.FUENTES_DIR / a).exists() for a, _, _ in estilos.FUENTES):
+        assert "@font-face" not in CSS
+    # Y la ruta no deja pedir cualquier archivo del disco: sólo salen los
+    # nombres de la lista blanca, así que el path no se arma con la URL.
+    import urllib.error
+
+    base, _ = sitio
+    for camino in ("/fuentes/../../.env", "/fuentes/cualquiera.woff2"):
+        with pytest.raises(urllib.error.HTTPError) as e:
+            get(base, camino)
+        assert e.value.code == 404
+
+
+def test_el_vidrio_esmerilado_se_gasta_en_tres_lugares():
+    """Si todo es vidrio, nada se destaca.
+
+    La barra lateral, la tarjeta de oferta sin marcar y el cartel de novedades.
+    Una tarjeta de métrica con vidrio y una de oferta con vidrio se ven iguales
+    y destruyen la jerarquía, así que el efecto se cuenta.
+    """
+    import re
+
+    from vacantia.ui.render import CSS
+
+    con_vidrio = re.findall(r"\n(\.[\w.-]+)\s*\{[^}]*var\(--glass-background\)", CSS)
+    assert sorted(con_vidrio) == [".lateral", ".novedades", ".oferta"], con_vidrio
+    # Y la que ya está marcada lo pierde: se distingue de un vistazo lo que
+    # queda por hacer de lo que ya está hecho.
+    assert ".oferta.marcada" in CSS and "backdrop-filter: none" in CSS
 
 
 def test_se_puede_navegar_con_teclado():
@@ -482,6 +780,250 @@ def test_el_motivo_faltante_se_avisa_al_lado_del_campo():
     assert "aria-invalid" in JS
     tarjeta = _tarjeta({"url": "https://x/1", "title": "T"}, "ana", "pendientes")
     assert 'class="error-motivo"' in tarjeta
+
+
+def test_el_aviso_se_abre_sin_contarle_al_portal_de_donde_venimos():
+    """`rel="noreferrer"` no es privacidad: sin él, Computrabajo se rompe.
+
+    La pantalla corre en `http://127.0.0.1:8756`. Si el navegador manda ese
+    referrer, Computrabajo lo guarda en su cookie `extrfr`, y desde ahí todos los
+    pedidos al sitio llevan una URL a loopback adentro de una cookie — la firma
+    de un SSRF. Su firewall contesta 403 en el sitio entero hasta que se borre.
+    No fallaba un aviso: el primer clic desde acá rompía todos los siguientes.
+
+    Verificado el 7/9/2026 armando la cookie a mano contra el portal:
+    `extrfr=http://127.0.0.1:8756/trabajos` -> 403, sin la cookie -> 200.
+
+    `noreferrer` implica `noopener`, así que la pestaña nueva sigue sin poder
+    tocar a la que la abrió.
+    """
+    from vacantia.ui.render import _tarjeta, consejo, mensajes
+
+    oferta = {"url": "https://ar.computrabajo.com/x", "title": "T"}
+    # Las cuatro pantallas que enlazan al aviso en el portal.
+    salidas = [
+        _tarjeta(oferta, "ana", "pendientes"),
+        _tarjeta({**oferta, "archivada": True}, "ana", "archivadas"),
+        mensajes("ana", oferta, {"DM": "hola"}, True, []),
+        consejo("ana", oferta, [], "texto", True, []),
+    ]
+    for html in salidas:
+        assert 'href="https://ar.computrabajo.com/x"' in html
+        assert 'rel="noreferrer"' in html
+        assert 'rel="noopener"' not in html
+
+
+# --- descartar sin escribir, y volver a donde estabas -----------------------
+
+def test_los_desplegables_se_ven_como_el_resto_de_los_controles():
+    """Tres de los cuatro `select` no tenían una línea de CSS y salía el control
+    crudo del sistema operativo, que no se parece a nada del resto."""
+    from vacantia.ui.render import CSS
+
+    regla = CSS[CSS.index(chr(10) + "select {"):]
+    regla = regla[:regla.index("}")]
+    # Mismo borde, mismo radio y misma superficie que los botones y los inputs.
+    for token in ("var(--color-border)", "var(--rounded-sm)", "var(--color-surface)",
+                  "var(--color-text-primary)", "var(--select-arrow)",
+                  "var(--control-height)"):
+        assert token in regla, token
+    # La flecha nativa no se puede pintar: se saca y se dibuja la nuestra.
+    assert "appearance: none" in regla
+    # Vivos como los botones: hover, foco visible y transición.
+    assert "select:hover" in CSS and "select:focus" in CSS
+    assert "transition" in regla
+
+
+def test_la_flecha_del_desplegable_usa_el_gris_de_los_tokens():
+    """Va como token porque el color viaja adentro del SVG y no se puede
+    referenciar una variable ahí. Si alguien cambia la paleta y se olvida de la
+    flecha, falla esto y no la pantalla."""
+    from vacantia.ui.render import CSS
+
+    # text-secondary, tal como está definido arriba en los primitivos.
+    assert "--neutral-300: #9AA0B4;" in CSS
+    assert "%239AA0B4" in CSS
+
+
+def test_el_nombre_de_la_app_lleva_al_home():
+    from vacantia.ui.render import pagina
+
+    html = pagina("Métricas", "", "ana", ["ana"], "estadisticas")
+    assert 'href="/trabajos?perfil=ana" class="marca-app"' in html
+    assert "VACANTIA" in html
+
+
+def test_el_estado_del_sistema_esta_siempre_a_la_vista():
+    """Cuándo buscó y cuándo vuelve a buscar es el antídoto de la ansiedad.
+
+    La pregunta que más pesa buscando trabajo no es "¿hay ofertas?" sino "¿esto
+    es todo lo que hay?". Por eso el dato tiene un lugar fijo al pie de la barra
+    lateral, en todas las pantallas, y no un tooltip escondido.
+    """
+    from vacantia.ui.render import pagina
+
+    estado = {"ultima": "hoy 16:30", "proxima": "hoy 23:59", "ventana": 7}
+    for tab in ("trabajos", "estadisticas", "datos"):
+        html = pagina("t", "c", "ana", ["ana"], tab, estado)
+        assert 'class="estado"' in html
+        assert "Última búsqueda: hoy 16:30" in html
+        assert "Próxima: hoy 23:59" in html
+        assert "últimos <span class='valor'>7</span> días" in html
+
+    # Sin datos no se inventa nada: el bloque directamente no se dibuja.
+    assert 'class="estado"' not in pagina("t", "c", "ana", ["ana"], "trabajos")
+
+
+def test_la_navegacion_agrupa_por_lo_que_la_persona_hace():
+    """Primero buscar, y abajo, separado, revisar y configurar."""
+    from vacantia.ui.render import pagina
+
+    html = pagina("t", "c", "ana", ["ana"], "trabajos")
+    assert html.index("Buscar") < html.index("Trabajos") < html.index("Métricas")
+    assert "Mi perfil" in html
+    assert 'aria-current="page"' in html          # dónde estoy parado
+
+
+def test_el_motivo_se_elige_de_una_lista_o_se_escribe():
+    """Los dos caminos a la vista, y con cualquiera alcanza.
+
+    No hay opción "Otro motivo" en la lista: obligaba a abrir el desplegable,
+    bajar hasta "Otro" y recién ahí escribir, tres pasos de más justo cuando ya
+    tenías la mano en el teclado.
+    """
+    from vacantia.ui.render import _tarjeta
+
+    html = _tarjeta({"url": "https://x/1", "title": "T"}, "ana", "pendientes")
+    assert 'name="motivo_clave"' in html
+    for clave in ("ingles", "presencial", "especial"):
+        assert f'value="{clave}"' in html
+    assert 'value="otro"' not in html
+    # El campo de texto está siempre visible: no se esconde ni hace falta
+    # elegir nada para llegar a él. (La tarjeta tiene otros inputs que sí son
+    # `type=hidden`, así que se mira sólo la etiqueta de este campo.)
+    campo = html[html.index('name="motivo"'):]
+    campo = campo[:campo.index(">")]
+    assert "placeholder" in campo
+    assert "hidden" not in campo
+
+
+def test_marcar_guarda_donde_estabas_antes_de_enviar():
+    """La regresión que me comí escribiendo esto.
+
+    `form.submit()` NO dispara el evento 'submit', así que un listener sobre el
+    formulario no alcanza: hay que guardar la posición dentro de `marcar()`. Sin
+    esto, marcar la oferta 30 te devolvía arriba de todo, que es justo lo que
+    había que arreglar.
+    """
+    from vacantia.ui.render import JS
+
+    # El cuerpo de marcar(), hasta donde arranca la funcion siguiente. Se
+    # corta con salto de linea + "function" porque adentro hay un
+    # setTimeout(function(){...}) que si no partiria el texto antes de tiempo.
+    marcar = JS.split("function marcar(")[1].split(chr(10) + "function ")[0]
+    assert "recordarScroll()" in marcar, "marcar() tiene que guardar el scroll"
+    # Antes de mandar, no después: se compara contra el setTimeout que envía y
+    # no contra el texto "form.submit()", que también aparece en un comentario.
+    assert marcar.index("recordarScroll()") < marcar.index("setTimeout(")
+
+
+def test_descartar_con_un_motivo_de_la_lista_no_pide_texto(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, [{"url": "https://e/1", "title": "Una", "aplicado": None,
+                          "score": 70, "found_at": HOY_ISO, "posted_at": HOY_YMD}])
+    _, _, url = post(base, "/feedback", {
+        "perfil": "test", "url": "https://e/1", "aplicado": "no",
+        "motivo_clave": "ingles", "motivo": "",
+    })
+    assert "error" not in url
+    guardada = json.loads((tmp / "state" / "test" / "job_history.json")
+                          .read_text(encoding="utf-8"))[0]
+    assert guardada["aplicado"] is False
+    assert guardada["motivo_clave"] == "ingles"
+
+
+def test_descartar_escribiendo_y_sin_elegir_nada_tambien_vale(sitio):
+    """El caso de todos los días: ya tenías la mano en el teclado."""
+    base, tmp = sitio
+    _con_historial(tmp, [{"url": "https://e/1", "title": "Una", "aplicado": None,
+                          "score": 70, "found_at": HOY_ISO, "posted_at": HOY_YMD}])
+    _, _, url = post(base, "/feedback", {
+        "perfil": "test", "url": "https://e/1", "aplicado": "no",
+        "motivo_clave": "", "motivo": "Pide .NET y no lo uso",
+    })
+    assert "error" not in url
+    guardada = json.loads((tmp / "state" / "test" / "job_history.json")
+                          .read_text(encoding="utf-8"))[0]
+    assert guardada["aplicado"] is False
+    assert guardada["motivo_descarte"] == "Pide .NET y no lo uso"
+    assert guardada["motivo_clave"] == ""
+
+
+def test_sin_elegir_ni_escribir_no_pasa(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, [{"url": "https://e/1", "title": "Una", "aplicado": None,
+                          "score": 70, "found_at": HOY_ISO, "posted_at": HOY_YMD}])
+    _, _, url = post(base, "/feedback", {
+        "perfil": "test", "url": "https://e/1", "aplicado": "no",
+        "motivo_clave": "", "motivo": "   ",
+    })
+    assert "error" in url
+    guardada = json.loads((tmp / "state" / "test" / "job_history.json")
+                          .read_text(encoding="utf-8"))[0]
+    assert guardada["aplicado"] is None      # no se marcó nada
+
+
+def test_una_clave_inventada_no_se_guarda(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, [{"url": "https://e/1", "title": "Una", "aplicado": None,
+                          "score": 70, "found_at": HOY_ISO, "posted_at": HOY_YMD}])
+    post(base, "/feedback", {
+        "perfil": "test", "url": "https://e/1", "aplicado": "no",
+        "motivo_clave": "borrar_todo", "motivo": "un motivo escrito",
+    })
+    guardada = json.loads((tmp / "state" / "test" / "job_history.json")
+                          .read_text(encoding="utf-8"))[0]
+    assert guardada["motivo_clave"] == ""
+    assert guardada["motivo_descarte"] == "un motivo escrito"
+
+
+# --- el número grande y la pestaña Números ----------------------------------
+
+def test_sin_marcar_es_un_numero_grande_y_el_filtro_un_desplegable(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": f"https://e/{i}", "title": f"Una {i}", "aplicado": None,
+         "score": 70, "found_at": HOY_ISO, "posted_at": HOY_YMD}
+        for i in range(3)
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert '<span class="numero">3</span>' in html
+    assert 'class="filtro-fecha"' in html
+    assert '<select id="desde"' in html
+
+
+def test_en_las_otras_pestanias_el_numero_grande_no_va(sitio):
+    """Ahí el número es un archivo, no una tarea pendiente."""
+    base, tmp = sitio
+    _con_historial(tmp, [{"url": "https://e/1", "title": "Una", "aplicado": True,
+                          "score": 70, "found_at": HOY_ISO, "posted_at": HOY_YMD}])
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=aplicadas")
+    assert 'class="cuantas"' not in html
+    assert 'class="filtro-fecha"' in html      # el filtro sí sigue
+
+
+def test_la_pagina_de_numeros_abre_y_muestra_los_totales(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/1", "title": "Una", "aplicado": True, "score": 70,
+         "found_at": HOY_ISO, "posted_at": HOY_YMD},
+        {"url": "https://e/2", "title": "Otra", "aplicado": False, "score": 40,
+         "motivo_clave": "ingles", "found_at": HOY_ISO, "posted_at": HOY_YMD},
+    ])
+    codigo, html, _ = get(base, "/estadisticas?perfil=test")
+    assert codigo == 200
+    assert "Métricas" in html
+    assert "Piden inglés" in html
 
 
 # --- filtro por antigüedad y el costo del inglés ---------------------------
@@ -555,11 +1097,20 @@ def test_la_tarjeta_distingue_publicado_de_visto(sitio):
 
 
 def test_los_dos_filtros_se_cruzan_sin_pisarse(sitio):
-    """Cambiar de estado no puede resetear el rango de fechas, ni al revés."""
+    """Cambiar de estado no puede resetear el rango de fechas, ni al revés.
+
+    La antigüedad pasó de cuatro botones a un desplegable, así que el estado
+    viaja en un campo oculto del formulario y no pegado en cada link. Lo que se
+    prueba es lo mismo: que cada eje conserve el valor del otro.
+    """
     base, tmp = sitio
     _con_historial(tmp, VARIADAS)
     _, html, _ = get(base, "/trabajos?perfil=test&ver=descartadas&desde=7d")
-    assert "ver=descartadas&desde=hoy" in html or "desde=hoy" in html
+    # El desplegable de fechas se lleva puesto el estado elegido...
+    assert '<input type="hidden" name="ver" value="descartadas">' in html
+    assert '<option value="hoy"' in html
+    assert 'value="7d" selected' in html
+    # ...y los botones de estado, el rango elegido.
     assert "desde=7d&ver=aplicadas" in html or "ver=aplicadas" in html
 
 
@@ -574,11 +1125,35 @@ def test_marcar_una_oferta_no_te_devuelve_a_la_lista_completa(sitio):
     assert "desde=7d" in url
 
 
-def test_el_cartel_dice_cuantas_se_pierden_por_ingles(sitio):
-    """Pedido explícito, y el pedido incluía que incomode.
+def test_lo_que_se_pierde_por_ingles_se_cuenta_en_metricas(sitio):
+    """Ver sólo las ofertas en español da la impresión de que el mercado es así;
+    lo que se ve es el recorte del filtro, y el número lo desarma.
 
-    Ver sólo las ofertas en español da la impresión de que el mercado es así;
-    lo que se ve es el recorte del filtro. El número lo desarma.
+    Pero el número vive acá, no arriba de la lista de trabajos: ahí la persona
+    vino a aplicar, y lo primero que leería sería lo que se pierde. Acá vino a
+    mirar números, y el número viene con la salida al lado.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/1", "title": "Con ingles", "aplicado": None, "score": 88,
+         "requires_english": True, "found_at": HOY_ISO},
+        {"url": "https://e/2", "title": "Sin ingles", "aplicado": None, "score": 60,
+         "found_at": HOY_ISO},
+    ])
+    _, html, _ = get(base, "/estadisticas?perfil=test")
+    assert "piden un inglés más alto" in html
+    assert "88" in html                     # cuánto valía la mejor que se perdió
+    # Y la salida, que es lo que lo convierte en información accionable.
+    assert "Cambiar mi nivel de inglés" in html
+    assert 'href="/datos?perfil=test"' in html
+
+
+def test_arriba_de_la_lista_no_va_ningun_recuento_de_perdidas(sitio):
+    """La regla dura del rediseño.
+
+    Nunca mostrar lo que la persona se pierde antes de mostrarle lo que puede
+    hacer. El cartel de "87 ofertas que no podés tomar" era lo primero que se
+    leía al abrir Trabajos, todos los días, antes de la primera oferta.
     """
     base, tmp = sitio
     _con_historial(tmp, [
@@ -588,9 +1163,9 @@ def test_el_cartel_dice_cuantas_se_pierden_por_ingles(sitio):
          "found_at": HOY_ISO},
     ])
     _, html, _ = get(base, "/trabajos?perfil=test&desde=todo")
-    assert 'class="duele"' in html
-    assert "piden inglés" in html
-    assert "88" in html                     # cuánto valía la mejor que se perdió
+    assert "no podés tomar" not in html
+    assert "se te escapan" not in html
+    assert "piden un inglés más alto" not in html
 
 
 def test_sin_ofertas_perdidas_no_hay_cartel(sitio):
@@ -600,8 +1175,8 @@ def test_sin_ofertas_perdidas_no_hay_cartel(sitio):
         {"url": "https://e/2", "title": "Sin ingles", "aplicado": None, "score": 60,
          "found_at": HOY_ISO},
     ])
-    _, html, _ = get(base, "/trabajos?perfil=test&desde=todo")
-    assert 'class="duele"' not in html
+    _, html, _ = get(base, "/estadisticas?perfil=test")
+    assert 'class="callout atencion"' not in html
 
 
 def test_como_me_presento_es_un_campo_aparte_del_perfil_largo():
@@ -723,6 +1298,91 @@ def test_primero_las_que_mejor_encajan_y_no_las_mas_nuevas(sitio):
     assert html.index("Vieja pero encaja") < html.index("Recien entrada pero no sirve")
 
 
+# --- la banda de recién publicadas ------------------------------------------
+#
+# Ordenar sólo por puntaje contesta "cuál encaja mejor con mi CV", que no es la
+# misma pregunta que "a cuál me conviene postularme ahora": una de 92 de hace
+# seis días ya tiene cien postulantes y una de 88 de esta mañana no tiene
+# ninguno. La banda sube lo reciente SIN tocar el puntaje que se muestra.
+
+def _dias_atras(n):
+    from datetime import timedelta
+    return (_date.today() - timedelta(days=n)).isoformat()
+
+
+def test_lo_de_hoy_sube_arriba_de_lo_de_la_semana_pasada(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/vieja", "title": "Encaja un poco mejor pero es vieja",
+         "aplicado": None, "score": 92, "found_at": HOY_ISO,
+         "posted_at": _dias_atras(6)},
+        {"url": "https://e/hoy", "title": "Encaja bien y es de hoy",
+         "aplicado": None, "score": 88, "found_at": HOY_ISO, "posted_at": HOY_YMD},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert html.index("Encaja bien y es de hoy") < html.index("Encaja un poco mejor")
+    assert "Recién publicadas" in html
+    # El puntaje que se muestra no se toca: sigue diciendo qué tan bien encaja.
+    assert ">92<" in html and ">88<" in html
+
+
+def test_una_mala_de_hoy_no_sube_por_ser_de_hoy(sitio):
+    """La lección que ya estaba aprendida y que la banda podía reintroducir.
+
+    Ser de hoy no vuelve buena a una oferta mala. Sólo ordena entre las que ya
+    llegan al puntaje que la persona pidió.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/mala", "title": "De hoy pero no sirve",
+         "aplicado": None, "score": 10, "found_at": HOY_ISO, "posted_at": HOY_YMD},
+        {"url": "https://e/buena", "title": "De hace una semana y encaja",
+         "aplicado": None, "score": 90, "found_at": HOY_ISO,
+         "posted_at": _dias_atras(6)},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert html.index("De hace una semana y encaja") < html.index("De hoy pero no sirve")
+
+
+def test_sin_fecha_no_cuenta_como_reciente(sitio):
+    """No sabemos que sea nueva, y ponerla arriba sería inventarlo.
+
+    `found_at` es de hoy para todo lo que entró en la corrida de hoy: usarlo
+    metería en "recién publicadas" un aviso de hace tres meses.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/sinfecha", "title": "Sin fecha", "aplicado": None,
+         "score": 95, "found_at": HOY_ISO, "posted_at": ""},
+        {"url": "https://e/hoy", "title": "Con fecha de hoy", "aplicado": None,
+         "score": 70, "found_at": HOY_ISO, "posted_at": HOY_YMD},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert html.index("Con fecha de hoy") < html.index("Sin fecha")
+
+
+def test_si_no_hay_ninguna_reciente_no_se_dibuja_la_banda(sitio):
+    """Un rótulo que encabeza la lista entera no separa nada."""
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": "https://e/1", "title": "Vieja", "aplicado": None, "score": 90,
+         "found_at": HOY_ISO, "posted_at": _dias_atras(20)},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert "Recién publicadas" not in html
+
+
+def test_si_son_todas_recientes_tampoco(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": f"https://e/{i}", "title": f"Nueva {i}", "aplicado": None,
+         "score": 80 + i, "found_at": HOY_ISO, "posted_at": HOY_YMD}
+        for i in range(3)
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    assert "Recién publicadas" not in html
+
+
 def test_marcar_una_oferta_te_deja_en_la_misma_pagina(sitio):
     base, tmp = sitio
     _con_historial(tmp, _muchas(45))
@@ -811,18 +1471,75 @@ def test_la_tarjeta_dice_cuando_la_marcaste(sitio):
     assert "pide inglés" in descartadas      # el motivo, para acordarse por qué
 
 
-def test_el_cartel_del_ingles_no_aparece_cuando_estas_revisando(sitio):
-    """En "Apliqué" y "Descarté" ya decidiste: ahí el cartel es ruido."""
-    base, tmp = sitio
-    _con_historial(tmp, [
-        {"url": "https://e/1", "title": "Con ingles", "score": 88, "aplicado": True,
-         "requires_english": True, "fecha_feedback": HOY_ISO, "found_at": HOY_ISO},
-        {"url": "https://e/2", "title": "Pendiente", "score": 70, "aplicado": None,
-         "requires_english": True, "found_at": HOY_ISO},
-    ])
-    assert 'class="duele"' in get(base, "/trabajos?perfil=test&ver=pendientes")[1]
-    assert 'class="duele"' not in get(base, "/trabajos?perfil=test&ver=aplicadas")[1]
-    assert 'class="duele"' not in get(base, "/trabajos?perfil=test&ver=descartadas")[1]
+def test_la_tarjeta_no_muestra_mas_de_dos_controles(sitio):
+    """La regla dura de la tarjeta de oferta.
+
+    Antes se veían seis a la vez para una sola oferta: dos botones enfrentados,
+    el desplegable de motivos, el campo de texto y "Ya no está". Ahora se ven
+    "Apliqué" y "No apliqué", y nada más: el bloque de motivo se despliega al
+    marcar "No apliqué" y el resto vive en el menú de tres puntos.
+    """
+    import re
+
+    from vacantia.ui.render import _tarjeta
+
+    html = _tarjeta({"url": "https://x/1", "title": "T", "score": 70},
+                    "ana", "pendientes")
+
+    # Lo que se ve sin abrir nada: todo lo que está fuera de un <details>.
+    a_la_vista = re.sub(r"<details.*?</details>", "", html, flags=re.S)
+    assert a_la_vista.count("<button") == 1          # sólo el primario
+    assert "Apliqué" in a_la_vista
+    assert "motivo_clave" not in a_la_vista          # el desplegable, adentro
+    assert 'name="motivo"' not in a_la_vista         # el campo de texto, adentro
+    assert "Ya no está" not in a_la_vista            # el archivar, en el menú
+
+    # Y el disparador del bloque de motivo es el segundo control, en secundario.
+    assert "<summary>No apliqué</summary>" in html
+    # Los links auxiliares tampoco compiten: viven en el menú.
+    assert "Mensaje para escribirle" in html
+    assert "Mensaje para escribirle" not in a_la_vista
+
+
+def test_los_dos_botones_de_la_tarjeta_no_compiten(sitio):
+    """"Apliqué" verde contra "No apliqué" rojo obligaba a decidir antes de leer.
+
+    Y encima usaba rojo para un estado que no es un error: no aplicar a una
+    oferta es una decisión normal. Ahora hay un solo primario, que es la acción
+    que la persona vino a hacer.
+    """
+    base, _ = sitio
+    _, html, _ = get(base, "/trabajos?perfil=test")
+
+    assert 'class="primario" name="aplicado" value="si"' in html
+    assert 'class="verde"' not in html and 'class="rojo"' not in html
+
+
+def test_ningun_estado_neutral_se_pinta_de_rojo(sitio):
+    """Rojo es error o destrucción, nada más.
+
+    "Descartada" y "Archivada" no son errores: son decisiones tomadas, y se
+    pintan con neutrales. El verde sí queda, porque marca lo que ya hiciste.
+    """
+    import re
+
+    from vacantia.ui.render import _tarjeta
+
+    descartada = _tarjeta({"url": "https://x/1", "title": "T", "aplicado": False,
+                           "motivo_clave": "ingles"}, "ana", "descartadas")
+    archivada = _tarjeta({"url": "https://x/2", "title": "T", "archivada": True},
+                         "ana", "archivadas")
+    aplicada = _tarjeta({"url": "https://x/3", "title": "T", "aplicado": True},
+                        "ana", "aplicadas")
+
+    assert 'class="marca"' in descartada and 'class="marca"' in archivada
+    assert 'class="marca si"' in aplicada          # verde: lo que ya hiciste
+
+    # Y en el CSS, danger sólo aparece donde hay un error de verdad.
+    from vacantia.ui.render import CSS
+    usos = re.findall(r"\n([^\n{]+)\{[^}]*var\(--color-danger\)", CSS)
+    for selector in usos:
+        assert any(p in selector for p in (".mal", ".error", ".aviso.error")), selector
 
 
 def test_al_marcar_se_ve_cual_se_fue(sitio):

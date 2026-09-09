@@ -1,17 +1,27 @@
 """Cuándo se publicó un aviso, a partir de lo que escribe cada portal.
 
 `Job.posted_at` es texto crudo: cada fuente pone lo que quiere y ninguna avisa
-cuando cambia el formato. En el historial real conviven cuatro formas:
+cuando cambia el formato. Conviven estas formas:
 
-    "2026-08-21"      ISO, la que dan las APIs
-    "hace 2 semanas"  relativa, la que muestran los portales argentinos
-    "9 jun 2026"      día, mes abreviado en español, año
-    ""                casi la mitad de los avisos no lo dicen
+    "2026-08-21"        ISO, la que dan las APIs
+    "hace 2 semanas"    relativa, la que muestran los portales argentinos
+    "9 jun 2026"        día, mes abreviado en español, año
+    "20/08/2026"        Bumeran y Zonajobs, en "Publicado el ..."
+    "ayer"              Computrabajo, para lo de las últimas 24-48 h
+    "hace más de 15 días" Bumeran y Zonajobs cuando dejan de contar (ver abajo)
+    ""                  cuando el aviso de verdad no lo dice
 
 Todo eso se convierte acá a una fecha, una sola vez, para poder ordenar y
 filtrar por antigüedad. Lo que no se entiende devuelve None y nunca inventa:
 una fecha adivinada haría desaparecer un aviso bueno de un filtro de "últimos 7
 días" sin que nadie se entere.
+
+**"hace más de 15 días" es la única que no es exacta**, y por eso se lee como
+*exactamente* 15: es un piso, el aviso puede tener 16 días o 200. Se elige errar
+para el lado de que parezca más nuevo, que es la misma regla de siempre —
+preferimos mostrar de más antes que esconder una oferta buena. En la práctica
+casi no se usa: Bumeran y Zonajobs ponen la fecha exacta más abajo en la misma
+página ("Publicado el 20/08/2026") y `portales_ar` prefiere ésa.
 """
 
 import re
@@ -37,8 +47,18 @@ _MESES = {
     "jul": 7, "ago": 8, "sep": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12,
 }
 
-_RELATIVA = re.compile(r"hace\s+(\d+)\s+([a-z]+)")
+#: "hace 2 semanas" y también "hace más de 15 días", que es como Bumeran y
+#: Zonajobs dejan de contar. El "más de" se ignora a propósito: ver el docstring.
+_RELATIVA = re.compile(r"hace\s+(?:mas\s+de\s+)?(\d+)\s+([a-z]+)")
 _DIA_MES_ANIO = re.compile(r"^(\d{1,2})\s+([a-z]+)\.?\s+(\d{4})$")
+
+#: "20/08/2026", como lo escriben Bumeran y Zonajobs. Día primero: es Argentina,
+#: y leerlo al revés convertiría el 3 de agosto en el 8 de marzo.
+_DIA_MES_ANIO_BARRAS = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
+
+#: Las que no llevan número. Computrabajo las usa para lo más reciente, que es
+#: justo lo que más importa acertar.
+_SIN_NUMERO = {"hoy": 0, "ayer": 1, "anteayer": 2, "antier": 2}
 
 
 def _plano(texto: str) -> str:
@@ -78,6 +98,12 @@ def parse_posted(texto: str, hoy: date | None = None) -> date | None:
             return None
         return hoy - timedelta(days=cantidad * dias)
 
+    # Sin número: "ayer", "hoy". Va después de la relativa porque "hace 1 día"
+    # es más específico y tiene que ganar si aparecen los dos.
+    for palabra, dias in _SIN_NUMERO.items():
+        if re.search(rf"\b{palabra}\b", plano):
+            return hoy - timedelta(days=dias)
+
     # "9 jun 2026", "22 dic 2025"
     if m := _DIA_MES_ANIO.match(plano):
         mes = _MESES.get(m[2][:3])
@@ -86,6 +112,13 @@ def parse_posted(texto: str, hoy: date | None = None) -> date | None:
                 return date(int(m[3]), mes, int(m[1]))
             except ValueError:
                 return None
+
+    # "20/08/2026". Día primero: es Argentina.
+    if m := _DIA_MES_ANIO_BARRAS.match(plano):
+        try:
+            return date(int(m[3]), int(m[2]), int(m[1]))
+        except ValueError:
+            return None
 
     logger.debug(f"[fechas] No pude leer la fecha {crudo!r}")
     return None

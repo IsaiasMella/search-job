@@ -26,9 +26,39 @@ HOY = date(2026, 9, 4)
     ("hace 5 horas", HOY),
     ("9 jun 2026", date(2026, 6, 9)),
     ("22 dic 2025", date(2025, 12, 22)),
+    # Bumeran y Zonajobs, en "Publicado el ...". Día primero: es Argentina, y
+    # al revés el 3 de agosto se convertiría en el 8 de marzo.
+    ("20/08/2026", date(2026, 8, 20)),
+    ("03/08/2026", date(2026, 8, 3)),
+    # Computrabajo, para lo más reciente — que es justo lo que más importa.
+    ("Ayer", date(2026, 9, 3)),
+    ("hoy", HOY),
+    ("Anteayer", date(2026, 9, 2)),
+    ("Hace 6 días (actualizada)", date(2026, 8, 29)),
 ])
 def test_lee_los_formatos_que_usan_los_portales(texto, esperado):
     assert parse_posted(texto, HOY) == esperado
+
+
+def test_hace_mas_de_15_dias_se_lee_como_15_y_es_un_piso():
+    """Navent deja de contar a los 15: puede tener 16 días o dos años.
+
+    Se lee como 15 —el piso— y no como None, porque 15 ya alcanza para que
+    caiga fuera de una ventana de 7 días, que es donde importa. Erra para el
+    lado de que parezca más nuevo, que es la regla de siempre: mostrar de más
+    antes que esconder una oferta buena.
+
+    En la práctica casi no se usa: `portales_ar` prefiere la fecha exacta, que
+    Navent escribe más abajo en la misma página.
+    """
+    assert parse_posted("Publicado hace más de 15 días", HOY) == date(2026, 8, 20)
+    assert dias_desde(parse_posted("hace mas de 15 dias", HOY), HOY) == 15
+
+
+def test_una_palabra_que_contiene_ayer_no_es_ayer():
+    """"ayeres" no es una fecha, y "anteayer" no son 1 día sino 2."""
+    assert parse_posted("ayeres", HOY) is None
+    assert dias_desde(parse_posted("anteayer", HOY), HOY) == 2
 
 
 @pytest.mark.parametrize("texto", ["", "   ", None, "vaya uno a saber",

@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -290,6 +291,48 @@ POR_PAGINA = 20
 #: Para ordenar: las que no tienen fecha van al fondo, no arriba de todo.
 _SIN_FECHA = date.min
 
+#: Hasta cuántos días una oferta cuenta como "recién publicada" y sube arriba de
+#: todo, por encima del puntaje.
+#:
+#: **Por qué existe.** Ordenar sólo por puntaje contesta "cuál encaja mejor con
+#: mi CV", que no es la misma pregunta que "a cuál me conviene postularme
+#: ahora": una de 92 puntos de hace seis días ya tiene cien postulantes y una de
+#: 88 de esta mañana no tiene ninguno. Entre esas dos, la segunda.
+#:
+#: **Por qué 2 y no 1.** El buscador tarda en indexar: un post de ayer puede
+#: aparecer recién pasado mañana. Con un día, lo verdaderamente nuevo se
+#: perdería la banda por la demora del índice y no por su fecha.
+#:
+#: Una oferta **sin fecha no entra acá**: no sabemos que sea nueva y ponerla
+#: arriba sería inventarlo. Se ordena por puntaje como siempre.
+DIAS_RECIEN = 2
+
+def es_recien_publicada(oferta: dict, min_score: int, hoy: date | None = None) -> bool:
+    """¿Va en la banda de arriba? Recién publicada **y** que valga la pena.
+
+    Dos condiciones, y las dos hacen falta:
+
+    1. **Que el aviso diga que es de hace poco.** Se exige que la fecha sea de
+       publicación y no la de cuándo lo vimos: `found_at` es de hoy para todo lo
+       que entró en la corrida de hoy, y usarlo metería en "recién publicadas"
+       un aviso de hace tres meses que encontramos esta mañana.
+
+    2. **Que llegue al puntaje que la persona pidió** (`min_score` del perfil,
+       el mismo número que decide si le avisamos por Telegram). Ésta es la
+       lección ya aprendida que subir lo reciente reintroducía: las que puntúan
+       0 son las que directamente no son para uno, y si entraron hoy quedaban
+       arriba de todo — tres avisos de Lima en 0 antes que 29 ofertas de 80 para
+       arriba. Ser de hoy no vuelve buena a una oferta mala; la frescura sólo
+       ordena entre las que ya sirven.
+    """
+    if (oferta.get("score") or 0) < min_score:
+        return False
+    momento, es_de_publicacion = fecha_de(oferta, hoy)
+    if not es_de_publicacion:
+        return False
+    dias = dias_desde(momento, hoy)
+    return dias is not None and dias <= DIAS_RECIEN
+
 
 #: Antigüedad máxima en días de cada rango. None = sin límite.
 #: Un aviso del mes pasado casi siempre está cubierto: se sigue pudiendo ver,
@@ -308,7 +351,155 @@ def _entra_por_fecha(oferta: dict, desde: str, hoy=None) -> bool:
     return dias is None or dias <= tope
 
 
-def _por_estado(historial: list[dict], ver: str) -> list[dict]:
+# --- por qué no apliqué -----------------------------------------------------
+#
+# El campo era un texto libre y obligatorio, y con 60 descartes se vio en qué se
+# convierte: 46 veces la misma frase escrita a mano ("Estaba en ingles, osea que
+# necesito ingles para aplicar"), 4 veces "era presencial en Buenos Aires", y 6
+# veces un guion, que es lo que se escribe cuando el motivo no se puede resumir
+# y encima uno no quiere que el sistema saque conclusiones de ahí.
+#
+# El texto libre sigue estando —hay descartes que sólo se explican escribiendo—
+# pero deja de ser el camino principal.
+
+#: (clave, etiqueta, qué significa). El orden es el del desplegable.
+MOTIVOS = (
+    ("ingles", "Piden inglés",
+     "Suma al contador de ofertas que se pierden por el idioma."),
+    ("presencial", "Es presencial y no puedo ir",
+     "El aviso exige estar en un lugar al que no vas."),
+    ("especial", "Caso especial (que no aprenda de esto)",
+     "Se guarda el descarte, pero no cuenta como preferencia tuya."),
+)
+
+#: Los dos caminos para descartar, y alcanza con cualquiera de los dos: elegir
+#: uno de arriba, o escribirlo. **No hay una opción "Otro motivo" en la lista**,
+#: y es a propósito: obligaba a abrir el desplegable, bajar hasta "Otro" y recién
+#: ahí escribir, o sea tres pasos de más para el caso en que ya tenías la mano en
+#: el teclado. El campo está siempre a la vista y es opcional.
+
+#: Las que NO son una preferencia sobre el puesto y por lo tanto no tienen que
+#: enseñarle nada al sistema el día que el scoring aprenda del feedback.
+#:
+#: "Piden inglés" y "es presencial" son restricciones tuyas que los filtros ya
+#: aplican solos y mejor: meterlas al prompt como ejemplos negativos sería
+#: enseñarle dos veces lo mismo, y por el lado impreciso. Y "razón especial" lo
+#: pediste explícitamente.
+MOTIVOS_QUE_NO_ENSENIAN = frozenset({"ingles", "presencial", "especial"})
+
+_ETIQUETAS_MOTIVO = dict((clave, etiqueta) for clave, etiqueta, _ in MOTIVOS)
+
+#: Para los descartes viejos, escritos a mano antes de que existiera el
+#: desplegable. Sin esto, los 46 "estaba en ingles" que ya tenía Isaías no
+#: sumarían al contador de inglés y el número arrancaría mintiendo.
+_MOTIVO_VIEJO = (
+    ("ingles", re.compile(r"\bingl[eé]s\b|\bingles\b", re.I)),
+    ("presencial", re.compile(r"\bpresencial\b|\bh[ií]brid", re.I)),
+    ("especial", re.compile(r"^[-–—\s]*$")),
+)
+
+
+def clave_de_motivo(oferta: dict) -> str:
+    """Qué motivo tiene este descarte, sea del desplegable o escrito a mano.
+
+    Devuelve "" para un texto libre que no encaja en ninguna categoría — que es
+    exactamente el descarte valioso: el que dice algo del puesto y no de una
+    restricción que los filtros ya conocen.
+    """
+    if clave := (oferta.get("motivo_clave") or "").strip():
+        return clave if clave in _ETIQUETAS_MOTIVO else ""
+    texto = (oferta.get("motivo_descarte") or "").strip()
+    if not texto:
+        return ""
+    for clave, patron in _MOTIVO_VIEJO:
+        if patron.search(texto):
+            return clave
+    return ""
+
+
+def partes_del_motivo(oferta: dict) -> tuple[str, str]:
+    """(etiqueta, escrito a mano). Cualquiera de los dos puede venir vacío.
+
+    Los dos caminos se pueden combinar: elegir "Piden inglés" y además escribir
+    algo. Cuando pasa, se muestran los dos, pero cada uno en su propio elemento:
+    la tarjeta no une datos con puntos medios.
+    """
+    escrito = (oferta.get("motivo_descarte") or "").strip()
+    clave = clave_de_motivo(oferta)
+    if not clave:
+        return "", escrito
+    # El guion que venías escribiendo para el caso especial no dice nada solo,
+    # así que no se repite al lado de la etiqueta.
+    etiqueta = "caso especial" if clave == "especial" else _ETIQUETAS_MOTIVO[clave]
+    return etiqueta, (escrito if len(escrito) > 3 else "")
+
+
+def texto_del_motivo(oferta: dict) -> str:
+    """El motivo en una sola línea de texto plano, para donde no hay marcado."""
+    etiqueta, escrito = partes_del_motivo(oferta)
+    if etiqueta and escrito:
+        return f"{etiqueta} · {escrito}"
+    return etiqueta or escrito or "sin motivo"
+
+
+# --- lo que el filtro ya había rechazado ------------------------------------
+
+
+def motivo_del_sistema(oferta: dict, filtros: dict) -> tuple[str, str]:
+    """('idioma'|'lugar'|'', explicación). Por qué el sistema ya la descartó.
+
+    **Se calcula al leer, no se guarda.** Es a propósito: el nivel de inglés y
+    las ciudades se cambian desde *Mis datos*, y una oferta rechazada hoy por
+    pedir B2 tiene que volver a aparecer sola el día que subas tu nivel. Un
+    campo guardado congelaría la decisión que se tomó con la configuración de
+    aquel día.
+
+    El motor ya aplica estos mismos filtros para decidir a qué avisarte; lo que
+    guarda en el historial es **todo lo puntuado**, incluso lo rechazado. Eso
+    estaba bien para poder contar lo que se pierde por idioma, pero llenaba la
+    lista de "Sin marcar" con avisos sobre los que el sistema ya había decidido:
+    medido el 8/9/2026, 31 de 41.
+    """
+    from vacantia.filters import passes_place
+
+    job = Job.from_dict(oferta)
+    ok, why, _ = passes_place(job, filtros.get("location") or {},
+                              filtros.get("work_modes"))
+    if not ok:
+        return "lugar", why
+    ok, why = passes_language(job, filtros.get("language") or {})
+    if not ok:
+        return "idioma", why
+    return "", ""
+
+
+def filtros_del_perfil(nombre_perfil: str) -> dict:
+    """Los filtros del perfil, o {} si no hay perfil.
+
+    Tolerante a propósito: el historial se puede leer sin que exista el archivo
+    del perfil (pasa en los tests y pasaría con un perfil borrado a mano), y ahí
+    la respuesta correcta es "no hay filtros", no reventar la pantalla.
+    """
+    try:
+        return leer_perfil(nombre_perfil).get("filters") or {}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _sin_marcar(historial: list[dict], filtros: dict) -> list[dict]:
+    """Las que de verdad esperan una decisión tuya.
+
+    Quedan afuera las que el sistema ya descartó por idioma o por lugar: sobre
+    ésas ya hay un veredicto y ponerlas en la fila es pedirte que hagas a mano
+    el trabajo que el filtro hizo. Se siguen contando en Estadísticas, y vuelven
+    solas si cambiás el filtro que las sacó.
+    """
+    return [h for h in historial
+            if h.get("aplicado") is None and not h.get("archivada")
+            and not motivo_del_sistema(h, filtros)[0]]
+
+
+def _por_estado(historial: list[dict], ver: str, filtros: dict) -> list[dict]:
     if ver == "aplicadas":
         return [h for h in historial if h.get("aplicado") is True]
     if ver == "descartadas":
@@ -317,8 +508,7 @@ def _por_estado(historial: list[dict], ver: str) -> list[dict]:
         return [h for h in historial if h.get("archivada")]
     if ver == "pendientes":
         # Las archivadas salen de acá: es el punto de archivarlas.
-        return [h for h in historial
-                if h.get("aplicado") is None and not h.get("archivada")]
+        return _sin_marcar(historial, filtros)
     return historial
 
 
@@ -334,8 +524,16 @@ def ofertas(nombre_perfil: str, ver: str = "pendientes", desde: str = "todo",
     son para uno, la lista abría con lo peor: tres avisos de Lima puntuados 0
     antes que 29 ofertas de 80 para arriba. A igual puntaje manda la fecha del
     aviso, que ahí sí importa: entre dos que encajan igual, primero la más nueva.
+
+    **Con una excepción arriba de todo**: las publicadas hace `DIAS_RECIEN` días
+    o menos van primero, ordenadas entre ellas por puntaje. No es lo mismo "cuál
+    encaja mejor" que "a cuál me conviene postularme ahora", y cuanto más
+    reciente el aviso, menos gente se postuló. El puntaje que se muestra no se
+    toca: significa qué tan bien encaja con el CV y mezclarle la fecha lo
+    arruinaría. Lo único que cambia es el orden.
     """
-    historial = _por_estado(State(nombre_perfil).load_history(), ver)
+    filtros = filtros_del_perfil(nombre_perfil)
+    historial = _por_estado(State(nombre_perfil).load_history(), ver, filtros)
     historial = [h for h in historial if _entra_por_fecha(h, desde)]
     if ver in ("aplicadas", "descartadas", "archivadas"):
         # Estas dos pestañas no son para elegir, son para revisar: "¿a quién le
@@ -347,8 +545,19 @@ def ofertas(nombre_perfil: str, ver: str = "pendientes", desde: str = "todo",
             reverse=True,
         )
     else:
+        # El puntaje que pidió la persona es el que decide qué entra a la banda
+        # de recientes. Se lee una vez acá y viaja pegado a cada oferta en
+        # `_recien`, para que la pantalla no tenga que volver a abrir el perfil
+        # ni repetir la regla.
+        try:
+            min_score = int(leer_perfil(nombre_perfil).get("min_score", 60) or 0)
+        except (FileNotFoundError, json.JSONDecodeError):
+            min_score = 60
+        historial = [{**h, "_recien": es_recien_publicada(h, min_score)}
+                     for h in historial]
         historial.sort(
             key=lambda h: (
+                h["_recien"],
                 h.get("score") if h.get("score") is not None else -1,
                 fecha_de(h)[0] or _SIN_FECHA,
                 h.get("found_at", ""),
@@ -366,10 +575,12 @@ def contar_ofertas(nombre_perfil: str, desde: str = "todo") -> dict[str, int]:
     """Cuántas hay de cada estado, dentro del rango de fechas elegido."""
     historial = [h for h in State(nombre_perfil).load_history()
                  if _entra_por_fecha(h, desde)]
+    filtros = filtros_del_perfil(nombre_perfil)
     return {
         "todas": len(historial),
-        "pendientes": sum(1 for h in historial
-                          if h.get("aplicado") is None and not h.get("archivada")),
+        # El mismo criterio que usa la lista: si el número dijera 41 y la lista
+        # mostrara 10, el número estaría mintiendo.
+        "pendientes": len(_sin_marcar(historial, filtros)),
         "aplicadas": sum(1 for h in historial if h.get("aplicado") is True),
         "descartadas": sum(1 for h in historial if h.get("aplicado") is False),
         "archivadas": sum(1 for h in historial if h.get("archivada")),
@@ -382,7 +593,8 @@ def contar_por_fecha(nombre_perfil: str, ver: str = "pendientes") -> dict[str, i
     Los dos contadores se cruzan a propósito: el número de cada botón dice qué
     va a pasar si se lo aprieta, no cuántas hay en total.
     """
-    historial = _por_estado(State(nombre_perfil).load_history(), ver)
+    filtros = filtros_del_perfil(nombre_perfil)
+    historial = _por_estado(State(nombre_perfil).load_history(), ver, filtros)
     return {rango: sum(1 for h in historial if _entra_por_fecha(h, rango))
             for rango in RANGOS}
 
@@ -398,12 +610,18 @@ def pena_de_ingles(nombre_perfil: str, desde: str = "todo") -> dict:
     perfil se puede cambiar desde la pantalla, y el cartel tiene que responder a
     lo que dice el perfil hoy, no a lo que decía cuando corrió la búsqueda.
     """
-    perfil = leer_perfil(nombre_perfil)
-    cfg = ((perfil.get("filters") or {}).get("language")) or {}
+    cfg = filtros_del_perfil(nombre_perfil).get("language") or {}
     historial = [h for h in State(nombre_perfil).load_history()
                  if _entra_por_fecha(h, desde)]
 
-    perdidas = [h for h in historial if not passes_language(Job.from_dict(h), cfg)[0]]
+    # Dos fuentes, y la segunda la pediste vos: lo que el filtro detecta solo,
+    # más lo que marcaste a mano como "piden inglés". El LLM no siempre pone
+    # `requires_english` —de tus 46 descartes por idioma, varios no lo tenían—
+    # así que sin esto el número se quedaba corto justo donde vos ya sabías la
+    # respuesta. Marcar una como "piden inglés" ahora hace subir el número.
+    perdidas = [h for h in historial
+                if not passes_language(Job.from_dict(h), cfg)[0]
+                or clave_de_motivo(h) == "ingles"]
     if not perdidas:
         return {"cuantas": 0, "mejor": None, "mejor_titulo": ""}
 
@@ -415,9 +633,50 @@ def pena_de_ingles(nombre_perfil: str, desde: str = "todo") -> dict:
     }
 
 
-def guardar_feedback(nombre_perfil: str, url: str, aplicado: bool, motivo: str) -> bool:
+def estadisticas(nombre_perfil: str, desde: str = "todo") -> dict:
+    """Los números de la pestaña Estadísticas.
+
+    Existe porque los contadores estaban repartidos en los botones de arriba, y
+    ahí compiten con el único número que importa mientras uno trabaja: cuántas
+    quedan por mirar. Los botones se quedan con ése; el resto vive acá.
+    """
+    historial = [h for h in State(nombre_perfil).load_history()
+                 if _entra_por_fecha(h, desde)]
+    filtros = filtros_del_perfil(nombre_perfil)
+
+    sistema: Counter = Counter()
+    for h in historial:
+        if h.get("aplicado") is None and not h.get("archivada"):
+            clave, _ = motivo_del_sistema(h, filtros)
+            if clave:
+                sistema[clave] += 1
+
+    descartadas = [h for h in historial if h.get("aplicado") is False]
+    motivos: Counter = Counter()
+    for h in descartadas:
+        motivos[clave_de_motivo(h) or "otro"] += 1
+
+    por_fuente: Counter = Counter(h.get("source") or "?" for h in historial)
+
+    return {
+        "total": len(historial),
+        "sin_marcar": len(_sin_marcar(historial, filtros)),
+        "aplicadas": sum(1 for h in historial if h.get("aplicado") is True),
+        "descartadas": len(descartadas),
+        "archivadas": sum(1 for h in historial if h.get("archivada")),
+        "sistema": dict(sistema),
+        "sistema_total": sum(sistema.values()),
+        "motivos": dict(motivos),
+        "por_fuente": dict(por_fuente.most_common()),
+        "ingles": pena_de_ingles(nombre_perfil, desde),
+        "max_age_days": filtros.get("max_age_days"),
+    }
+
+
+def guardar_feedback(nombre_perfil: str, url: str, aplicado: bool, motivo: str,
+                     motivo_clave: str = "") -> bool:
     return State(nombre_perfil).record_feedback(
-        url, aplicado=aplicado, motivo_descarte=motivo,
+        url, aplicado=aplicado, motivo_descarte=motivo, motivo_clave=motivo_clave,
         fecha_feedback=datetime.now(timezone.utc).isoformat(),
     )
 
@@ -512,10 +771,75 @@ def viejas_sin_marcar(nombre_perfil: str, dias: int) -> list[str]:
     Las que no dicen cuándo se publicaron quedan afuera: no se sabe si están
     viejas, y archivar por las dudas es tirar una oferta que puede ser de ayer.
     """
-    historial = _por_estado(State(nombre_perfil).load_history(), "pendientes")
+    filtros = filtros_del_perfil(nombre_perfil)
+    historial = _por_estado(State(nombre_perfil).load_history(), "pendientes", filtros)
     salida = []
     for h in historial:
         antiguedad = dias_desde(fecha_de(h)[0])
         if antiguedad is not None and antiguedad > dias:
             salida.append(h.get("url", ""))
     return [u for u in salida if u]
+
+
+# --- el estado del sistema, para el pie de la barra lateral -----------------
+
+
+def _hace_cuanto(momento: datetime) -> str:
+    """"hoy 16:30", "ayer 23:59" o "el 3/9 a las 12:00".
+
+    En lenguaje humano y relativo, como se lo diría una persona. Nada de
+    "hace 2 min" ni de contadores que corran: es texto quieto que cambia
+    cuando cambia el dato.
+    """
+    local = momento.astimezone()
+    dias = (date.today() - local.date()).days
+    hora = local.strftime("%H:%M")
+    if dias <= 0:
+        return f"hoy {hora}"
+    if dias == 1:
+        return f"ayer {hora}"
+    return f"el {local.day}/{local.month} a las {hora}"
+
+
+def _proxima_corrida(nombre_perfil: str) -> str:
+    """El próximo horario de este perfil, como "hoy 23:59" o "mañana 12:00".
+
+    Los horarios los reparte `agenda` para que dos personas de la misma casa no
+    busquen al mismo tiempo, así que hay que preguntárselos a ella y no
+    escribirlos acá.
+    """
+    from vacantia import agenda
+
+    horarios = agenda.plan(perfiles()).get(nombre_perfil) or []
+    if not horarios:
+        return ""
+    ahora = datetime.now().strftime("%H:%M")
+    for hora in sorted(horarios):
+        if hora > ahora:
+            return f"hoy {hora}"
+    return f"mañana {sorted(horarios)[0]}"
+
+
+def estado_del_sistema(nombre_perfil: str) -> dict:
+    """{ultima, proxima, ventana} para el pie de la barra lateral.
+
+    Es la información que contesta "¿esto es todo lo que hay?", que es de donde
+    sale la mayor parte de la ansiedad de buscar trabajo. Por eso tiene un lugar
+    fijo en la pantalla y no un tooltip.
+    """
+    ultima = ""
+    crudo = State(nombre_perfil).ultima_corrida
+    if crudo:
+        try:
+            ultima = _hace_cuanto(datetime.fromisoformat(crudo))
+        except ValueError:
+            ultima = ""
+    from vacantia.ui import corrida
+
+    ventana = (filtros_del_perfil(nombre_perfil) or {}).get("max_age_days")
+    return {"ultima": ultima,
+            "proxima": _proxima_corrida(nombre_perfil),
+            "ventana": ventana,
+            # Para que el botón "Buscar ahora" del pie no deje arrancar dos
+            # búsquedas encimadas: los límites del plan gratis son de la cuenta.
+            "corriendo": corrida.esta_corriendo()}

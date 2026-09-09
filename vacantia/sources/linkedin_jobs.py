@@ -175,12 +175,25 @@ def _sin_stderr():
 
 class LinkedInJobsSource(Source):
     name = "linkedin"
+    #: Los mismos 7 días de siempre, dichos en días en vez de en horas.
+    max_age_days_default = DEFAULT_HOURS_OLD // 24
 
     def __init__(self, config: dict, profile: dict):
         super().__init__(config, profile)
         self.is_remote = bool(config.get("is_remote", True))
         self.results_wanted = int(config.get("results_wanted", 25))
-        self.hours_old = config.get("hours_old", DEFAULT_HOURS_OLD)
+        # LinkedIn ya tenía su propia ventana, en horas y con otro nombre: es la
+        # única fuente que la pedía desde el principio y por eso era la única
+        # que no traía nada viejo. Se conserva `hours_old` —quien lo tenga
+        # puesto en el perfil sigue mandando— pero si no está, sale de la misma
+        # perilla que el resto, para que no haya dos números que digan lo mismo
+        # y se desincronicen.
+        #
+        # Ojo con el 0: `max_age_days: 0` significa "sin ventana" a propósito, y
+        # 0 horas es justo lo que jobspy entiende como sin filtro. Coincide.
+        self.hours_old = config.get("hours_old")
+        if self.hours_old is None:
+            self.hours_old = self.max_age_days * 24
         self.fetch_description = bool(config.get("fetch_description", True))
         self.delay = float(config.get("delay_between_searches", DEFAULT_DELAY))
         self.proxies = config.get("proxies") or None

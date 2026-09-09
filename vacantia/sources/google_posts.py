@@ -9,6 +9,19 @@ una búsqueda en su feed y no llega a ningún portal de empleo. La contra es la
 latencia de indexación — un post de ayer puede no estar todavía. No es tiempo
 real y no pretende serlo.
 
+**Ventana de tiempo (`max_age_days`, 7 por defecto).** Sin ventana, el buscador
+ordena por relevancia y la fecha no le importa: verificado el 7/9/2026, de 75
+publicaciones que había en el historial 28 eran de más de un mes y varias de
+2020, 2023 y 2024. Un aviso de hace un año no es un aviso, es ruido que además
+se paga puntuando con el LLM. Con la ventana puesta, la búsqueda vuelve sólo lo
+publicado en esos días.
+
+Hay un segundo motivo para pedirla y no es evidente: **la API sólo devuelve la
+fecha de cada resultado cuando se le pide una ventana.** Sin ella el campo
+`date` viene vacío en los 10 resultados, y por eso la mitad del historial no
+tenía `posted_at`. Pidiéndola, cada post viene fechado y la pantalla puede
+mostrar de cuándo es.
+
 Proveedores de búsqueda soportados (campo `"provider"` en el perfil):
 
   tinyfish   (por defecto) Reusa TINYFISH_API_KEY, que ya está configurada para
@@ -24,6 +37,7 @@ import time
 from datetime import date
 
 from vacantia.config import resolve_secret
+from vacantia.fechas import dias_desde, parse_posted
 from vacantia.log import get_logger
 from vacantia.models import Job
 from vacantia.sources.base import Source
@@ -70,6 +84,14 @@ DEFAULT_HIRING_TERMS = HIRING_TERMS_ES + HIRING_TERMS_EN
 DEFAULT_EXTRA_TERMS: list[str] = []
 
 _SEARCH_DELAY = 2.0  # mismo ritmo que careers.py: 30 req/min del plan free
+
+#: Días hacia atrás que se buscan. 7 es la misma ventana que ya usaba la fuente
+#: `linkedin` (`hours_old: 168`), y es la que llena la página de resultados: con
+#: 1 día la misma query devolvía 2 posts en vez de 10. `0` apaga el filtro.
+DEFAULT_MAX_AGE_DAYS = 7
+
+#: Minutos en un día. La API pide la ventana en minutos.
+MINUTOS_POR_DIA = 1440
 
 # Títulos que no dicen nada del puesto: el buscador devuelve "Publicación de
 # Fulano" o "Fulano's Post" cuando el post no tiene un encabezado propio.
@@ -135,6 +157,27 @@ def parece_oferta(titulo: str, snippet: str, terminos: list[str]) -> tuple[bool,
     return True, ""
 
 
+# --- De cuándo es el post ---------------------------------------------------
+# La ventana se pide en la búsqueda, que es donde sirve de verdad: lo que el
+# buscador no devuelve no se paga. Esto de acá es la segunda vuelta, para lo que
+# igual se cuela —el buscador aproxima, y el proveedor `google_cse` filtra por
+# día pero no siempre respeta el borde.
+
+
+def es_reciente(fecha_cruda: str, max_age_days: int, hoy: date | None = None) -> bool:
+    """¿El post entra en la ventana de `max_age_days` días?
+
+    Un post **sin fecha** entra. Es la misma regla que el resto del proyecto —
+    lo que el aviso no dice no filtra— y acá importa especialmente: descartar
+    por falta de fecha tiraría ofertas buenas para tapar un problema del
+    buscador, no del post.
+    """
+    if max_age_days <= 0:
+        return True
+    dias = dias_desde(parse_posted(fecha_cruda, hoy), hoy)
+    return dias is None or dias <= max_age_days
+
+
 # --- De dónde es la oferta --------------------------------------------------
 # El snippet rara vez dice el país, así que sin esto entra LATAM entero: el
 # filtro de ubicación deja pasar todo lo que no lo aclara, que es lo correcto
@@ -188,18 +231,25 @@ def _hiring_terms_for(profile: dict) -> list[str]:
 
 
 def buscar_en_tinyfish(client, query: str, language: str, limite: int,
-                       etiqueta: str = "google_posts") -> list[dict]:
+                       etiqueta: str = "google_posts",
+                       recency_minutes: int | None = None) -> list[dict]:
     """Una búsqueda. Devuelve [{url, title, snippet, date}].
 
     Está afuera de la clase porque la fuente `rrhh` hace la misma búsqueda con
     otra query: `google_posts` busca por puesto ("AI Engineer" + señales de que
     contratan) y `rrhh` busca por persona (el nombre del reclutador). Es el
     mismo buscador con distinto criterio, no dos cosas.
+
+    `recency_minutes` es la ventana de tiempo: sin ella el buscador ordena por
+    relevancia y trae posts de hace años, y además devuelve el campo `date`
+    vacío. Con ella, sólo lo publicado en esos minutos, y cada resultado viene
+    fechado. `None` o 0 = sin ventana.
     """
     from tinyfish import RateLimitError
 
+    extra = {"recency_minutes": int(recency_minutes)} if recency_minutes else {}
     try:
-        resp = client.search.query(query, language=language)
+        resp = client.search.query(query, language=language, **extra)
     except RateLimitError:
         logger.warning(f"[{etiqueta}] Rate-limited — espero 62s y sigo...")
         time.sleep(62)
@@ -284,6 +334,9 @@ def clean_title(raw_title: str, snippet: str) -> tuple[str, str]:
 
 class GooglePostsSource(Source):
     name = "google_posts"
+    #: `self.max_age_days` lo resuelve `Source`: primero el bloque de la fuente,
+    #: después `filters.max_age_days` del perfil, y si no esto.
+    max_age_days_default = DEFAULT_MAX_AGE_DAYS
 
     def __init__(self, config: dict, profile: dict):
         super().__init__(config, profile)
@@ -347,21 +400,30 @@ class GooglePostsSource(Source):
 
         if self._client_obj is None:
             self._client_obj = TinyFish(api_key=self.api_key)
-        return buscar_en_tinyfish(self._client_obj, query, self.language,
-                                  self.results_per_query, etiqueta=self.name)
+        return buscar_en_tinyfish(
+            self._client_obj, query, self.language, self.results_per_query,
+            etiqueta=self.name,
+            recency_minutes=self.max_age_days * MINUTOS_POR_DIA or None,
+        )
 
     def _search_google_cse(self, query: str) -> list[dict]:
         import requests
 
+        params = {
+            "key": self.api_key,
+            "cx": self.cse_id,
+            "q": query,
+            "num": min(self.results_per_query, 10),  # el máximo que acepta
+            "lr": f"lang_{self.language}",
+        }
+        if self.max_age_days > 0:
+            # El equivalente del `&tbs=qdr:` que se le pone a mano a una búsqueda
+            # de Google. En la API se llama `dateRestrict` y va como "d7" (los
+            # últimos 7 días); acepta también w, m y años.
+            params["dateRestrict"] = f"d{self.max_age_days}"
         resp = requests.get(
             "https://www.googleapis.com/customsearch/v1",
-            params={
-                "key": self.api_key,
-                "cx": self.cse_id,
-                "q": query,
-                "num": min(self.results_per_query, 10),  # el máximo que acepta
-                "lr": f"lang_{self.language}",
-            },
+            params=params,
             timeout=30,
         )
         if resp.status_code == 429:
@@ -395,12 +457,17 @@ class GooglePostsSource(Source):
 
     def fetch(self) -> list[Job]:
         queries = build_queries(self.profile, self.config)
-        logger.info(f"[google_posts] {len(queries)} búsqueda(s) vía {self.provider}")
+        ventana = (f", últimos {self.max_age_days} día(s)" if self.max_age_days
+                   else ", sin ventana de tiempo")
+        logger.info(
+            f"[google_posts] {len(queries)} búsqueda(s) vía {self.provider}{ventana}"
+        )
 
         hiring = self.config.get("hiring_terms") or _hiring_terms_for(self.profile)
         jobs: list[Job] = []
         seen: set[str] = set()
         descartados = 0
+        viejos = 0
         for i, query in enumerate(queries, 1):
             if i > 1:
                 time.sleep(self.search_delay)
@@ -418,6 +485,12 @@ class GooglePostsSource(Source):
                 if key in seen:
                     continue
                 seen.add(key)
+
+                fecha = result.get("date", "")
+                if not es_reciente(fecha, self.max_age_days):
+                    viejos += 1
+                    logger.debug(f"    fuera de la ventana ({fecha}): {url}")
+                    continue
 
                 snippet = result.get("snippet", "")
                 title, author = clean_title(result.get("title", ""), snippet)
@@ -441,7 +514,7 @@ class GooglePostsSource(Source):
                         company=author,
                         source=self.name,
                         description=snippet,
-                        posted_at=result.get("date", ""),
+                        posted_at=fecha,
                         # El snippet rara vez dice el país; cuando lo nombra, se
                         # aprovecha. Si no, queda "" (o lo que diga el perfil en
                         # default_country) y lo intenta después el LLM.
@@ -461,5 +534,6 @@ class GooglePostsSource(Source):
         logger.info(
             f"[google_posts] {len(jobs)} publicación(es) en total"
             + (f", {descartados} descartada(s) por no ser ofertas" if descartados else "")
+            + (f", {viejos} por tener más de {self.max_age_days} días" if viejos else "")
         )
         return jobs

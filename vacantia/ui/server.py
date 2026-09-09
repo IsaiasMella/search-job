@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from vacantia.log import get_logger
-from vacantia.ui import data, formulario, render
+from vacantia.ui import corrida, data, estilos, formulario, render
 
 logger = get_logger()
 
@@ -29,12 +29,15 @@ class Handler(BaseHTTPRequestHandler):
     # --- utilidades -----------------------------------------------------
 
     def _responder(self, cuerpo: bytes, tipo="text/html; charset=utf-8", codigo=200,
-                   extra: dict | None = None) -> None:
+                   extra: dict | None = None, cache: str = "no-store") -> None:
+        extra = extra or {}
         self.send_response(codigo)
         self.send_header("Content-Type", tipo)
         self.send_header("Content-Length", str(len(cuerpo)))
-        self.send_header("Cache-Control", "no-store")
-        for clave, valor in (extra or {}).items():
+        # Las páginas nunca se cachean: leen archivos que cambian solos. Lo que
+        # sí es inmutable (las fuentes) pasa su propio valor.
+        self.send_header("Cache-Control", cache)
+        for clave, valor in extra.items():
             self.send_header(clave, valor)
         self.end_headers()
         if self.command != "HEAD":
@@ -68,7 +71,11 @@ class Handler(BaseHTTPRequestHandler):
         return disponibles[0] if disponibles else None
 
     def _pagina(self, titulo, cuerpo, perfil, tab, codigo=200) -> None:
-        self._html(render.pagina(titulo, cuerpo, perfil, data.perfiles(), tab), codigo)
+        # El estado del sistema (cuándo buscó, cuándo vuelve, qué ventana cubre)
+        # viaja en TODAS las páginas: vive al pie de la barra lateral y tiene
+        # que estar siempre, no sólo en Trabajos.
+        self._html(render.pagina(titulo, cuerpo, perfil, data.perfiles(), tab,
+                                 estado=data.estado_del_sistema(perfil)), codigo)
 
     def _sin_perfiles(self) -> None:
         """Instalación recién estrenada: no hay a quién mostrarle nada."""
@@ -84,6 +91,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if ruta == "/":
             return self._redirigir("/trabajos")
+        if ruta.startswith("/fuentes/"):
+            return self._get_fuente(ruta)
 
         perfil = self._perfil_pedido(params)
         if perfil is None:
@@ -98,6 +107,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._get_mensajes(perfil, params)
             if ruta == "/consejo":
                 return self._get_consejo(perfil, params)
+            if ruta == "/estadisticas":
+                return self._estadisticas(perfil, params)
+            if ruta == "/linkedin":
+                return self._get_linkedin(perfil, params)
             if ruta == "/novedades":
                 return self._get_novedades(perfil)
         except FileNotFoundError as e:
@@ -109,6 +122,27 @@ class Handler(BaseHTTPRequestHandler):
                                 perfil, "trabajos", 500)
 
         self._html("<h1>404</h1>", 404)
+
+    def _get_fuente(self, ruta: str) -> None:
+        """Inter y JetBrains Mono, servidas por la app y no por un CDN.
+
+        La máquina puede estar sin internet, y una fuente que tarda tres
+        segundos en llegar es una pantalla que parpadea al abrir. Si los
+        archivos no están, `estilos` ni siquiera declara las `@font-face` y todo
+        cae en la pila del sistema: esta ruta no se llega a pedir.
+
+        Sólo sirve los nombres de la lista blanca de `estilos.FUENTES`: nada de
+        armar el path con lo que venga en la URL.
+        """
+        pedido = ruta.rsplit("/", 1)[-1]
+        if pedido not in {archivo for archivo, _, _ in estilos.FUENTES}:
+            return self._html("<h1>404</h1>", 404)
+        archivo = estilos.FUENTES_DIR / pedido
+        if not archivo.exists():
+            return self._html("<h1>404</h1>", 404)
+        # Un año de caché: el nombre del archivo no cambia y el contenido tampoco.
+        self._responder(archivo.read_bytes(), tipo="font/woff2",
+                        cache="public, max-age=31536000, immutable")
 
     def _get_trabajos(self, perfil: str, params: dict) -> None:
         ver = (params.get("ver") or ["pendientes"])[0]
@@ -130,10 +164,10 @@ class Handler(BaseHTTPRequestHandler):
             perfil, ofertas, data.contar_ofertas(perfil, desde),
             ver, mensajes, desde,
             conteo_fecha=data.contar_por_fecha(perfil, ver),
-            pena=data.pena_de_ingles(perfil, desde),
             marca=data.marca_de_cambio(perfil),
             pagina=pagina, paginas=paginas,
             viejas={d: len(data.viejas_sin_marcar(perfil, d)) for d in (7, 14, 30)},
+            corriendo=corrida.esta_corriendo(),
         )
         self._pagina("Trabajos", cuerpo, perfil, "trabajos")
 
@@ -205,7 +239,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_datos(self, perfil: str, params: dict) -> None:
         cuerpo = formulario.render(perfil, data.leer_perfil(perfil), _mensajes(params))
-        self._pagina("Mis datos", cuerpo, perfil, "datos")
+        self._pagina("Mi perfil", cuerpo, perfil, "datos")
+
+    def _estadisticas(self, perfil: str, params: dict) -> None:
+        """Los contadores que antes competían con la lista por el mismo lugar."""
+        desde = (params.get("desde") or ["todo"])[0]
+        if desde not in data.RANGOS:
+            desde = "todo"
+        cuerpo = render.estadisticas(perfil, data.estadisticas(perfil, desde),
+                                     desde, _mensajes(params),
+                                     salud=corrida.salud())
+        self._pagina("Métricas", cuerpo, perfil, "estadisticas")
+
+    def _get_linkedin(self, perfil: str, params: dict) -> None:
+        """Las direcciones de búsqueda de LinkedIn, en dos pestañas.
+
+        Jobs es la que se abre por defecto: es la que cubre el hueco más grande,
+        los avisos publicados hoy que ningún buscador indexó todavía.
+        """
+        tab = (params.get("tab") or ["jobs"])[0]
+        cuerpo = render.linkedin(perfil, tab, _mensajes(params))
+        self._pagina("LinkedIn URLs", cuerpo, perfil, "linkedin")
 
     # --- POST -----------------------------------------------------------
 
@@ -226,6 +280,8 @@ class Handler(BaseHTTPRequestHandler):
             if ruta == "/consejo":
                 return self._get_consejo(perfil, {"url": [form.get("url", "")]},
                                          con_llm=True)
+            if ruta == "/buscar":
+                return self._post_buscar(form)
             if ruta == "/archivar":
                 return self._post_archivar(form)
             if ruta == "/archivar-viejas":
@@ -243,6 +299,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._redirigir("/datos", perfil=perfil, error=f"Algo falló: {e}")
 
         self._html("<h1>404</h1>", 404)
+
+    def _post_buscar(self, form: dict) -> None:
+        """Buscar ahora, sin esperar al horario programado.
+
+        Corre en un proceso aparte: la búsqueda tarda minutos y el servidor
+        atiende de a un pedido, así que hacerla acá adentro dejaría la pantalla
+        congelada. Se vuelve enseguida a donde estabas, y cuando entren ofertas
+        el vigilante que ya existe avisa solo.
+        """
+        perfil = form.get("perfil", "")
+        arranco, mensaje = corrida.arrancar(perfil)
+        clave = "ok" if arranco else "error"
+        return self._redirigir("/trabajos", perfil=perfil, **{clave: mensaje})
 
     def _post_archivar(self, form: dict) -> None:
         """Una sola oferta: el aviso ya no está, o quedó viejo.
@@ -296,11 +365,18 @@ class Handler(BaseHTTPRequestHandler):
         url = form.get("url", "").strip()
         aplicado = form.get("aplicado") == "si"
         motivo = form.get("motivo", "").strip()
+        # Cuál de los motivos del desplegable. Se valida contra el catálogo:
+        # lo que venga de afuera no decide qué se guarda.
+        claves = {c for c, _, _ in data.MOTIVOS}
+        motivo_clave = form.get("motivo_clave", "").strip()
+        motivo_clave = motivo_clave if motivo_clave in claves else ""
 
-        if not aplicado and not motivo:
+        # Alcanza con cualquiera de los dos: un motivo del desplegable, o texto
+        # libre. El campo de texto está siempre a la vista y es opcional.
+        if not aplicado and not motivo and not motivo_clave:
             return self._redirigir(
                 "/trabajos", perfil=perfil, ver=ver, desde=desde, p=pagina,
-                error="Para descartar una oferta hace falta escribir el motivo.",
+                error="Para descartar una oferta, elegí un motivo o escribilo.",
             )
         # El título se busca ANTES de guardar, para poder nombrarla en el aviso:
         # "Guardado." no alcanza cuando hay dos ofertas de 90 pegadas y no se
@@ -308,7 +384,7 @@ class Handler(BaseHTTPRequestHandler):
         oferta = data.buscar_oferta(perfil, url) or {}
         titulo = (oferta.get("scored_title") or oferta.get("title") or "")[:70]
 
-        ok = data.guardar_feedback(perfil, url, aplicado, motivo)
+        ok = data.guardar_feedback(perfil, url, aplicado, motivo, motivo_clave)
         if ok:
             que = "Aplicaste a" if aplicado else "Descartaste"
             aviso = f"{que} «{titulo}»." if titulo else "Guardado."

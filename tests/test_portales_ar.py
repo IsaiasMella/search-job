@@ -224,12 +224,13 @@ Zona y horario Laboral: REMOTO, de Lunes a Viernes de 09 a 18 hs.
 """
 
 
-def test_navent_saca_empresa_ciudad_y_modalidad():
+def test_navent_saca_empresa_ciudad_modalidad_y_fecha():
     assert extraer_navent(DETALLE_NAVENT) == {
         "title": "AI Engineer - Híbrido - 1878",
         "city": "Capital Federal",
         "company": "Aliantec",
         "work_mode": "hybrid",
+        "posted_at": "20/08/2026",
     }
 
 
@@ -264,6 +265,151 @@ def test_la_modalidad_ambigua_queda_vacia_en_vez_de_adivinar():
     assert _modo("trabajo 100% remoto desde casa", estricto=True) == "remote"
     # Sin `estricto` —una etiqueta corta del portal— sí se queda con la primera.
     assert _modo("Híbrido") == "hybrid"
+
+
+# --- cuándo se publicó ------------------------------------------------------
+#
+# Medido el 7/9/2026 sobre un historial de 216 avisos: los tres portales
+# reportaban fecha en CERO de sus 20 avisos, y sin embargo la escriben en la
+# misma página que ya bajábamos. Eso dejaba ciego al filtro de antigüedad de la
+# pantalla justo en las fuentes que más lo necesitan: un aviso de Bumeran de
+# dos meses pasaba el filtro de "hoy" porque no tenía fecha con qué compararse.
+
+#: Recorte real de Computrabajo (7/9/2026). La fecha del aviso va suelta al
+#: final de la descripción, y abajo el portal lista ofertas ajenas con las suyas.
+DETALLE_COMPUTRABAJO_CON_SIMILARES = """# Senior Python Engineer
+
+B&B Consultores - Retiro, Capital Federal
+
+## Descripción de la oferta
+
+Seleccionamos Senior Python Engineer. Remoto.
+
+Palabras clave: senior, sr, ingeniero
+
+Hace 6 días (actualizada)
+
+Acerca de B&B Consultores
+
+## Ofertas similares
+
+* ### Senior Backend Python Developer
+
+  Kaizen Recursos Humanos - Monserrat, Capital Federal
+
+  Ayer
+* ### Desarrollador Python
+
+  Provincia NET - San Nicolás, Capital Federal
+
+  Hace 9 horas
+"""
+
+
+def test_computrabajo_saca_la_fecha_del_aviso_y_no_la_de_los_similares():
+    """La trampa: al pie lista ocho avisos ajenos, cada uno con su fecha.
+
+    "Ayer" y "Hace 9 horas" son de otros avisos. Agarrar la primera fecha del
+    documento entero daría uno recién publicado cuando en realidad tiene 6 días.
+    """
+    datos = extraer_computrabajo(DETALLE_COMPUTRABAJO_CON_SIMILARES)
+    assert datos["posted_at"] == "Hace 6 días"
+
+
+def test_navent_prefiere_la_fecha_exacta_a_la_del_titulo():
+    """Bumeran y Zonajobs dicen las dos, y la de arriba deja de contar a los 15.
+
+    "Publicado hace más de 15 días" puede ser 16 días o dos años. La exacta está
+    más abajo en la misma página, así que se la busca aparte.
+    """
+    con_las_dos = DETALLE_NAVENT.replace(
+        "### Descripción del puesto",
+        "## Publicado hace más de 15 días\n\n### Descripción del puesto",
+    )
+    assert extraer_navent(con_las_dos)["posted_at"] == "20/08/2026"
+
+
+def test_navent_cae_a_la_vaga_cuando_no_esta_la_exacta():
+    sin_exacta = DETALLE_NAVENT.replace("Publicado el 20/08/2026", "")
+    sin_exacta = sin_exacta.replace(
+        "### Descripción del puesto",
+        "## Publicado hace más de 15 días\n\n### Descripción del puesto",
+    )
+    assert extraer_navent(sin_exacta)["posted_at"] == "hace más de 15 días"
+
+
+def test_un_aviso_sin_fecha_no_inventa_ninguna():
+    """Sin fecha el aviso igual entra: lo que no dice, no filtra."""
+    assert "posted_at" not in extraer_computrabajo(DETALLE_COMPUTRABAJO)
+    assert "posted_at" not in extraer_navent(
+        DETALLE_NAVENT.replace("Publicado el 20/08/2026", "")
+    )
+
+
+def test_la_fecha_del_portal_llega_a_la_oferta(monkeypatch):
+    """De punta a punta: lo que dice la página termina en `Job.posted_at`."""
+    src = fuente(ComputrabajoSource, {"max_queries": 1})
+    url = src.url_de_busqueda(src.terminos()[0])
+    aviso = ("https://ar.computrabajo.com/ofertas-de-trabajo/"
+             "oferta-de-trabajo-de-senior-python-engineer-en-retiro-F5A35EBD")
+    con_paginas(
+        monkeypatch, src,
+        listados={url: ("", [aviso])},
+        detalles={aviso: (DETALLE_COMPUTRABAJO_CON_SIMILARES, [])},
+    )
+    assert src.fetch()[0].posted_at == "Hace 6 días"
+
+
+def test_un_aviso_viejo_no_llega_al_scoring(monkeypatch):
+    """El filtro corre después de bajar el detalle, porque ahí aparece la fecha.
+
+    Se paga la descarga igual; lo que se ahorra es lo caro, que es puntuar con
+    el LLM un aviso de hace dos meses que ya está cubierto.
+    """
+    src = fuente(ComputrabajoSource, {"max_queries": 1, "max_age_days": 7})
+    url = src.url_de_busqueda(src.terminos()[0])
+    base = "https://ar.computrabajo.com/ofertas-de-trabajo/oferta-de-trabajo-de-"
+    nuevo_, viejo_ = base + "nuevo-en-caba-A1", base + "viejo-en-caba-B2"
+    con_paginas(
+        monkeypatch, src,
+        listados={url: ("", [nuevo_, viejo_])},
+        detalles={
+            nuevo_: (DETALLE_COMPUTRABAJO_CON_SIMILARES.replace(
+                "Hace 6 días (actualizada)", "Ayer"), []),
+            viejo_: (DETALLE_COMPUTRABAJO_CON_SIMILARES.replace(
+                "Hace 6 días (actualizada)", "Hace 2 meses"), []),
+        },
+    )
+    assert [j.url for j in src.fetch()] == [nuevo_]
+
+
+def test_un_aviso_sin_fecha_igual_entra(monkeypatch):
+    """Lo que el aviso no dice, no filtra. Esconderlo sería peor que mostrarlo."""
+    src = fuente(ComputrabajoSource, {"max_queries": 1, "max_age_days": 7})
+    url = src.url_de_busqueda(src.terminos()[0])
+    aviso = ("https://ar.computrabajo.com/ofertas-de-trabajo/"
+             "oferta-de-trabajo-de-sin-fecha-en-caba-C3")
+    con_paginas(
+        monkeypatch, src,
+        listados={url: ("", [aviso])},
+        detalles={aviso: (DETALLE_COMPUTRABAJO, [])},   # este recorte no trae fecha
+    )
+    jobs = src.fetch()
+    assert len(jobs) == 1 and jobs[0].posted_at == ""
+
+
+def test_con_la_ventana_apagada_pasa_todo(monkeypatch):
+    src = fuente(ComputrabajoSource, {"max_queries": 1, "max_age_days": 0})
+    url = src.url_de_busqueda(src.terminos()[0])
+    aviso = ("https://ar.computrabajo.com/ofertas-de-trabajo/"
+             "oferta-de-trabajo-de-viejo-en-caba-D4")
+    con_paginas(
+        monkeypatch, src,
+        listados={url: ("", [aviso])},
+        detalles={aviso: (DETALLE_COMPUTRABAJO_CON_SIMILARES.replace(
+            "Hace 6 días (actualizada)", "Hace 3 años"), [])},
+    )
+    assert len(src.fetch()) == 1
 
 
 def test_el_titulo_del_aviso_pisa_al_del_slug(monkeypatch):

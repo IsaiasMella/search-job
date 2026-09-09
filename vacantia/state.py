@@ -60,6 +60,16 @@ class State:
         """Claves (empresa + título) ya vistas. Ausente en estados viejos."""
         return set(self._data.get("seen_alt_keys", []))
 
+    @property
+    def ultima_corrida(self) -> str:
+        """Cuándo terminó la última búsqueda, en ISO. Vacío si nunca corrió.
+
+        Lo escribe `save()` en cada corrida, con novedades o sin ellas: es lo
+        que la pantalla muestra al pie de la barra lateral para contestar
+        "¿cuándo miró por última vez?" sin que haya que abrir un archivo.
+        """
+        return self._data.get("last_run") or ""
+
     def filter_new(self, jobs: list[Job]) -> list[Job]:
         """Saca las ya vistas y las duplicadas, por URL y por (empresa + título).
 
@@ -177,6 +187,7 @@ class State:
         aplicado: bool | None,
         motivo_descarte: str = "",
         fecha_feedback: str | None = None,
+        motivo_clave: str = "",
     ) -> bool:
         """Guarda el veredicto de la persona sobre una oferta.
 
@@ -196,6 +207,12 @@ class State:
         cambios = {
             "aplicado": aplicado,
             "motivo_descarte": motivo_descarte.strip(),
+            # Cuál de los motivos del desplegable, si fue uno. Vacío = texto
+            # libre. Se guarda aparte del texto porque un motivo elegido se
+            # puede contar y uno escrito no: "Estaba en ingles, osea que
+            # necesito ingles" y "necesitaba ingles" son lo mismo y no había
+            # forma de saberlo.
+            "motivo_clave": (motivo_clave or "").strip(),
             "fecha_feedback": fecha_feedback or datetime.now(timezone.utc).isoformat(),
         }
 

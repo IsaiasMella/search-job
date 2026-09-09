@@ -41,9 +41,9 @@ PISTA_RRHH = """<b>Qué página pegar</b>
   <li>También sirve cualquier otra página pública que liste búsquedas: el blog de
       empleos de una cámara, una bolsa de trabajo de universidad.</li>
 </ul>
-<p style="margin:8px 0 0">Una por línea. Y arriba tiene que estar tildado
+<p>Una por línea. Y arriba tiene que estar tildado
 <b>&#8220;Perfiles de reclutadores que sigo&#8221;</b>, si no no se usan.</p>
-<p style="margin:6px 0 0">Si el log dice <code>0 publicación(es)</code> para una
+<p>Si el registro dice <code>0 publicación(es)</code> para una
 consultora, casi siempre pegaste la página de entrada en vez de la que lista los
 puestos.</p>"""
 
@@ -63,12 +63,27 @@ FUENTES = (
 )
 
 
-def _campo(nombre, etiqueta, valor, tipo="text", ayuda="", **extra) -> str:
+def _mas(texto: str) -> str:
+    """Lo que no entra en tres líneas de ayuda.
+
+    La ayuda gris explica la consecuencia de la elección y se lee una sola vez;
+    cuando crece a seis renglones deja de leerse, se desparrama a lo ancho de la
+    columna y encima empuja el campo de abajo fuera de pantalla. Lo que sobra
+    pasa acá, a un desplegable que se abre sólo cuando hace falta.
+    """
+    if not texto:
+        return ""
+    return (f'<details class="como"><summary>Cómo funciona esto</summary>'
+            f'<p class="ayuda">{esc(texto)}</p></details>')
+
+
+def _campo(nombre, etiqueta, valor, tipo="text", ayuda="", mas="", **extra) -> str:
     attrs = " ".join(f'{k}="{esc(v)}"' for k, v in extra.items())
     return f"""<div class="campo">
   <label for="{nombre}">{esc(etiqueta)}</label>
   <input type="{tipo}" id="{nombre}" name="{nombre}" value="{esc(valor)}" {attrs}>
   {f'<p class="ayuda">{esc(ayuda)}</p>' if ayuda else ''}
+  {_mas(mas)}
 </div>"""
 
 
@@ -126,7 +141,7 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
     )
 
     return f"""{avisos(mensajes)}
-<h2>Mis datos de {esc(nombre)}</h2>
+<h1>Mi perfil de {esc(nombre)}</h1>
 <form class="datos" method="post" action="/datos">
 <input type="hidden" name="perfil" value="{esc(nombre)}">
 
@@ -136,24 +151,40 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
           ayuda="Separadas por coma. Es lo que se busca en los portales.")}
   {_campo("excluir_titulos", "Puestos que NO quiero",
           _lista((filtros.get("excluir_titulos")) or []),
-          ayuda="Separados por coma. Si el TÍTULO del aviso dice alguno de éstos, "
-                "se descarta sin gastar una llamada al modelo. Sólo mira el título: "
-                "un aviso de AI Engineer puede nombrar 'machine learning' entre las "
-                "tecnologías del equipo y ése no se pierde.")}
+          placeholder="Data Steward, MLOps",
+          ayuda="Separados por coma. Cada uno es una llamada al modelo que no se paga.",
+          mas="Si el título del aviso dice alguno de éstos, el aviso se descarta "
+              "antes de puntuarlo. Sólo mira el título: un aviso de AI Engineer "
+              "puede nombrar 'machine learning' entre las tecnologías del equipo, "
+              "y ése no se pierde.")}
   {_campo("min_score", "Puntaje mínimo para avisarme", perfil.get("min_score", 60),
           tipo="number", ayuda="0 a 100. 60 es un buen punto de partida.", min="0", max="100")}
   {_campo("top_n", "Cuántas ofertas por aviso", perfil.get("top_n", 5), tipo="number", min="1")}
   {_campo("max_new_per_run", "Máximo de ofertas nuevas por corrida",
           perfil.get("max_new_per_run", 30), tipo="number", min="1",
           ayuda="Protege el límite diario de la API. 30 está bien.")}
+  {_campo("max_age_days", "No traerme avisos de más de (días)",
+          filtros.get("max_age_days", 7), tipo="number", min="0", max="365",
+          ayuda="Es la ventana que se ve al pie de la pantalla. 7 días anda bien.",
+          mas="Se le pide a cada buscador y portal, así que los avisos viejos ni "
+              "entran. Poné 7 para puestos con mucha competencia, donde a la "
+              "semana ya está cubierto, y 30 o 45 para rubros donde una búsqueda "
+              "queda abierta un mes. Con 0 no hay límite y vuelven a aparecer "
+              "avisos de hace años. Un aviso que no dice cuándo se publicó entra "
+              "igual: no se descarta por no saber.")}
 </div>
 
 <h2>Dónde</h2>
 <div class="grilla">
-  {_campo("pais", "País", _lista(loc.get("country")),
-          ayuda="Vacío = de todo el mundo. Con el país puesto, el remoto también tiene que ser de acá.")}
+  {_campo("pais", "País", _lista(loc.get("country")), placeholder="Argentina",
+          ayuda="Vacío trae ofertas de todo el mundo.",
+          mas="Con el país puesto, el remoto también tiene que ser de acá: un "
+              "remoto publicado para España deja de entrar.")}
   {_campo("ciudad", "Ciudades a las que puedo ir en persona", ciudades,
-          ayuda="Separadas por coma: Bahía Blanca, Punta Alta. Sólo filtran presencial e híbrido: el remoto entra venga de la ciudad que venga. Y un presencial acá entra aunque pidas sólo remoto.")}
+          placeholder="Bahía Blanca, Punta Alta",
+          ayuda="Separadas por coma. Sólo filtran presencial e híbrido.",
+          mas="El remoto entra venga de la ciudad que venga, y un presencial en "
+              "una de estas ciudades entra aunque hayas pedido sólo remoto.")}
   <div class="campo">
     <label>Modalidades que acepto</label>
     <div class="checks">
@@ -211,9 +242,9 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
 <h2>Mi Telegram</h2>
 <div class="grilla">
   {_campo("chat_id", "Mi chat de Telegram", data.chat_id_de(perfil),
-          ayuda=("Es TUYO, no de la computadora: si en esta máquina busca trabajo "
-                 "más de una persona, cada una pone el suyo acá y recibe sólo sus "
-                 "ofertas. Vacío = usa el chat compartido del archivo .env."))}
+          ayuda="Es tuyo, no de la computadora: cada persona recibe sólo lo suyo.",
+          mas="Si en esta máquina busca trabajo más de una persona, cada una pone "
+              "su chat acá. Vacío usa el chat compartido de la configuración.")}
 </div>
 
 <h2>Claves</h2>
@@ -234,16 +265,16 @@ Se guardan en el archivo .env de esta carpeta, no en internet.</p>
           ayuda="Se lo decimos al que puntúa para que no te traiga eso.")}
 </div>
 
-<div class="guardar"><button type="submit">Guardar cambios</button></div>
+<div class="guardar"><button class="primario" type="submit">Guardar cambios</button></div>
 </form>
 
 <h2>Crear un perfil nuevo</h2>
 <form class="datos" method="post" action="/perfil-nuevo">
   <div class="grilla">
-    {_campo("nombre", "Nombre de la persona", "",
-            ayuda="Sin espacios ni acentos: maria, juan_pablo. Se crea en blanco para que lo complete.")}
+    {_campo("nombre", "Nombre de la persona", "", placeholder="maria",
+            ayuda="Sin espacios ni acentos. Se crea en blanco para que lo complete.")}
   </div>
-  <div class="guardar"><button type="submit">Crear perfil</button></div>
+  <div class="guardar"><button class="primario" type="submit">Crear perfil</button></div>
 </form>"""
 
 
@@ -253,15 +284,16 @@ def render_sin_perfiles() -> str:
     No se crea ninguno solo ni se inventan datos de nadie: se ofrece crear el
     primero, en blanco, para que la persona lo complete.
     """
-    return f"""<h2>Bienvenido a vacantia</h2>
-<div class="vacio">Todavía no hay ningún perfil cargado.<br>
-Creá el primero con el nombre de la persona que va a buscar trabajo.</div>
+    return f"""<h1>Bienvenido a vacantia</h1>
+<div class="vacio"><b>Todavía no hay ningún perfil cargado.</b>
+Creá el primero con el nombre de la persona que va a buscar trabajo. Después vas
+a poder cargarle el CV, las palabras clave y de qué portales traer ofertas.</div>
 <form class="datos" method="post" action="/perfil-nuevo">
   <div class="grilla">
-    {_campo("nombre", "Nombre de la persona", "",
-            ayuda="Sin espacios ni acentos: maria, juan_pablo.")}
+    {_campo("nombre", "Nombre de la persona", "", placeholder="maria",
+            ayuda="Sin espacios ni acentos.")}
   </div>
-  <div class="guardar"><button type="submit">Crear perfil</button></div>
+  <div class="guardar"><button class="primario" type="submit">Crear perfil</button></div>
 </form>"""
 
 
@@ -295,6 +327,13 @@ def aplicar(nombre: str, form: dict) -> list[tuple[str, str]]:
     perfil["notify_when_empty"] = "notify_when_empty" in form
 
     filtros = perfil.setdefault("filters", {})
+    # La antigüedad máxima que acepta esta persona. Es una sola para todas las
+    # fuentes a propósito: lo que sirve depende del rubro, no del portal. Un AI
+    # Engineer necesita 7 días —a la semana la búsqueda ya está cubierta— y un
+    # supervisor de seguridad e higiene en el campo se banca 45. Cada fuente la
+    # hereda desde `Source._resolver_antiguedad`.
+    filtros["max_age_days"] = max(0, min(365, _entero(
+        form, "max_age_days", filtros.get("max_age_days", 7))))
     loc = filtros.setdefault("location", {})
     loc["country"] = form.get("pais", "").strip()
     # Una sola ciudad se guarda como texto y varias como lista: los filtros

@@ -1,14 +1,13 @@
 {
-  "name": "example",
-  "_comentario": "MOLDE. No se usa para buscar: es de donde sale cada perfil nuevo que se crea desde la pantalla (Mis datos -> Crear perfil). Todo lo que dice COMPLETAR se llena desde ahí, sin tocar este archivo.",
-  "cv_path": "resume/EJEMPLO_CV.md",
+  "name": "papa",
+  "cv_path": "resume/papa.md",
   "keywords": [],
   "min_score": 60,
   "top_n": 5,
   "max_new_per_run": 30,
   "notify_when_empty": true,
   "filters": {
-    "max_age_days": 7,
+    "max_age_days": 30,
     "location": {
       "country": "Argentina",
       "city": ""

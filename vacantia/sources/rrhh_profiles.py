@@ -15,9 +15,15 @@ Se le da una lista de URLs en el perfil:
     "https://www.linkedin.com/in/fulana-reclutadora/recent-activity/all/",
     "https://consultora.com.ar/busquedas-activas"
   ],
-  "max_profiles": 12
+  "max_profiles": 12,
+  "max_age_days": 30
 }
 ```
+
+`max_age_days` es la ventana de tiempo de esa búsqueda: 30 días por defecto, y
+más ancha que la de `google_posts` porque acá se sigue a alguien puntual, que
+puede pasarse tres semanas sin publicar. `0` la apaga y vuelve a traer lo de
+hace años.
 
 **No hay login ni scraping de LinkedIn**: se lee con TinyFish, igual que
 `careers`.
@@ -65,12 +71,22 @@ from vacantia.log import get_logger
 from vacantia.models import Job
 from vacantia.sources.base import Source
 from vacantia.sources.careers import is_job_url
-from vacantia.sources.google_posts import HIRING_TERMS_EN, HIRING_TERMS_ES
+from vacantia.sources.google_posts import (
+    HIRING_TERMS_EN,
+    HIRING_TERMS_ES,
+    MINUTOS_POR_DIA,
+)
 
 logger = get_logger()
 
 #: Mismo ritmo que `careers`: 150 URLs/min es el límite del plan free.
 _FETCH_DELAY = 0.4
+
+#: Días hacia atrás al pedirle al buscador las publicaciones de una persona.
+#: Sin esto traía posts de hace cinco años, que es el problema que el docstring
+#: de arriba ya nombraba y quedaba a medio resolver: se cortaba el seguir links
+#: dentro de un post, pero la búsqueda seguía sin mirar la fecha.
+DEFAULT_MAX_AGE_DAYS = 30
 
 #: Cuántos párrafos con pinta de búsqueda se levantan por página. Más que esto
 #: y una página de consultora con 40 avisos viejos llena la corrida.
@@ -210,6 +226,10 @@ def slug_de_perfil(url: str) -> str:
 
 class RRHHProfilesSource(Source):
     name = "rrhh"
+    #: Más ancho que el de `google_posts` a propósito: acá no se busca "lo que
+    #: haya", se sigue a alguien puntual que puede pasarse tres semanas sin
+    #: publicar. Lo pisa `filters.max_age_days` del perfil si está puesto.
+    max_age_days_default = DEFAULT_MAX_AGE_DAYS
 
     def __init__(self, config: dict, profile: dict):
         super().__init__(config, profile)
@@ -228,6 +248,10 @@ class RRHHProfilesSource(Source):
         self.buscar_posts = bool(config.get("buscar_posts", True))
         self.posts_por_persona = int(config.get("posts_por_persona", 8))
         self.language = str(config.get("language", "es"))
+        #: {url del post: cuándo lo publicó, según el buscador}. Se llena en
+        #: `posts_de` y se lee al armar la oferta: la página del post no dice
+        #: la fecha por ningún lado, el que la sabe es el buscador.
+        self._fechas: dict[str, str] = {}
         self._tf = None
 
     # --- disponibilidad -------------------------------------------------
@@ -292,6 +316,11 @@ class RRHHProfilesSource(Source):
         duenio = duenio or url
         autor = nombre_desde_url(duenio)
         base = dict(company=autor, source=self.name,
+                    # La fecha la sabe el buscador, no la página: un post de
+                    # LinkedIn leído suelto no dice cuándo se publicó. Se anotó
+                    # en `posts_de` y se recupera acá. Vacía si la página vino
+                    # de una URL cargada a mano, que no pasa por el buscador.
+                    posted_at=self._fechas.get(url, ""),
                     raw={"perfil_rrhh": duenio, "autor": autor, "pagina": url})
 
         # Cuando la página YA es un post, el aviso es esa página y no los links
@@ -388,6 +417,7 @@ class RRHHProfilesSource(Source):
         resultados = buscar_en_tinyfish(
             self._cliente(), query, self.language,
             self.posts_por_persona * 3, etiqueta=self.name,
+            recency_minutes=self.max_age_days * MINUTOS_POR_DIA or None,
         )
         marca = f"/posts/{slug}_"
         propios, vistos = [], set()
@@ -397,6 +427,8 @@ class RRHHProfilesSource(Source):
                 continue
             vistos.add(limpia.lower())
             propios.append(limpia)
+            if fecha := (r.get("date") or "").strip():
+                self._fechas[limpia] = fecha
             if len(propios) >= self.posts_por_persona:
                 break
 
