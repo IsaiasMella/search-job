@@ -1,14 +1,15 @@
 # Notas para Isaías
 
-**401 tests pasan.**
+**481 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  401 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  481 passed
 ```
 
-Andando todo: los 3 portales argentinos, LinkedIn Jobs, las páginas de empleo de
-las empresas, seguir reclutadores, el scoring con Gemini y la pantalla.
+Andando todo: los 3 portales argentinos, Indeed, Get on Board, LinkedIn Jobs,
+las páginas de empleo de las empresas, seguir reclutadores, el scoring con
+Gemini y la pantalla.
 
 ---
 
@@ -776,6 +777,446 @@ van arriba del contenido, son links, y no viven adentro de una tarjeta.
 
 ---
 
+## 2.21. La pestaña Filtradas: auditar el filtro en la semana de prueba
+
+El 9/9 entraron 23 ofertas nuevas y a *Sin marcar* llegaron 2. Las otras 21 las
+sacó el sistema solo: **13 por idioma, 7 por lugar**, una la marcaste vos. Y las
+que se fueron por idioma eran las mejores del día: 95, 90, 85, 75, 75.
+
+El problema no era el número, era que **no había forma de saber si esos 21
+descartes estaban bien**. El sistema decide solo y no rendía cuentas.
+
+**La pestaña Filtradas** es eso. Cae ahí todo lo que el filtro saca por su
+cuenta, con el motivo que dio, y por cada oferta hay dos botones:
+
+- **Bien descartada.** El filtro acertó. Se va de la lista y no vuelve.
+- **Mal descartada.** El filtro se equivocó. Se va de la lista **y vuelve a Sin
+  marcar**, porque la oferta sigue estando y todavía le podés aplicar.
+
+Las dos la sacan de la pila, así que la lista se vacía a medida que revisás y no
+hay que acordarse dónde quedaste. Lo que no tocás sigue ahí esperando.
+
+**Arriba, el marcador**: cuántas veces acertó el filtro y cuántas se equivocó.
+Es **acumulativo y no lo achica el filtro de fechas**: la pregunta es "en toda
+la semana, ¿cuántas veces acertó?", y con dos días de muestra un porcentaje
+sobre lo de hoy no dice nada.
+
+**Sólo entran las de 50 puntos para arriba** (`PUNTAJE_PARA_REVISAR`). Si el
+filtro se equivocó con una de 20, esa oferta no te iba a servir igual: revisar
+ese tramo es gastar la atención donde el error no tiene consecuencia. Y son las
+que más quedan cuando el pozo se va agotando. El contador de la píldora cuenta
+sólo las que se muestran, así que no miente.
+
+**La meta son 40 revisadas** (`META_REVISION`). Con 40 y ningún error, el filtro
+acierta arriba del 90% y no hay nada que tocar; con 4 o más errores hay un patrón
+que mirar. Menos que eso es anécdota, y por eso el marcador muestra el progreso
+hacia la meta y no un porcentaje de aciertos: con 19 revisadas un "100%" suena a
+veredicto y todavía no lo es.
+
+**Cómo venía el 9/9:** 19 revisadas, 19 bien descartadas, 0 mal. Y las 43 que
+quedaban sin revisar puntuaban todas menos de 50, así que la pestaña quedó vacía
+hasta la corrida siguiente. Ese vacío lo dice con todas las letras, porque una
+pantalla vacía sin explicación se lee como "se terminaron las ofertas".
+
+Tres decisiones más que conviene tener escritas:
+
+- **La tarjeta muestra el motivo del sistema arriba de todo, con la explicación
+  completa.** En Sin marcar la pregunta es "¿me postulo?"; acá es "¿el filtro
+  acertó?", y sin el motivo a la vista no se puede contestar. Ya sirvió para ver
+  algo: varias de las mejores no se caen por nivel de inglés sino por
+  *"aviso en 'en'"*, que es la capa 1 del filtro, la del idioma del aviso.
+- **Ordenadas por puntaje, sin la banda de recientes.** Las de 95 son las que más
+  duele perder si el filtro erró, y son las primeras que hay que mirar.
+- **No es un veredicto sobre la oferta, es un veredicto sobre el filtro.** Vive
+  en su propio campo (`revision_filtro`) y no toca `aplicado`. Una marcada "mal"
+  vuelve a Sin marcar y después se puede aplicar o descartar normalmente, y el
+  contador no se pierde.
+
+**La píldora Filtradas se pinta distinta del resto**, con el azul de "estado del
+sistema" y un embudo al lado. Es lo que son esas ofertas: algo que decidió el
+sistema. No va en el índigo de acción, que convertiría la píldora en un botón, y
+no va en rojo, que acá significa error o destrucción: que el filtro descarte algo
+no es ninguna de las dos.
+
+Los dos botones de la tarjeta tampoco son rojos, y son de peso distinto
+(*Bien descartada* en índigo, que es la respuesta que vas a dar la mayoría de las
+veces) para que revisar 60 sea rápido.
+
+---
+
+## 2.22. Dos fuentes nuevas: Indeed y Get on Board
+
+Prendidas en tu perfil desde el 9/9. La recolección pasó de ~95 avisos por
+corrida a **115**.
+
+### Get on Board: la única que no scrapea nada
+
+Get on Board tiene **API pública, abierta, sin token**. Se lee con `urllib`, que
+ya viene con Python. No usa TinyFish, no gasta una sola credencial, y devuelve
+el aviso ya estructurado: título, descripción, modalidad, países y fecha de
+publicación.
+
+Eso la vuelve la fuente más barata y más confiable del sistema, y conviene
+tenerla prendida por una razón de fondo: **cuando falte `TINYFISH_API_KEY`,
+todas las demás se saltean solas y ésta sigue trayendo.**
+
+Dos cosas que hubo que resolver:
+
+- **Es un portal chileno.** Sin recorte, la mitad de lo que trae son
+  presenciales en Santiago. Se le pide `country_code=AR`, que devuelve los que
+  aplican a la Argentina: en la prueba, 60 de 60 remotos.
+- **`countries` mezcla la modalidad con el país.** Un aviso remoto viene con
+  `["Remote"]` ahí adentro, y meter eso en `country` hacía que el filtro de
+  ubicación lo comparara contra "Argentina" y lo tirara. "Remote" se lee como
+  modalidad, no como país.
+
+### Indeed: Cloudflare deja pasar el listado y no el aviso
+
+Éste dio pelea, y las tres trampas salieron de probar contra el sitio, no de
+suponer:
+
+**1. Desde Python es `403 Forbidden`, con `server: cloudflare`.** Con TinyFish
+el listado sí vuelve. Pero la página del aviso, `viewjob?jk=...`, vuelve
+**vacía**: 0 bytes. La única forma de leerla es por el link de redirección que
+trae el propio listado, `rc/clk?jk=<id>&bb=<token>`.
+
+**2. Ese link lleva un token de sesión que cambia en cada corrida.** Si se
+guardara como identidad del aviso, el mismo puesto entraría de nuevo tres veces
+por día y el dedupe no lo agarraría nunca. Es el mismo tipo de bug que el 403 de
+Computrabajo: algo que parece cosmético y rompe el sistema entero. El token se
+usa **sólo para bajar el detalle, dentro de la misma corrida**, y lo que se
+guarda es `viewjob?jk=<id>`, que es estable y **abre perfecto en tu navegador**.
+Lo verifiqué abriendo uno: la bloquea el scraper, no el browser.
+
+**3. El aviso no dice cuándo se publicó**, ni en el listado ni en el detalle. La
+ventana la aplica el propio Indeed con `fromage`, igual que LinkedIn con
+`hours_old`: se piden sólo los últimos N días y lo que vuelve ya viene
+recortado. Se redondea a los valores que Indeed acepta (1, 3, 7, 14) y siempre
+para arriba, para no traer de más.
+
+**La mitad de los avisos no se puede leer, y esos no entran.** Cloudflare deja
+afuera a unos 10 de cada 20. Sin la página del aviso lo único que queda es la
+URL: el título sale del slug y dice "viewjob", sin empresa y sin descripción.
+Eso no se puede ni mostrar en una tarjeta, el modelo le pone 0 igual que a una
+oferta que de verdad no sirve, y encima cuesta una llamada. Se descartan y el
+log dice cuántas fueron. **Indeed aporta 9 a 11 avisos completos por corrida**,
+que es lo que de verdad rinde.
+
+Hay un reintento, y uno solo: medido dos veces, la primera ronda recupera
+algunos y la segunda no recupera ninguno. Las que faltan después del reintento
+son siempre las mismas.
+
+### Por qué no se puede paginar, y qué se hizo en cambio
+
+Pedir la segunda página (`&start=10`) devuelve 550 bytes que dicen, literal:
+
+> *"Para ver más de una página de empleos, crea una cuenta o inicia sesión."*
+
+**No es Cloudflare ni un problema de scraping: es una decisión de producto de
+Indeed.** Se probaron `start`, `sort=date`, la versión móvil y con
+`l=Argentina`: todas devuelven la misma primera página de 16 avisos, o el cartel
+de login. Y por lo mismo **el filtro de "no vistas" tampoco se puede usar**: ese
+filtro vive en tu cuenta de Indeed, y el sistema entra sin cuenta.
+
+Eso último no importa tanto, porque **lo que hace ese filtro ya lo hace el
+sistema, y mejor**: el dedupe contra `seen_jobs.json` no te muestra dos veces el
+mismo aviso, y lo hace para las ocho fuentes a la vez, no sólo para Indeed. En
+la corrida del 9/9 sacó 72 avisos repetidos de 115.
+
+**Lo que sí trae más es buscar por más términos**, porque cada búsqueda tiene su
+propia primera página. Medido con la misma ventana de 7 días:
+
+```
+1 término   -> 16 avisos
+6 términos  -> 51 avisos únicos
+```
+
+Por eso tu perfil quedó con seis términos y `max_queries: 4`: se consultan
+cuatro por corrida, rotando, y en dos días se cubren los seis.
+
+También quedó `sort=date`. Como sólo se puede leer la primera página, lo que
+entre ahí es todo lo que vamos a ver, y conviene que sea lo más nuevo. Encaja
+con lo que decías de que a veces publican todo junto y a veces de a uno.
+
+### El techo de Indeed son unos 11 avisos por corrida
+
+Traer más del listado **no sirve**, y esto está medido: el cuello no está en el
+listado sino en el detalle. De los avisos que se encuentran sólo se puede leer
+entre el 38% y el 50%, y no es rate-limiting: probado con lotes de 10, 5 y 3 con
+pausas crecientes, la tasa no se mueve (33%, 38%, 38%). Los que fallan son
+siempre los mismos en dos rondas seguidas, así que es una propiedad del aviso,
+no de la request. Traer 30 del listado en vez de 20 sube el gasto de TinyFish y
+deja los mismos 11.
+
+Se evaluó y **se descartó** exprimir el listado, que sí trae empresa, ubicación
+y un pedazo de la descripción: los links vienen en una lista aparte, sin el
+texto al lado, así que habría que emparejar cada bloque con su aviso por
+posición. Basta que Indeed intercale un anuncio para que los títulos y las
+empresas queden cruzados, y un aviso con la empresa equivocada es peor que un
+aviso que no está.
+
+### Un detalle que se arregló probando
+
+Las dos fuentes pedían el cupo entero (`results_wanted`) en cada término, así
+que el primero lo llenaba solo y el segundo no aportaba nunca: `Backend`
+devolvía 30 y `AI Engineer` 0 nuevos. Ahora el cupo se reparte entre los
+términos, y Get on Board pasó de 7 avisos a 10.
+
+---
+
+## 2.23. El contador de postulaciones, y los gráficos de Métricas
+
+**"9 trabajos a los que apliqué", grande y en verde, arriba de la lista.** Es lo
+único de toda la app que mide el trabajo de **la persona** y no el del sistema:
+los otros contadores dicen cuántas ofertas hay, éste dice cuántas veces te
+postulaste. Por eso es lo más grande de la pantalla y lo único que usa un tamaño
+de letra por encima de la escala (`--text-hero`, token nuevo).
+
+Con un selector de período al lado: 7 días, 2 semanas, un mes, 2 meses, 3 meses,
+o desde que empezaste.
+
+**Y al lado, el reparto por semana.** Eso es lo que hace que el total signifique
+algo: 9 postulaciones en un mes puede ser tres semanas sin hacer nada y una a
+los tiros, y en el total eso no se ve. Hoy tu gráfico dice exactamente eso: 9,
+todas en la última semana, las once anteriores en cero.
+
+Tres decisiones:
+
+- **Va sólo en Sin marcar**, que es la pantalla que se abre por defecto. En
+  Filtradas ya está el marcador de la auditoría, y dos marcadores en la misma
+  pantalla no se leen: compiten.
+- **El verde no decora.** En este sistema significa lo que ya hiciste, igual que
+  en la tarjeta de una oferta aplicada, y va siempre con la palabra al lado.
+- **Las semanas en cero se dibujan igual**, pero en gris. Un hueco en el eje se
+  lee como "acá no hay dato", y acá el cero es el dato. En verde llamaban la
+  atención sin tener nada que decir.
+
+### Los gráficos: cuáles sí y cuáles no
+
+Los gráficos se dibujan **con HTML y los tokens del sistema, sin librería, sin
+SVG y sin una sola llamada a la red**. Una barra es un `div` con un ancho en
+porcentaje: el navegador ya sabe hacer eso, el texto usa la tipografía del
+sistema y escala con ella, y si cambia la paleta cambian también los gráficos.
+
+**Un gráfico se gana el lugar cuando hay varias magnitudes que comparar de un
+vistazo.** Con dos filas no hay comparación, hay dos números, y para dos números
+la tabla ocupa menos y se lee más rápido. El corte está en tres filas:
+
+| Sección | Qué quedó | Por qué |
+|---|---|---|
+| Lo que descartó el sistema | **tabla** | Son dos filas: idioma y lugar |
+| Por qué descartaste vos | **barras** | Cuatro motivos que se comparan entre sí |
+| De dónde vienen | **barras** | Ocho portales, y lo que importa es cuál pesa |
+| Puntajes | **columnas** | Nuevo. Ver abajo |
+
+**Cuando hay gráfico, la tabla sigue estando debajo, plegada** en *Ver los
+números*. Un gráfico no da el valor exacto ni se puede copiar, y a veces lo que
+se quiere es justamente el número.
+
+### El gráfico nuevo: qué tan bien te encajan las ofertas
+
+Es el que no existía y el que más dice. Muestra cuántas ofertas hay en cada
+tramo de puntaje, y contesta *"¿el sistema me está trayendo cosas buenas?"* sin
+abrir la lista. Una montaña pegada al cero significa que las búsquedas están mal
+apuntadas; una repartida significa que el problema es otro.
+
+Va en columnas y no en barras horizontales porque **el eje tiene un orden propio,
+de 0 a 100**: ordenarlo por tamaño, como se ordenan las barras, destruiría lo
+único que este gráfico tiene para decir.
+
+Los dos tramos de arriba van en verde, y ése es el único color distinto de todos
+los gráficos. Lo lleva porque significa algo: de ahí para arriba el sistema te
+avisa por Telegram.
+
+### Los tokens que hubo que agregar
+
+`DESIGN.md` no trae ninguno para gráficos, así que se propusieron cuatro:
+`--data-fill`, `--data-track`, `--data-destacada` y `--text-hero`. Son pocos
+porque **todos los gráficos de la app son de una sola serie**: la magnitud la
+lleva el largo de la barra, no el tono. No hay dos series que distinguir, así
+que no hay paleta que validar ni leyenda que poner, y el título dice qué se está
+midiendo.
+
+Un test falla si alguna regla de gráfico escribe un color propio en vez de usar
+esos tokens.
+
+---
+
+## 2.24. LinkedIn URLs: armar la búsqueda de publicaciones a mano
+
+El agujero que tapa esto es el único del sistema que **no se puede resolver
+scrapeando**: muchas vacantes se publican como posteo del muro y nunca llegan a
+la pestaña de empleos (publicar así le sale gratis a la empresa). LinkedIn no
+deja leer eso desde afuera, y Google lo indexa uno a tres días tarde, así que
+cuando `google_posts` lo trae ya se llenó de postulantes.
+
+La salida es al revés: **la app arma la dirección y vos la abrís**. Es trabajo
+tuyo, pero te da lo único que importa acá, que es llegar temprano.
+
+**Publicaciones ahora va primero**, y Jobs quedó atrás: Jobs ya lo cubre el
+buscador automático.
+
+### Cómo se usa
+
+La pantalla va partida al medio: **a la izquierda lo que elegís, a la derecha lo
+que sale**. Tildás puestos, elegís si el reclutador escribe en español o inglés,
+dónde, qué dejar afuera, y de cuándo. Apretás **Armar la búsqueda** y la
+dirección aparece al lado, entera y a la vista. Tres botones: **Abrir en
+LinkedIn** (el principal), **Copiar link** y **Guardar en favoritos** con un
+nombre.
+
+Es la única pantalla de la app que **no scrollea**: mide lo que mide la ventana
+y lo que se mueve es cada mitad por dentro. Antes iba todo en una columna larga,
+así que la dirección nacía abajo de todo, fuera de pantalla; y como el
+constructor es un formulario GET, armarla recarga la página y el navegador la
+abre arriba. O sea que cada intento te mandaba al principio y encima el
+resultado quedaba donde no lo veías. Partido en dos eso desaparece, y además la
+columna del constructor vuelve al renglón donde estabas.
+
+Los favoritos quedan abajo, con *Abrir*, *Copiar* y *Sacar de favoritos*. La
+idea es tener cuatro o cinco y revisarlas dos veces por día: los posteos buenos
+duran horas.
+
+**Los puestos que aparecen tildables son tus palabras clave**, las mismas de
+*Mi perfil* → *Qué busco*. No hay una lista aparte que mantener: si agregás
+"GenAI Engineer" ahí, aparece acá; si sacás "Machine Learning Engineer", se va
+de acá. Un solo lugar donde tocar.
+
+Tiene una consecuencia, y conviene tenerla presente: **esas mismas palabras son
+las que el buscador automático usa para pegarle a los portales**. Si agregás una
+sólo para armar búsquedas de LinkedIn, también vas a empezar a recibir ofertas
+de ese puesto en la lista de Trabajos. Suele ser lo que querés, pero no es
+gratis.
+
+Si todavía no cargaste ninguna palabra clave, la pantalla ofrece seis puestos
+sugeridos para que no arranque vacía.
+
+### Los favoritos
+
+*Abrir* va en violeta, igual que *Armar la búsqueda*: es la acción de esa
+tarjeta, la única razón por la que guardaste la búsqueda. Copiar y sacar quedan
+en el menú de tres puntos, como en las ofertas.
+
+**La misma dirección no se guarda dos veces.** Si intentás guardar una que ya
+tenías, no se agrega ni se pisa la que estaba: aparece un cartel verde que dice
+con qué nombre ya la tenías, que es el dato que hace falta para encontrarla en
+la lista. Para renombrar una, se saca y se guarda de nuevo.
+
+Antes las dos formas de fallar contestaban lo mismo, y guardar algo repetido
+decía *"esa dirección no es una búsqueda de publicaciones"*: mentira, y encima
+te mandaba a corregir lo que estaba bien.
+
+### El anotador de al lado del botón
+
+**Apliqué desde acá**, con un menos, el número, un más y **Confirmar**, pegado a
+*Armar la búsqueda*. Al lado del rótulo hay un signo de pregunta: pasás el mouse
+por encima y ahí está la explicación entera, sin ocupar lugar el resto del
+tiempo.
+
+Existe porque lo que mandás desde un posteo no pasa por ninguna oferta de la
+lista: no entró por el scraper, no está en el historial y no hay tarjeta que
+marcar. Sin esto, justo el trabajo que más cuesta (buscar a mano, temprano, el
+mismo día que se publicó) era el único que no se contaba, y el número grande de
+Trabajos mentía para abajo.
+
+**Son dos pasos y no uno.** El más y el menos mueven un anotador que todavía no
+cuenta para nada. *Confirmar* lo pasa al contador grande de Trabajos y **lo deja
+en cero**. Así podés contar mientras mandás, corregir un toque de más, y recién
+cerrar la cuenta cuando terminaste.
+
+Lo que no confirmás **no se borra solo**: si cerrás la pantalla con 3 anotadas,
+siguen ahí cuando volvés. Y armar una búsqueda tampoco lo resetea, que es
+justamente lo que hacía falta: armar recarga la pantalla.
+
+Al confirmar aparece un cartel verde arriba que dice cuántas sumaste y cuántas
+van en total. Es lo único de los tres que avisa: el más y el menos se ven en el
+número mismo.
+
+Lo confirmado **suma al contador grande de Trabajos** y al reparto por semana.
+Es el mismo trabajo: mandar un CV. Cuando hay postulaciones anotadas así, el
+contador grande lo dice en su línea de abajo, para que no suba solo y sin
+explicación.
+
+De lo confirmado se guarda la fecha y hora, no un total: si fuera un número
+pelado, el selector de período no podría contestar "¿cuántas mandé esta
+semana?". La hora es la de cuando confirmaste, no la de cada envío, que nadie
+anotó; para lo que se usa, el día es el mismo.
+
+**Una cosa que todavía no se puede hacer**: deshacer un *Confirmar*. El menos
+saca del anotador, no de lo confirmado. Si algún día confirmás de más, avisame y
+lo arreglamos a mano.
+
+Las pestañas de Métricas no lo cuentan a propósito: sus números son un reparto
+de las 183 ofertas que entraron al sistema, y estas postulaciones no son ofertas
+del sistema. Meterlas ahí rompería la suma.
+
+### Lo que se descubrió probando contra LinkedIn
+
+Todo esto se verificó el 10/9/2026 con la cuenta abierta, no salió de leer
+documentación. Está acá porque si algún día deja de funcionar, esto es el mapa.
+
+**Los parámetros que andan:**
+
+```
+keywords=(boolean)               el texto, con AND/OR/NOT y comillas
+datePosted="past-24h"            y "past-week", "past-month"
+sortBy="date_posted"             o "relevance"
+postedBy=["first","following"]   mi red y a quien sigo
+origin=FACETED_SEARCH
+```
+
+Los valores van **con comillas adentro**. LinkedIn acepta las dos formas pero
+devuelve ésta, así que la guardada es igual a la suya.
+
+**`contentType=["jobs"]` existe y quedó afuera.** Es el filtro "Anuncios de
+empleo". Funciona, pero deja la lista en **cero**: ese tipo de contenido es el
+posteo con formato de vacante de LinkedIn, no el texto libre que escribe un
+reclutador, que es justo lo que buscamos. Un control que rompe la búsqueda no
+es una opción, es una trampa.
+
+**`NOT (a OR b)` devuelve cero.** Éste fue el hallazgo que más costó:
+
+```
+... AND buscamos NOT (Junior OR trainee OR pasantía)   ->  CERO
+... AND buscamos NOT Junior                            ->  trae posteos
+... AND buscamos NOT Junior NOT trainee NOT pasantía   ->  trae posteos
+```
+
+LinkedIn agrupa con paréntesis en todos lados **menos después de un NOT**. Se
+emite un NOT por término.
+
+**Y hay un largo máximo.** Arriba de cierto punto LinkedIn devuelve cero sin
+avisar: aplica los filtros, muestra "No se han encontrado resultados" y te deja
+creyendo que no hay vacantes. Medido la misma tarde, con la misma cuenta:
+
+| Caracteres | Qué tenía | Resultado |
+|---|---|---|
+| 70 | 2 puestos + 2 frases | trae posteos |
+| 96 | 2 puestos + 2 frases + lugar | trae posteos |
+| 117 | 2 puestos + 4 frases | trae posteos, de hace 1 minuto |
+| 164 | 2 puestos + 6 frases | **cero** |
+
+El tope quedó en **110**, con margen. Cuando lo que elegís no entra, **se
+recorta y la pantalla te lo dice**: qué quedó afuera y por qué. Callarlo sería
+peor que el problema, porque creerías estar buscando "vacante" y no.
+
+Qué se sacrifica primero, en orden: se conservan **dos frases-gatillo antes que
+nada** (sin ellas la búsqueda deja de traer vacantes y trae cualquier posteo que
+hable de AI Engineer), después los NOT, y último las frases de más.
+
+### Una cosa que NO quedó cerrada
+
+Varias búsquedas con el NOT puesto dieron cero, y **no pude distinguir si el NOT
+rompe la consulta o si simplemente filtró los pocos posteos que había**. En 24
+horas hay dos o tres posteos de AI Engineer: alcanza con que uno diga "Ssr" para
+que el NOT lo saque y quede vacío. Como no lo pude probar, **no se codificó
+ninguna regla al respecto**: el NOT se emite con la sintaxis correcta y listo.
+
+Si al usarlo ves que tildar *Puestos junior* siempre te deja en cero, destildalo
+y avisá: ahí sí hay algo para mirar con datos de verdad.
+
+---
+
 # 3. LO QUE YA ESTÁ HECHO
 
 Sin detalle, para no volver a discutirlo:
@@ -899,5 +1340,7 @@ vacantia/
 │   └── corrida.py    buscar ahora, y como viene funcionando el motor
 └── sources/
     ├── rrhh_profiles.py   seguir reclutadores por URL
-    └── portales_ar.py     Bumeran / Zonajobs / Computrabajo
+    ├── portales_ar.py     Bumeran / Zonajobs / Computrabajo
+    ├── indeed.py          Indeed AR (Cloudflare: ver 2.22)
+    └── getonbrd.py        Get on Board, por su API publica
 ```

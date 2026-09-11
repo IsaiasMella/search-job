@@ -12,7 +12,7 @@ import os
 import re
 import shutil
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from vacantia.config import PROFILES_DIR, load_profile, load_resume, profile_path
@@ -486,17 +486,75 @@ def filtros_del_perfil(nombre_perfil: str) -> dict:
         return {}
 
 
+def _lo_saco_el_sistema(oferta: dict, filtros: dict) -> bool:
+    """¿El filtro automático la descartó, y todavía nadie lo revisó?
+
+    Una marcada **mal descartada** deja de contar como sacada por el sistema:
+    ése es el punto de marcarla, que vuelva a la fila para poder aplicar.
+    """
+    if oferta.get("revision_filtro") == "mal":
+        return False
+    return bool(motivo_del_sistema(oferta, filtros)[0])
+
+
 def _sin_marcar(historial: list[dict], filtros: dict) -> list[dict]:
     """Las que de verdad esperan una decisión tuya.
 
     Quedan afuera las que el sistema ya descartó por idioma o por lugar: sobre
     ésas ya hay un veredicto y ponerlas en la fila es pedirte que hagas a mano
-    el trabajo que el filtro hizo. Se siguen contando en Estadísticas, y vuelven
-    solas si cambiás el filtro que las sacó.
+    el trabajo que el filtro hizo. Viven en **Filtradas**, se cuentan en
+    Métricas, y vuelven solas si cambiás el filtro que las sacó.
+
+    La excepción es la que revisaste y marcaste **mal descartada**: ésa vuelve
+    acá aunque el filtro la siga sacando, porque el filtro se equivocó y la
+    oferta sigue estando.
     """
     return [h for h in historial
             if h.get("aplicado") is None and not h.get("archivada")
-            and not motivo_del_sistema(h, filtros)[0]]
+            and not _lo_saco_el_sistema(h, filtros)]
+
+
+#: De qué puntaje para arriba vale la pena revisar si el filtro acertó.
+#:
+#: Una de 20 mal descartada no cambia nada: aunque el filtro se haya equivocado,
+#: esa oferta no te iba a servir igual. Las que importan son las que te habrían
+#: llamado, y ahí abajo de 50 no hay ninguna. Revisar las 43 que puntúan menos
+#: es gastar la atención en el tramo donde el error no tiene consecuencia.
+PUNTAJE_PARA_REVISAR = 50
+
+#: Cuántas hay que revisar para poder decir algo del filtro. Con 40 revisadas y
+#: ningún error, el filtro acierta arriba del 90% y no hay nada que tocar; con
+#: 4 o más errores hay un patrón que mirar. Menos que eso es anécdota.
+META_REVISION = 40
+
+
+def _vale_revisarla(oferta: dict) -> bool:
+    """¿Puntúa lo suficiente como para que importe si el filtro se equivocó?"""
+    score = oferta.get("score")
+    return (score if score is not None else -1) >= PUNTAJE_PARA_REVISAR
+
+
+def _saco_el_sistema_sin_revisar(historial: list[dict], filtros: dict) -> list[dict]:
+    """Todo lo que sacó el filtro y nadie revisó, sin mirar el puntaje."""
+    return [h for h in historial
+            if h.get("aplicado") is None and not h.get("archivada")
+            and not h.get("revision_filtro")
+            and motivo_del_sistema(h, filtros)[0]]
+
+
+def _filtradas(historial: list[dict], filtros: dict) -> list[dict]:
+    """Las que descartó el sistema solo, todavía no revisaste, y vale revisar.
+
+    Es la pestaña para auditar el filtro en la primera semana: se lee el aviso,
+    se lo compara con el motivo que dio el sistema, y se contesta si acertó. Las
+    ya revisadas salen de acá, para las dos respuestas: la lista se vacía a
+    medida que se revisa y no hay que acordarse de dónde se quedó uno.
+
+    Las que puntúan menos de `PUNTAJE_PARA_REVISAR` no entran: ver el porqué
+    arriba de esa constante.
+    """
+    return [h for h in _saco_el_sistema_sin_revisar(historial, filtros)
+            if _vale_revisarla(h)]
 
 
 def _por_estado(historial: list[dict], ver: str, filtros: dict) -> list[dict]:
@@ -506,6 +564,8 @@ def _por_estado(historial: list[dict], ver: str, filtros: dict) -> list[dict]:
         return [h for h in historial if h.get("aplicado") is False]
     if ver == "archivadas":
         return [h for h in historial if h.get("archivada")]
+    if ver == "filtradas":
+        return _filtradas(historial, filtros)
     if ver == "pendientes":
         # Las archivadas salen de acá: es el punto de archivarlas.
         return _sin_marcar(historial, filtros)
@@ -535,13 +595,40 @@ def ofertas(nombre_perfil: str, ver: str = "pendientes", desde: str = "todo",
     filtros = filtros_del_perfil(nombre_perfil)
     historial = _por_estado(State(nombre_perfil).load_history(), ver, filtros)
     historial = [h for h in historial if _entra_por_fecha(h, desde)]
-    if ver in ("aplicadas", "descartadas", "archivadas"):
+    if ver in ("aplicadas", "archivadas"):
         # Estas dos pestañas no son para elegir, son para revisar: "¿a quién le
-        # mandé el CV?", "¿por qué había descartado ésta?". Lo último que hiciste
-        # primero. Ordenarlas por puntaje, como la de pendientes, dejaba lo de
-        # ayer mezclado con lo de hace tres semanas.
+        # mandé el CV esta semana?", "¿qué archivé?". Lo último que hiciste
+        # primero. Ordenarlas por puntaje dejaba lo de ayer mezclado con lo de
+        # hace tres semanas.
         historial.sort(
             key=lambda h: h.get("fecha_archivada") or h.get("fecha_feedback") or "",
+            reverse=True,
+        )
+    elif ver == "descartadas":
+        # Descarté también es para revisar, pero la pregunta es otra: no es
+        # "¿qué hice ayer?" sino **"¿me equivoqué al descartar algo bueno?"**, y
+        # eso se contesta mirando primero las de más puntaje. Por fecha, una de
+        # 90 quedaba quinta, abajo de dos de 0, y las que hay que auditar son
+        # justamente las de arriba. A igual puntaje manda lo último que marcaste.
+        historial.sort(
+            key=lambda h: (h.get("score") if h.get("score") is not None else -1,
+                           h.get("fecha_feedback") or ""),
+            reverse=True,
+        )
+    elif ver == "filtradas":
+        # Primero las de más puntaje: son las que más duele perder si el filtro
+        # se equivocó, y son las que hay que mirar con más atención. Sin la
+        # banda de recientes, que acá no ayuda: la pregunta no es "¿a cuál me
+        # postulo?" sino "¿el filtro acertó?".
+        #
+        # El motivo que dio el sistema viaja pegado a cada oferta: es el dato
+        # que hay que auditar, y calcularlo acá evita que la pantalla tenga que
+        # volver a abrir el perfil por cada tarjeta.
+        historial = [{**h, "_motivo_sistema": motivo_del_sistema(h, filtros)}
+                     for h in historial]
+        historial.sort(
+            key=lambda h: (h.get("score") if h.get("score") is not None else -1,
+                           h.get("found_at", "")),
             reverse=True,
         )
     else:
@@ -583,8 +670,43 @@ def contar_ofertas(nombre_perfil: str, desde: str = "todo") -> dict[str, int]:
         "pendientes": len(_sin_marcar(historial, filtros)),
         "aplicadas": sum(1 for h in historial if h.get("aplicado") is True),
         "descartadas": sum(1 for h in historial if h.get("aplicado") is False),
+        "filtradas": len(_filtradas(historial, filtros)),
         "archivadas": sum(1 for h in historial if h.get("archivada")),
     }
+
+
+def resumen_revision(nombre_perfil: str) -> dict[str, int]:
+    """El marcador de la auditoría del filtro.
+
+    {bien, mal, sin_revisar, meta, faltan, bajo_puntaje}.
+
+    **Es acumulativo y no se resetea con el rango de fechas.** La pregunta que
+    contesta es "en toda la semana, ¿cuántas veces acertó el filtro?", y con
+    dos días de muestra un porcentaje sobre lo de hoy no dice nada. Por eso se
+    cuenta contra el historial entero, no contra la página que se está viendo.
+    """
+    historial = State(nombre_perfil).load_history()
+    filtros = filtros_del_perfil(nombre_perfil)
+    revisiones = Counter(h.get("revision_filtro") for h in historial)
+    bien = revisiones.get("bien", 0)
+    mal = revisiones.get("mal", 0)
+    sin_revisar = _saco_el_sistema_sin_revisar(historial, filtros)
+    return {
+        "bien": bien,
+        "mal": mal,
+        "sin_revisar": sum(1 for h in sin_revisar if _vale_revisarla(h)),
+        # Las que el filtro sacó y no se revisan porque puntúan poco. Se cuentan
+        # aparte para poder decir por qué la lista está vacía en vez de dejar
+        # pensando que se terminaron las ofertas.
+        "bajo_puntaje": sum(1 for h in sin_revisar if not _vale_revisarla(h)),
+        "meta": META_REVISION,
+        "faltan": max(0, META_REVISION - (bien + mal)),
+    }
+
+
+def revisar_filtro(nombre_perfil: str, url: str, revision: str) -> int:
+    """Anota si el filtro acertó con esa oferta. Ver `State.revisar_filtro`."""
+    return State(nombre_perfil).revisar_filtro([url], revision)
 
 
 def contar_por_fecha(nombre_perfil: str, ver: str = "pendientes") -> dict[str, int]:
@@ -843,3 +965,140 @@ def estado_del_sistema(nombre_perfil: str) -> dict:
             # Para que el botón "Buscar ahora" del pie no deje arrancar dos
             # búsquedas encimadas: los límites del plan gratis son de la cuenta.
             "corriendo": corrida.esta_corriendo()}
+
+
+# --- cuántas apliqué, y cuándo ---------------------------------------------
+#
+# El número que contesta "¿estoy haciendo algo o no?". Es lo único de la app que
+# mide el trabajo de la persona y no el del sistema, y por eso va grande y arriba
+# de la lista: los otros contadores dicen cuántas ofertas hay, éste dice cuántas
+# veces te postulaste.
+
+#: Los períodos del selector, en días. `0` es "desde que empezaste".
+PERIODOS = (
+    ("7d", "Últimos 7 días", 7),
+    ("14d", "Últimas 2 semanas", 14),
+    ("30d", "Último mes", 30),
+    ("60d", "Últimos 2 meses", 60),
+    ("90d", "Últimos 3 meses", 90),
+    ("todo", "Desde que empecé", 0),
+)
+
+PERIODO_POR_DEFECTO = "30d"
+
+
+def _dia_local(marca) -> date | None:
+    """El día local de una marca de tiempo guardada en UTC.
+
+    Igual que en la tarjeta: hay que pasar a la hora de acá **antes** de quedarse
+    con el día, porque entre las 21:00 y la medianoche el UTC ya es de mañana y
+    una postulación de hoy contaría para el día siguiente.
+    """
+    crudo = str(marca or "").strip()
+    if not crudo:
+        return None
+    try:
+        momento = datetime.fromisoformat(crudo.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (momento.astimezone().date() if momento.tzinfo else momento.date())
+
+
+def _dias_del_periodo(periodo: str) -> int:
+    return dict((clave, dias) for clave, _, dias in PERIODOS).get(periodo, 30)
+
+
+def aplicadas_en(nombre_perfil: str, periodo: str = PERIODO_POR_DEFECTO) -> dict:
+    """Cuántas postulaciones en ese período, y cómo se repartieron por semana.
+
+    {cuantas, periodo, etiqueta, por_semana: [(etiqueta, cuantas)], desde}
+
+    `por_semana` es lo que hace que el número signifique algo: 12 postulaciones
+    en un mes puede ser tres semanas sin hacer nada y una a los tiros, y eso es
+    exactamente lo que conviene ver.
+    """
+    from vacantia.ui import linkedin_urls
+
+    if periodo not in dict((c, e) for c, e, _ in PERIODOS):
+        periodo = PERIODO_POR_DEFECTO
+    dias = _dias_del_periodo(periodo)
+    hoy = date.today()
+    desde = hoy - timedelta(days=dias - 1) if dias else None
+
+    fechas: list[date] = []
+    for h in State(nombre_perfil).load_history():
+        if h.get("aplicado") is not True:
+            continue
+        cuando = _dia_local(h.get("fecha_feedback"))
+        if cuando is None or (desde is not None and cuando < desde):
+            continue
+        fechas.append(cuando)
+
+    # Y las que se aplicaron desde un posteo de LinkedIn, que no pasaron por
+    # ninguna oferta de la lista y por lo tanto no están en el historial. Se
+    # cuentan aparte para poder decirlo en la pantalla: si el total sube y no
+    # hay ninguna tarjeta marcada, hay que poder explicar de dónde salió.
+    a_mano = 0
+    for marca in linkedin_urls.postulaciones(nombre_perfil):
+        cuando = _dia_local(marca)
+        if cuando is None or (desde is not None and cuando < desde):
+            continue
+        fechas.append(cuando)
+        a_mano += 1
+
+    # La ventana se corta en semanas cerradas para que las barras sean
+    # comparables entre sí: la última semana siempre está incompleta, pero es la
+    # de hoy y se entiende. Sin ventana, se muestran las últimas 12.
+    semanas = max(1, min(12, -(-dias // 7))) if dias else 12
+    arranque = hoy - timedelta(days=semanas * 7 - 1)
+    por_semana = []
+    for i in range(semanas):
+        inicio = arranque + timedelta(days=i * 7)
+        fin = inicio + timedelta(days=6)
+        cuantas = sum(1 for f in fechas if inicio <= f <= fin)
+        etiqueta = f"{inicio.day}/{inicio.month}"
+        por_semana.append((etiqueta, cuantas))
+
+    return {
+        "cuantas": len(fechas),
+        "a_mano": a_mano,
+        "periodo": periodo,
+        "etiqueta": dict((c, e) for c, e, _ in PERIODOS)[periodo],
+        "por_semana": por_semana,
+        "desde": desde.isoformat() if desde else "",
+    }
+
+
+#: Los tramos del histograma de puntajes. Son los que usa la persona para
+#: decidir: 0 es "esto no es para vos", y de `min_score` para arriba es lo que
+#: el sistema considera digno de avisar por Telegram.
+TRAMOS_PUNTAJE = ((0, 0), (1, 19), (20, 39), (40, 59), (60, 79), (80, 100))
+
+
+def distribucion_de_puntajes(nombre_perfil: str) -> list[dict]:
+    """Cuántas ofertas hay en cada tramo de puntaje.
+
+    Es el gráfico que contesta "¿el sistema me está trayendo cosas buenas?" sin
+    tener que abrir la lista. Una montaña pegada al cero significa que las
+    búsquedas están mal apuntadas; una repartida significa que el problema es
+    otro.
+    """
+    historial = State(nombre_perfil).load_history()
+    try:
+        minimo = int(leer_perfil(nombre_perfil).get("min_score", 60) or 0)
+    except (FileNotFoundError, json.JSONDecodeError):
+        minimo = 60
+
+    salida = []
+    for desde_p, hasta_p in TRAMOS_PUNTAJE:
+        cuantas = sum(1 for h in historial
+                      if h.get("score") is not None
+                      and desde_p <= h["score"] <= hasta_p)
+        salida.append({
+            "etiqueta": "0" if hasta_p == 0 else f"{desde_p} a {hasta_p}",
+            "cuantas": cuantas,
+            # De acá para arriba el sistema te avisa. Es el único tramo que
+            # lleva color de estado, y lo lleva porque significa algo.
+            "avisa": desde_p >= minimo,
+        })
+    return salida

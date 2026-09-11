@@ -133,6 +133,36 @@
     {
       "type": "computrabajo",
       "enabled": true
+    },
+    {
+      "type": "indeed",
+      "enabled": true,
+      "search_terms": [
+        "AI Engineer",
+        "Backend Python",
+        "Python Developer",
+        "LLM Engineer",
+        "GenAI Engineer",
+        "Software Engineer Python"
+      ],
+      "results_wanted": 25,
+      "max_queries": 4,
+      "sort": "date"
+    },
+    {
+      "type": "getonbrd",
+      "enabled": true,
+      "search_terms": [
+        "AI Engineer",
+        "Machine Learning",
+        "Python",
+        "Backend Python",
+        "LLM",
+        "Data"
+      ],
+      "country_code": "AR",
+      "results_wanted": 30,
+      "max_queries": 3
     }
   ],
   "notifiers": [

@@ -9,7 +9,9 @@ from vacantia.log import get_logger
 from vacantia.sources.base import Source
 from vacantia.sources.careers import CareersPagesSource
 from vacantia.sources.dummy import DummySource
+from vacantia.sources.getonbrd import GetOnBoardSource
 from vacantia.sources.google_posts import GooglePostsSource
+from vacantia.sources.indeed import IndeedSource
 from vacantia.sources.linkedin_jobs import LinkedInJobsSource
 from vacantia.sources.portales_ar import (
     BumeranSource,
@@ -29,6 +31,8 @@ SOURCE_REGISTRY: dict[str, type[Source]] = {
     BumeranSource.name: BumeranSource,
     ZonajobsSource.name: ZonajobsSource,
     ComputrabajoSource.name: ComputrabajoSource,
+    IndeedSource.name: IndeedSource,
+    GetOnBoardSource.name: GetOnBoardSource,
 }
 
 
@@ -57,6 +61,8 @@ __all__ = [
     "BumeranSource",
     "ZonajobsSource",
     "ComputrabajoSource",
+    "IndeedSource",
+    "GetOnBoardSource",
     "SOURCE_REGISTRY",
     "build_sources",
 ]

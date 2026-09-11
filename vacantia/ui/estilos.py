@@ -91,6 +91,23 @@ TOKENS = """
   --color-link:           var(--brand-300);
   --color-link-hover:     var(--neutral-50);
 
+  /* --- datos. TOKENS NUEVOS: el front matter de DESIGN.md no tiene ninguno
+         para gráficos, y Métricas los necesita.
+
+         Son pocos porque **todos los gráficos de la app son de una sola
+         serie**: la magnitud la lleva el largo de la barra, no el tono. No hay
+         paleta categórica que validar ni leyenda que poner, porque no hay dos
+         series que distinguir; el título dice qué se está midiendo.
+
+         El relleno es el índigo de marca. En una tarjeta eso significaría
+         "tocame", pero adentro de un gráfico con su eje y sus etiquetas una
+         barra no se confunde con un botón, y el sistema tiene un solo hue.
+         3.80:1 contra la superficie, arriba del 3:1 que piden los elementos
+         gráficos no textuales. --- */
+  --data-fill:      var(--brand-500);
+  --data-track:     var(--color-border-subtle);
+  --data-destacada: var(--color-success);
+
   /* --- estados. Verde = lo que ya hiciste. Rojo = error o destrucción, y
          nada más: "sin mirar" o "descartada" NO son errores. --- */
   --color-success:         #4ADE80;
@@ -106,6 +123,13 @@ TOKENS = """
          significa algo: puntajes, contadores y columnas numéricas. --- */
   --font-sans: Inter, "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* TOKEN NUEVO. `display` (2rem) es el tope de la escala del front matter y
+     alcanza para una tarjeta de métrica, donde hay cinco números del mismo
+     peso. No alcanza para el contador de postulaciones, que es UN número y
+     tiene que leerse cruzando la habitación: es lo único de la app que mide el
+     trabajo de la persona y no el del sistema. Sigue la misma progresión de
+     1.2 desde display. */
+  --text-hero:      3.5rem;
   --text-display:   2rem;
   --text-h1:        1.75rem;
   --text-h2:        1.375rem;
@@ -187,6 +211,9 @@ TOKENS = """
   --checkbox-size:     18px;
   --score-width:       64px;   /* la caja del puntaje en la tarjeta */
   --menu-width:        240px;  /* el panel de tres puntos */
+  --menu-aire:         112px;  /* lo que mide ese panel, para dejarle lugar
+                                  cuando se abre adentro de una columna que
+                                  scrollea y lo recortaría */
   --table-max:         560px;  /* dos columnas: texto y número */
   --metric-min:        160px;  /* mínimo de una tarjeta de métrica */
   --textarea-min:      180px;
@@ -228,6 +255,27 @@ body {
   background: var(--color-background);
   -webkit-text-size-adjust: 100%;
 }
+
+/* --- la barra de desplazamiento ---
+   `color-scheme: dark` ya la pinta oscura, pero deja la gris del sistema, que
+   al lado de estos bordes se ve prestada. Se pinta con los tokens de la app:
+   riel invisible y pulgar del color del borde, más claro al pasar por encima.
+   El borde del pulgar es del color del fondo y hace de aire: sin él la barra
+   toca el contenido.
+
+   Firefox no tiene pseudoelementos y usa `scrollbar-color`; los dos caminos
+   dicen lo mismo, así que si uno falla el otro alcanza. */
+* { scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent; }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 3px solid var(--color-background);
+  border-radius: var(--rounded-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-tertiary); }
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* Sentence case en todos lados, peso máximo 600, y ningún título en índigo. */
 h1, h2, h3 { margin: 0; font-weight: var(--weight-semibold);
@@ -537,6 +585,23 @@ PIEZAS = """
                    font-variant-numeric: tabular-nums;
                    color: var(--color-text-tertiary); }
 .filtros a.activa .cuenta { color: var(--color-text-secondary); }
+.filtros svg { width: var(--icon-sm); height: var(--icon-sm); flex: 0 0 auto; }
+
+/* "Filtradas" no es una pestaña más: es la tarea de revisar si el filtro
+   automático acierta, y hay que poder encontrarla de un vistazo. Va en el azul
+   de "estado del sistema", que es lo que son esas ofertas: algo que decidió el
+   sistema. NO en el índigo de acción, porque una píldora rellena del color de
+   acción se confunde con un botón, y NO en rojo, porque un descarte del filtro
+   no es un error. El color no está solo: lo acompañan la palabra y el embudo. */
+.filtros a.revisar { background: var(--color-info-surface);
+                     border-color: var(--color-info); color: var(--color-info); }
+.filtros a.revisar:hover { background: var(--color-info-surface);
+                           color: var(--color-info); border-color: var(--color-info); }
+.filtros a.revisar .cuenta { color: var(--color-info); }
+.filtros a.revisar.activa { background: var(--color-info-surface);
+                            border-color: var(--color-info);
+                            color: var(--color-info);
+                            box-shadow: inset 0 0 0 1px var(--color-info); }
 
 /* --- el número grande de "sin mirar" y el filtro de antigüedad --- */
 .encabezado { display: flex; align-items: flex-end; justify-content: space-between;
@@ -610,6 +675,14 @@ PIEZAS = """
 }
 .oferta:hover { border-color: var(--color-border); }
 .oferta:focus-within { border-color: var(--color-focus-ring); }
+/* Con el menú de tres puntos abierto, la tarjeta sube por encima de las de
+   abajo. El z-index del panel NO alcanza, y subirlo a 9999 tampoco: el
+   `backdrop-filter` del vidrio esmerilado convierte cada tarjeta en un contexto
+   de apilado propio, y adentro de ese contexto el panel puede valer lo que sea
+   que igual se dibuja con su tarjeta. Entre tarjetas hermanas manda el orden
+   del documento, así que la de abajo tapaba al panel de la de arriba. Lo que
+   hay que levantar es la tarjeta entera, no el panel. */
+.oferta:has(.menu[open]) { position: relative; z-index: var(--z-dropdown); }
 /* Ya decidida: pierde el vidrio, baja a superficie plana y se aprieta. Estas
    pestañas son para revisar lo hecho, no para elegir, y ahí lo que sirve es
    ver muchas de un saque. */
@@ -763,6 +836,36 @@ PIEZAS = """
                   pointer-events: none; }
 @keyframes sale { to { opacity: 0; transform: translateX(24px); } }
 
+/* --- la tarjeta de la pestaña Filtradas. Es la misma tarjeta, pero acá la
+       pregunta no es "¿me postulo?" sino "¿el filtro acertó?", así que lo
+       primero que se lee es el motivo que dio el sistema. Sin vidrio: no está
+       esperando una postulación, está esperando un veredicto sobre el filtro. */
+.oferta.filtrada { background: var(--color-surface);
+                   border: var(--border-hairline) solid var(--color-border-subtle);
+                   backdrop-filter: none; -webkit-backdrop-filter: none;
+                   box-shadow: var(--elevation-flat); }
+.por-que { margin: 0 0 var(--spacing-sm); max-width: var(--content-max-ch);
+           color: var(--color-text-secondary); font-size: var(--text-body-sm); }
+.por-que b { color: var(--color-text-primary); font-weight: var(--weight-medium); }
+.por-que .detalle { display: block; margin-top: 2px;
+                    color: var(--color-text-tertiary); font-size: var(--text-caption);
+                    line-height: var(--leading-snug); }
+.acciones .ayuda { flex-basis: 100%; }
+
+/* El marcador de la auditoría: cuántas veces acertó el filtro y cuántas no.
+   Los dos números en mono, que es para lo que está la mono: números que se
+   comparan entre sí y que van a cambiar todos los días. */
+.callout.marcador .cuenta { display: flex; flex-wrap: wrap;
+                            gap: var(--spacing-xs) var(--spacing-lg);
+                            align-items: baseline; margin: 0 0 var(--spacing-sm);
+                            color: var(--color-text-secondary);
+                            font-size: var(--text-body-sm); }
+.callout.marcador .valor { font-family: var(--font-mono);
+                           font-size: var(--text-h2); font-weight: var(--weight-semibold);
+                           font-variant-numeric: tabular-nums;
+                           color: var(--color-text-primary);
+                           margin-right: var(--spacing-sm); }
+
 /* --- callout. Agrupa una explicación corta con su salida al lado. --- */
 .callout, .pista {
   max-width: var(--content-max-ch);
@@ -892,24 +995,15 @@ table.numeros tr:hover td { background: var(--color-surface); }
 .paginas .donde .n { font-family: var(--font-mono); font-size: var(--text-mono);
                      font-variant-numeric: tabular-nums; }
 
-/* --- vidrio esmerilado 3 de 3: el cartel de que entraron ofertas. Estático:
-       aparece cuando cambia el dato y no parpadea ni cuenta nada. --- */
-.novedades {
-  position: fixed; right: var(--spacing-lg); bottom: var(--spacing-lg);
-  z-index: var(--z-toast); display: none; align-items: center;
-  gap: var(--spacing-md); padding: var(--spacing-md);
-  border: var(--glass-border); border-radius: var(--rounded-md);
-  background: var(--glass-background);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--elevation-overlay);
-  color: var(--color-text-primary); font-size: var(--text-body-sm);
-}
-.novedades.visible { display: flex; animation: entra-toast var(--duration-normal) var(--ease-enter); }
-@keyframes entra-toast { from { opacity: 0; transform: translateY(8px); }
-                         to { opacity: 1; transform: none; } }
+/* El cartel de que entraron ofertas es un toast más: mismo lugar, mismo
+   vidrio, misma entrada. Lo único suyo es que no se va solo a los 4 segundos,
+   porque no avisa que algo pasó sino que hay algo para hacer. El componente
+   está definido abajo, con el resto de los toasts. */
+.novedades.visible { display: flex; align-items: center; gap: var(--spacing-md); }
 .novedades button { min-height: var(--control-height-sm);
                     padding: var(--spacing-xs) var(--spacing-md); }
+@keyframes entra-toast { from { opacity: 0; transform: translateY(8px); }
+                         to { opacity: 1; transform: none; } }
 
 /* --- formularios. Un formulario largo va en un panel, no troceado en
        tarjetas idénticas: trocear todo en cards iguales aplana la jerarquía. --- */
@@ -1009,7 +1103,402 @@ pre.consejo { margin: 0; white-space: pre-wrap;
 }
 """
 
+
+GRAFICOS = """
+/* ===========================================================================
+   EL CONTADOR DE POSTULACIONES Y LOS GRÁFICOS
+   =========================================================================== */
+
+/* --- "Apliqué a N trabajos". Es lo único de la app que mide el trabajo de la
+       persona y no el del sistema, y por eso es lo más grande de la pantalla.
+       Va en verde porque el verde acá significa lo que significa en todo el
+       sistema: lo que ya hiciste. Y va con la palabra al lado, nunca sólo el
+       color. --- */
+.postulaciones {
+  display: flex; flex-wrap: wrap; align-items: flex-end;
+  gap: var(--spacing-lg); margin: 0 0 var(--spacing-lg);
+  padding: var(--spacing-lg);
+  border: var(--border-hairline) solid var(--color-success);
+  border-radius: var(--rounded-lg);
+  background: var(--color-success-surface);
+}
+.postulaciones .cuenta { flex: 0 0 auto; margin: 0; }
+.postulaciones .numero {
+  display: block; font-size: var(--text-hero);
+  font-weight: var(--weight-semibold); line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-success);
+}
+.postulaciones .que { display: block; margin-top: var(--spacing-xs);
+                      color: var(--color-text-primary);
+                      font-size: var(--text-body-md); }
+.postulaciones .cuando { display: block; margin-top: 2px;
+                         color: var(--color-text-secondary);
+                         font-size: var(--text-body-sm); }
+.postulaciones .periodo { margin-left: auto; align-self: flex-start; }
+.postulaciones .periodo label { color: var(--color-text-secondary);
+                                font-size: var(--text-body-sm); }
+/* El reparto por semana, al lado del número. 12 postulaciones en un mes puede
+   ser tres semanas sin hacer nada y una a los tiros: eso es lo que se ve acá y
+   no en el total. */
+.postulaciones .semanas { flex: 1 1 240px; min-width: 0;
+                          align-self: flex-end; }
+.postulaciones .semanas .columnas { height: 72px; }
+.postulaciones .semanas .columna-relleno { background: var(--color-success); }
+.postulaciones .semanas .columna-valor { color: var(--color-success); }
+/* Una semana sin postulaciones no merece el verde: no hay nada que celebrar y
+   el color llamaba la atención sin tener nada que decir. */
+.columna.vacia .columna-valor,
+.postulaciones .semanas .columna.vacia .columna-valor {
+  color: var(--color-text-tertiary); }
+.columna.vacia .columna-relleno { background: var(--color-border); }
+.postulaciones .vacio-corto { color: var(--color-text-secondary);
+                              font-size: var(--text-body-sm);
+                              max-width: var(--content-max-ch); }
+
+/* --- barras horizontales. La etiqueta a la izquierda, la barra en el medio y
+       el valor a la derecha en mono: el largo sirve para comparar de un
+       vistazo y el número evita tener que estimarlo contra una grilla. --- */
+.barras { display: flex; flex-direction: column; gap: var(--spacing-sm);
+          max-width: var(--content-max-ch); margin: 0 0 var(--spacing-lg); }
+.barra-fila { display: grid; grid-template-columns: minmax(0, 14rem) 1fr auto;
+              align-items: center; gap: var(--spacing-md);
+              font-size: var(--text-body-sm); }
+.barra-nombre { color: var(--color-text-primary); overflow-wrap: anywhere; }
+.barra-riel { display: block; height: 10px; border-radius: var(--rounded-full);
+              background: var(--data-track); overflow: hidden; }
+.barra-relleno { display: block; width: var(--ancho); height: 100%;
+                 border-radius: var(--rounded-full);
+                 background: var(--data-fill); }
+.barra-valor { font-family: var(--font-mono); font-size: var(--text-mono);
+               font-variant-numeric: tabular-nums;
+               color: var(--color-text-secondary); text-align: right;
+               min-width: 3ch; }
+
+/* --- barras verticales. Para cuando el eje tiene un orden propio que no se
+       puede reordenar por tamaño: los tramos de puntaje van de 0 a 100 y las
+       semanas de la más vieja a la más nueva. --- */
+.columnas { display: flex; align-items: flex-end; gap: var(--spacing-sm);
+            height: 180px; max-width: var(--content-max-ch);
+            margin: 0 0 var(--spacing-lg);
+            border-bottom: var(--border-hairline) solid var(--color-border); }
+.columna { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+           align-items: center; justify-content: flex-end; height: 100%;
+           gap: var(--spacing-xs); }
+.columna-relleno { display: block; width: 100%; height: var(--alto);
+                   background: var(--data-fill);
+                   border-radius: var(--rounded-sm) var(--rounded-sm) 0 0; }
+.columna.destacada .columna-relleno { background: var(--data-destacada); }
+.columna-valor { font-family: var(--font-mono); font-size: var(--text-mono);
+                 font-variant-numeric: tabular-nums;
+                 color: var(--color-text-secondary); }
+.columna.destacada .columna-valor { color: var(--color-success); }
+/* El nombre del eje cuelga por debajo de la línea base, para que la línea
+   quede donde tiene que quedar: en el cero. `top: 100%` lo cuelga del alto de
+   la columna; con un `translateY(100%)` se corría su propio alto y terminaba
+   montado sobre la línea y sobre el pie del gráfico. */
+.columna { position: relative; }
+.columna-nombre { position: absolute; top: 100%; margin-top: var(--spacing-xs);
+                  color: var(--color-text-tertiary); font-size: var(--text-caption);
+                  white-space: nowrap; }
+/* El renglón que dejan libre los nombres colgados, para que nada se les monte. */
+.columnas { margin-bottom: var(--spacing-xl); }
+
+/* La leyenda de un gráfico de una sola serie no existe: el título dice qué se
+   está midiendo. Lo que sí va es la aclaración de qué significa el color
+   distinto, cuando lo hay. */
+.pie-grafico { max-width: var(--content-max-ch);
+               margin: 0 0 var(--spacing-lg);
+               color: var(--color-text-tertiary); font-size: var(--text-caption); }
+.pie-grafico .marca-color { display: inline-block; width: 10px; height: 10px;
+                            border-radius: 2px; margin-right: var(--spacing-xs);
+                            background: var(--data-destacada);
+                            vertical-align: baseline; }
+
+@media (max-width: 640px) {
+  .barra-fila { grid-template-columns: 1fr auto; }
+  .barra-nombre { grid-column: 1 / -1; }
+  .postulaciones .periodo { margin-left: 0; }
+  .postulaciones .semanas { flex-basis: 100%; }
+}
+"""
+
+LINKEDIN = """
+/* ===========================================================================
+   EL CONSTRUCTOR DE BÚSQUEDAS DE LINKEDIN
+   =========================================================================== */
+
+/* --- el taller: los controles a la izquierda, lo que sale a la derecha ---
+
+   Antes era una sola columna larga: armabas la búsqueda arriba y la dirección
+   aparecía abajo de todo, fuera de pantalla. Como el constructor es un
+   `form method=get`, apretar "Armar la búsqueda" recarga la página, y el
+   navegador la abre arriba: el resultado nacía justo donde no lo veías y la
+   pantalla saltaba en cada intento.
+
+   Partido en dos, el resultado nace al lado de los controles. La página en sí
+   ya no scrollea: la altura es la del viewport y lo que se mueve es cada
+   columna por dentro. Es la única pantalla que trabaja así, porque es la única
+   donde mirás dos cosas a la vez.
+
+   Se llaman `.lado` y no `.columna` porque `.columna` ya es una barra vertical
+   de los gráficos de Métricas, con su propio `flex` y su `justify-content`.
+   Dos clases con el mismo nombre y distinta idea es un choque silencioso: la
+   primera vez, el formulario apareció encogido y flotando fuera de su caja. */
+.taller {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--gutter);
+}
+.taller > .lado {
+  min-width: 0; min-height: 0;
+  overflow-y: auto; scrollbar-gutter: stable;
+  padding-right: var(--spacing-sm);
+}
+.taller > .lado > h2 { margin: var(--spacing-lg) 0 var(--spacing-sm); }
+.taller > .lado > h2:first-child { margin-top: 0; }
+
+/* --- el aire, más corto que en el resto de la app ---
+   Las separaciones de las pantallas largas están calculadas para leer bajando:
+   ahí el aire ayuda a que un bloque no se confunda con el siguiente. Acá no se
+   baja, se mira todo junto adentro de una ventana, y ese mismo aire empuja
+   controles fuera de la vista. Se acorta un escalón, no dos: sin nada de aire
+   los bloques se pegan y hay que buscar dónde termina uno. */
+.taller .grilla { gap: var(--spacing-md) var(--gutter); }
+.taller form.datos { padding: var(--spacing-md); }
+.taller form.datos h2 { margin: var(--spacing-lg) 0 var(--spacing-sm);
+                        padding-top: var(--spacing-md); }
+/* El primero no lleva nada de eso: no separa dos bloques, abre la tarjeta. La
+   regla general de `form.datos` ya lo dice, pero ésta pesa igual y viene
+   después, así que la pisaba y dejaba 40px de hueco arriba de "Qué buscar". */
+.taller form.datos h2:first-of-type { margin-top: 0; padding-top: 0; }
+.taller .armada { margin-bottom: var(--spacing-lg); }
+.taller .callout { margin-bottom: var(--spacing-md); }
+.taller .guardar { margin: var(--spacing-md) calc(var(--spacing-md) * -1)
+                           calc(var(--spacing-md) * -1);
+                   padding: var(--spacing-sm) var(--spacing-md); }
+
+/* El taller usa todo el ancho que queda, no los 1200px de las pantallas de
+   lectura: son dos columnas mirándose, no un texto para leer de corrido. El
+   tope alto existe igual, porque a 2500px las dos columnas se separan tanto
+   que dejan de leerse juntas. */
+main:has(> .taller) {
+  height: 100dvh; overflow: hidden;
+  display: flex; flex-direction: column;
+  max-width: 1600px;
+  padding-bottom: var(--spacing-lg);
+}
+
+/* La grilla del constructor se acomoda al ancho de SU columna, no al de la
+   ventana: adentro de media pantalla, tres columnas de campos no entran. */
+.taller .grilla { grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+
+/* Las tildes de puestos son largas: en una fila sola cada una queda a media
+   pantalla de la siguiente y hay que barrer con la vista. En columnas se leen
+   como una lista. */
+.checks.en-columnas { display: grid; gap: var(--spacing-sm) var(--spacing-lg);
+                      grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.armador { margin-bottom: 0; }
+
+/* --- la barra de abajo del constructor ---
+   A la izquierda la acción, a la derecha el contador de lo que aplicaste desde
+   acá. Van juntos porque son las dos cosas que se tocan en esta pantalla: una
+   abre la búsqueda, la otra anota lo que salió de ella. */
+.armador .guardar { display: flex; flex-wrap: wrap; align-items: center;
+                    justify-content: space-between; gap: var(--spacing-sm); }
+
+/* Nada de esto se encoge: si no entra al lado del botón, baja entero a la
+   línea de abajo. Encogiendo, el "Confirmar" se montaba arriba del "+". */
+.armador .guardar > * { flex: 0 0 auto; }
+
+/* --- el anotador de postulaciones ---
+   El rótulo arriba, el control abajo. Antes iba todo en una fila y con tres
+   renglones de explicación al pie: al lado del único botón que importa de esta
+   pantalla, eso era un párrafo compitiendo con una acción. */
+.apliques { display: flex; flex-direction: column; align-items: flex-end;
+            gap: var(--spacing-xs); }
+.apliques .rotulo { display: flex; align-items: center; gap: var(--spacing-xs);
+                    margin: 0; color: var(--color-text-secondary);
+                    font-size: var(--text-body-sm); }
+.apliques .pasos { display: flex; align-items: center; gap: var(--spacing-sm); }
+.apliques .pasos > * { flex: 0 0 auto; }
+
+/* Una sola pieza, no tres cajas sueltas: tres cajas iguales no dicen que se
+   tocan juntas ni cuál es el número y cuáles los botones. */
+.stepper {
+  display: inline-flex; align-items: stretch; overflow: hidden;
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-raised);
+}
+.stepper .paso {
+  width: 2.5rem; min-width: 0; height: var(--control-height-sm); padding: 0;
+  display: grid; place-items: center;
+  border: 0; border-radius: 0; background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-lg); line-height: 1;
+}
+.stepper .paso:hover:not(:disabled) { background: var(--color-surface);
+                                      color: var(--color-text-primary); }
+.stepper .paso:disabled { opacity: 0.35; cursor: not-allowed; }
+/* El número es lo que se mira, y es lo único verde de la pieza: el más y el
+   menos todavía no son nada, y el verde acá significa lo que ya hiciste. */
+.stepper .numero {
+  display: grid; place-items: center;
+  min-width: 3ch; padding: 0 var(--spacing-xs);
+  border-left: var(--border-hairline) solid var(--color-border);
+  border-right: var(--border-hairline) solid var(--color-border);
+  color: var(--color-success); font-size: var(--text-body-lg);
+  font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums;
+}
+.apliques .confirmar {
+  min-height: var(--control-height-sm); padding: 0 var(--spacing-md);
+  border: var(--border-hairline) solid var(--color-success);
+  border-radius: var(--rounded-md);
+  background: var(--color-success-surface); color: var(--color-success);
+  font-size: var(--text-body-sm); font-weight: var(--weight-medium);
+}
+.apliques .confirmar:hover:not(:disabled) { background: var(--color-success);
+                                            color: var(--color-background); }
+.apliques .confirmar:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* --- el signo de pregunta con la explicación adentro ---
+   Para lo que hace falta una vez y estorba siempre. Se abre con el mouse y
+   también con el foco del teclado: quien tabula no pasa el mouse por ningún
+   lado. Sale del flujo (`position: absolute`) para que abrirlo no mueva nada
+   de lugar. */
+.ayuda-al-lado { position: relative; display: inline-flex; }
+.ayuda-al-lado .signo {
+  display: grid; place-items: center;
+  width: var(--icon-md); height: var(--icon-md);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--rounded-full);
+  color: var(--color-text-tertiary); font-size: var(--text-caption);
+  line-height: 1; cursor: help;
+}
+.ayuda-al-lado:hover .signo, .ayuda-al-lado:focus-visible .signo {
+  border-color: var(--color-text-secondary); color: var(--color-text-primary);
+}
+.ayuda-al-lado .globo {
+  position: absolute; bottom: calc(100% + var(--spacing-xs)); right: 0;
+  z-index: var(--z-dropdown);
+  display: none; width: max-content; max-width: 30ch;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--rounded-sm);
+  background: var(--neutral-700); color: var(--neutral-50);
+  box-shadow: var(--elevation-overlay);
+  font-size: var(--text-caption); line-height: var(--leading-snug);
+  text-align: left; white-space: normal;
+}
+.ayuda-al-lado:hover .globo, .ayuda-al-lado:focus-visible .globo,
+.ayuda-al-lado:focus-within .globo { display: block; }
+
+/* --- abajo del ancho del taller vuelve a ser una sola columna ---
+   Dos columnas de media pantalla adentro de una pantalla chica no son dos
+   columnas, son dos rendijas. Y con la lateral arriba, 100dvh se pasa. */
+@media (max-width: 1100px) {
+  main:has(> .taller) { display: block; height: auto; overflow: visible;
+                        max-width: var(--container-max);
+                        padding-bottom: var(--spacing-3xl); }
+  .taller { display: block; }
+  .taller > .lado { overflow: visible; padding-right: 0; }
+  .taller > .lado + .lado { margin-top: var(--spacing-xl); }
+}
+
+/* --- la dirección armada, entera y a la vista ---
+   Nunca escondida detrás de un botón: es un texto largo con comillas y
+   paréntesis que LinkedIn a veces interpreta distinto, y si algo sale raro lo
+   primero que se mira es esto. Por eso se corta donde sea (`anywhere`) en vez
+   de truncarse con puntos suspensivos. */
+.armada { margin: 0 0 var(--spacing-xl); }
+.armada h2 { margin: 0 0 var(--spacing-md); }
+.url-generada {
+  max-width: var(--content-max-ch);
+  margin: 0 0 var(--spacing-md);
+  padding: var(--spacing-md);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--rounded-sm);
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono); font-size: var(--text-mono);
+  line-height: var(--leading-body);
+  overflow-wrap: anywhere;
+}
+/* En la lista de guardadas la dirección se recorta a dos renglones, y ahí sí
+   corresponde: ya la verificaste cuando la guardaste, y lo que hace falta es
+   reconocer cuál es. Con `max-height` cortaba a mitad de un renglón y quedaba
+   media línea de letras comida; `line-clamp` corta limpio y pone los puntos. */
+.url-generada.chica { margin: var(--spacing-sm) 0 0; padding: var(--spacing-sm);
+                      color: var(--color-text-tertiary);
+                      display: -webkit-box; -webkit-box-orient: vertical;
+                      -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+
+.guardar-favorito { display: flex; flex-wrap: wrap; align-items: flex-end;
+                    gap: var(--spacing-sm); margin: 0 0 var(--spacing-md);
+                    max-width: var(--content-max-ch); }
+.guardar-favorito label { color: var(--color-text-secondary);
+                          font-size: var(--text-body-sm);
+                          flex-basis: 100%; }
+.guardar-favorito input[type=text] { flex: 1 1 18rem; min-width: 0; }
+
+/* --- las búsquedas guardadas --- */
+.favoritos { list-style: none; margin: 0 0 var(--spacing-xl); padding: 0;
+             display: flex; flex-direction: column; gap: var(--spacing-sm); }
+.favorito { display: flex; align-items: flex-start; gap: var(--spacing-md);
+            padding: var(--spacing-md);
+            border: var(--border-hairline) solid var(--color-border-subtle);
+            border-radius: var(--rounded-lg);
+            background: var(--color-surface); }
+.favorito .datos { flex: 1 1 auto; min-width: 0; }
+.favorito h3 { margin: 0; }
+.favorito .cuando { margin: 2px 0 0; color: var(--color-text-tertiary);
+                    font-size: var(--text-caption); }
+.favorito .acciones { flex: 0 0 auto; display: flex; align-items: center;
+                      gap: var(--spacing-sm); padding: 0; border: 0; }
+.favorito .menu { margin-left: 0; }
+.favorito:has(.menu[open]) { position: relative; z-index: var(--z-dropdown); }
+
+/* La columna scrollea, así que recorta lo que se salga de ella: el menú de la
+   última guardada quedaría cortado por abajo. Hace falta aire al final, pero
+   **sólo mientras hay un menú abierto**: dejarlo fijo abría un hueco vacío
+   enorme abajo de la lista, todo el tiempo, para algo que se usa un segundo.
+   El `:has()` lo pone al abrir y lo saca al cerrar, y `scrollIntoView` baja
+   hasta él. */
+.taller .favoritos { margin-bottom: 0; }
+.taller .favoritos:has(.menu[open]) { padding-bottom: var(--menu-aire); }
+
+/* --- el toast ---
+   4 segundos, abajo a la derecha, uno solo a la vez. Vidrio esmerilado: es el
+   tercero y último lugar donde se usa, junto con la barra lateral y la tarjeta
+   de oferta sin marcar.
+
+   Avisa sólo lo que NO se ve: el link copiado, porque el portapapeles es
+   invisible. Guardar un favorito no lleva toast, porque el favorito aparece en
+   la lista. */
+.toast {
+  position: fixed; right: var(--spacing-lg); bottom: var(--spacing-lg);
+  z-index: var(--z-toast); display: none;
+  padding: var(--spacing-md);
+  border: var(--glass-border); border-radius: var(--rounded-md);
+  background: var(--glass-background);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--elevation-overlay);
+  color: var(--color-text-primary); font-size: var(--text-body-sm);
+}
+.toast.visible { display: block;
+                 animation: entra-toast var(--duration-normal) var(--ease-enter); }
+
+@media (max-width: 640px) {
+  .favorito { flex-wrap: wrap; }
+  .favorito .acciones { flex-basis: 100%; }
+  .toast { left: var(--spacing-md); right: var(--spacing-md); }
+}
+"""
+
 #: La hoja completa, en el orden en que se lee: fuentes, tokens, base, shell,
-#: controles, piezas. Se sirve embebida en el `<head>` de cada página: son 20 KB
-#: y ahorran un pedido más contra un servidor que corre en la misma máquina.
-CSS = "\n".join((_font_faces(), TOKENS, BASE, SHELL, CONTROLES, PIEZAS))
+#: controles, piezas y gráficos. Se sirve embebida en el `<head>` de cada
+#: página: son 20 KB y ahorran un pedido más contra un servidor que corre en la
+#: misma máquina.
+CSS = "\n".join((_font_faces(), TOKENS, BASE, SHELL, CONTROLES, PIEZAS,
+                 GRAFICOS, LINKEDIN))

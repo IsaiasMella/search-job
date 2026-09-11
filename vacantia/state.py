@@ -267,6 +267,39 @@ class State:
                         f"{len(tocadas)} oferta(s)")
         return len(tocadas)
 
+    def revisar_filtro(self, urls: list[str], revision: str) -> int:
+        """Anota si el filtro automático acertó o se equivocó. Cuántas tocó.
+
+        `revision` es `"bien"` o `"mal"`. Es la auditoría de la primera semana:
+        el sistema descarta solo por idioma y por lugar, y hasta que no se sepa
+        si esos descartes son correctos no hay forma de saber si el filtro está
+        bien calibrado o si está tirando a la basura media lista.
+
+        **No es un veredicto sobre la oferta**, es un veredicto sobre el filtro,
+        y por eso vive en su propio campo y no toca `aplicado`. Una marcada
+        "mal" vuelve a la lista de sin marcar y todavía se puede aplicar o
+        descartar; el campo queda igual, así el contador no se pierde cuando la
+        oferta sigue su curso.
+        """
+        if revision not in ("bien", "mal"):
+            raise ValueError(f"revisión inválida: {revision!r}")
+        claves = {_url_key(u) for u in urls if u}
+        if not claves:
+            return 0
+        cambios = {
+            "revision_filtro": revision,
+            "fecha_revision_filtro": datetime.now(timezone.utc).isoformat(),
+        }
+
+        history = self.load_history()
+        tocadas = [h for h in history if _url_key(h.get("url", "")) in claves]
+        for entrada in tocadas:
+            entrada.update(cambios)
+        if tocadas:
+            self._write_history(history)
+            logger.info(f"Filtro revisado ({revision}): {len(tocadas)} oferta(s)")
+        return len(tocadas)
+
     def _read_last_run(self) -> list[dict]:
         if not self.last_run_file.exists():
             return []

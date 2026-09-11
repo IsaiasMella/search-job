@@ -612,31 +612,87 @@ def test_no_arranca_dos_busquedas_encimadas(sitio, monkeypatch):
     assert "<button type=\"button\" disabled>Buscando ofertas</button>" in html
 
 
-def test_linkedin_urls_abre_en_jobs_y_tiene_las_dos_pestanias(sitio):
-    """El scraper trae lo de hace uno a tres días; lo de hoy sale por acá.
+def test_linkedin_urls_abre_en_publicaciones(sitio):
+    """Publicaciones va primero porque es la que resuelve el agujero real.
 
-    Todavía no genera ninguna dirección: por ahora es el lugar, con las dos
-    pestañas y lo que va en cada una escrito.
+    Los posteos del muro nunca llegan a la pestaña de empleos, y el buscador los
+    indexa uno a tres días tarde. Jobs ya lo cubre el scraper.
     """
     base, _ = sitio
 
     _, defecto, _ = get(base, "/linkedin?perfil=test")
     assert "LinkedIn URLs" in defecto
-    assert 'class="pestania activa" href="/linkedin?perfil=test&tab=jobs"' in defecto
-    assert "Publicaciones" in defecto
+    assert 'class="pestania activa" href="/linkedin?perfil=test&tab=publicaciones"' in defecto
+    # Y el orden de las pestañas, no sólo cuál está activa.
+    assert defecto.index(">Publicaciones<") < defecto.index(">Jobs<")
 
-    _, posts, _ = get(base, "/linkedin?perfil=test&tab=publicaciones")
-    assert 'tab=publicaciones"  aria-current=page' in posts or "aria-current" in posts
-    assert "publicaciones de LinkedIn" in posts
+    _, jobs, _ = get(base, "/linkedin?perfil=test&tab=jobs")
+    assert "LinkedIn Jobs" in jobs
 
-    # Una pestaña inventada cae en Jobs y no rompe.
+    # Una pestaña inventada cae en Publicaciones y no rompe.
     _, rara, _ = get(base, "/linkedin?perfil=test&tab=cualquiera")
-    assert "LinkedIn Jobs" in rara
+    assert 'class="datos armador"' in rara
 
     # Y está en la barra lateral, abajo de Trabajos, adentro de "Buscar".
     lateral = defecto[defecto.index("<aside"):defecto.index("</aside>")]
     assert lateral.index(">Buscar<") < lateral.index(">Trabajos<") \
         < lateral.index(">LinkedIn URLs<") < lateral.index(">Métricas<")
+
+
+def test_publicaciones_va_en_dos_columnas_y_la_pantalla_no_se_mueve():
+    """Los controles a la izquierda, lo que sale a la derecha.
+
+    En una sola columna la dirección aparecía abajo de todo, fuera de pantalla,
+    y como el constructor es un GET cada intento recargaba la página y el
+    navegador la abría arriba. Partido en dos, el resultado nace al lado de los
+    controles y la página en sí ya no scrollea: se mueve cada columna adentro.
+    """
+    from vacantia.ui.estilos import CSS
+    from vacantia.ui.render import linkedin
+
+    html = linkedin("ana", "publicaciones", [], url="https://x/y",
+                    guardados=[{"nombre": "AI hoy", "url": "https://x/y",
+                                "guardada": "2026-09-10T10:00:00+00:00"}])
+
+    izq = html.index('class="lado controles"')
+    der = html.index('class="lado resultado"')
+    assert izq < der, "los controles van primero"
+    # El constructor a la izquierda; la dirección y las guardadas a la derecha.
+    assert izq < html.index('class="datos armador"') < der
+    assert der < html.index('class="url-generada"')
+    assert der < html.index("Tus búsquedas guardadas")
+
+    # El alto lo pone el viewport, y lo que scrollea es cada columna.
+    assert "main:has(> .taller)" in CSS
+    assert "height: 100dvh; overflow: hidden;" in CSS
+    assert ".taller > .lado {" in CSS
+
+    # Y abajo de 1100px vuelve a ser una sola columna: dos rendijas no son dos
+    # columnas, y con la lateral arriba 100dvh se pasa de largo.
+    angosto = CSS[CSS.index("@media (max-width: 1100px)"):]
+    assert "height: auto; overflow: visible;" in angosto[:600]
+
+
+def test_sin_armar_la_columna_derecha_dice_que_va_a_aparecer_ahi():
+    """La columna existe siempre, así que el hueco se nombra."""
+    from vacantia.ui.render import linkedin
+
+    html = linkedin("ana", "publicaciones", [])
+    assert "Todavía no armaste ninguna." in html
+    assert "Armar la\n  búsqueda" in html or "Armar la búsqueda" in html
+
+
+def test_el_constructor_vuelve_al_lugar_donde_estabas():
+    """Armar la búsqueda recarga la página: la columna volvía arriba de todo.
+
+    Es la misma cura que la lista de ofertas, pero sobre el scroll de la
+    columna y no el de la ventana, porque acá la ventana no scrollea.
+    """
+    from vacantia.ui.render import JS
+
+    assert "vacantia:taller" in JS
+    assert "form.armador" in JS
+    assert "recordarTaller" in JS and "volverAlTaller" in JS
 
 
 def test_las_pestanias_son_navegacion_y_no_un_filtro():
@@ -746,6 +802,28 @@ def test_las_fuentes_las_sirve_la_app_y_nunca_un_cdn(sitio):
         assert e.value.code == 404
 
 
+def test_el_menu_de_tres_puntos_se_dibuja_arriba_de_la_tarjeta_siguiente():
+    """El panel quedaba tapado por la oferta de abajo.
+
+    Y no se arregla subiéndole el z-index al panel, por más alto que se ponga:
+    el `backdrop-filter` del vidrio esmerilado convierte cada tarjeta en un
+    contexto de apilado propio, y adentro de ese contexto el panel se dibuja
+    con su tarjeta. Entre tarjetas hermanas manda el orden del documento. Lo
+    que hay que levantar es la tarjeta entera.
+    """
+    from vacantia.ui.render import CSS
+
+    regla = CSS[CSS.index(".oferta:has(.menu[open])"):]
+    regla = regla[:regla.index("}") + 1]
+    assert "position: relative" in regla
+    assert "z-index: var(--z-dropdown)" in regla
+
+    # Y el panel sigue teniendo el suyo, para las tarjetas ya marcadas, que no
+    # llevan vidrio y por lo tanto no arman contexto propio.
+    panel = CSS[CSS.index(".menu .panel {"):]
+    assert "z-index: var(--z-dropdown)" in panel[:panel.index("}")]
+
+
 def test_el_vidrio_esmerilado_se_gasta_en_tres_lugares():
     """Si todo es vidrio, nada se destaca.
 
@@ -758,7 +836,13 @@ def test_el_vidrio_esmerilado_se_gasta_en_tres_lugares():
     from vacantia.ui.render import CSS
 
     con_vidrio = re.findall(r"\n(\.[\w.-]+)\s*\{[^}]*var\(--glass-background\)", CSS)
-    assert sorted(con_vidrio) == [".lateral", ".novedades", ".oferta"], con_vidrio
+    assert sorted(con_vidrio) == [".lateral", ".oferta", ".toast"], con_vidrio
+    # El cartel de novedades es un toast más y no un cuarto componente. Cuando
+    # se definió aparte, con su propio vidrio, el efecto pasó a estar en cuatro
+    # lugares y dejó de destacar nada: eso es lo que agarró este test.
+    from vacantia.ui.render import trabajos
+    assert 'class="toast novedades"' in trabajos("ana", [], {}, "pendientes", [],
+                                                 marca="x")
     # Y la que ya está marcada lo pierde: se distingue de un vistazo lo que
     # queda por hacer de lo que ya está hecho.
     assert ".oferta.marcada" in CSS and "backdrop-filter: none" in CSS
@@ -879,9 +963,12 @@ def test_la_navegacion_agrupa_por_lo_que_la_persona_hace():
     from vacantia.ui.render import pagina
 
     html = pagina("t", "c", "ana", ["ana"], "trabajos")
-    assert html.index("Buscar") < html.index("Trabajos") < html.index("Métricas")
-    assert "Mi perfil" in html
-    assert 'aria-current="page"' in html          # dónde estoy parado
+    # Acotado a la barra lateral: en la página entera, las mismas palabras
+    # aparecen antes en los comentarios de la hoja de estilos.
+    lateral = html[html.index("<aside"):html.index("</aside>")]
+    assert lateral.index(">Buscar<") < lateral.index(">Trabajos<") < lateral.index(">Métricas<")
+    assert "Mi perfil" in lateral
+    assert 'aria-current="page"' in lateral       # dónde estoy parado
 
 
 def test_el_motivo_se_elige_de_una_lista_o_se_escribe():
@@ -1434,11 +1521,11 @@ def test_al_marcarla_se_va_de_sin_marcar_y_aparece_en_su_pestana(sitio):
     assert "Data Scientist" in aplicadas
 
 
-def test_las_marcadas_van_por_cuando_las_marcaste_y_no_por_puntaje(sitio):
-    """Estas pestañas son para revisar, no para elegir.
+def test_aplique_va_por_cuando_la_marcaste_y_no_por_puntaje(sitio):
+    """Es para revisar, no para elegir.
 
     "¿A quién le mandé el CV esta semana?" se contesta con lo último arriba.
-    Ordenarlas por puntaje mezclaba lo de ayer con lo de hace tres semanas.
+    Ordenarla por puntaje mezclaba lo de ayer con lo de hace tres semanas.
     """
     base, tmp = sitio
     _con_historial(tmp, [
@@ -1449,6 +1536,48 @@ def test_las_marcadas_van_por_cuando_las_marcaste_y_no_por_puntaje(sitio):
     ])
     _, html, _ = get(base, "/trabajos?perfil=test&ver=aplicadas")
     assert html.index("Postulada recién") < html.index("Postulada hace tiempo")
+
+
+def test_descarte_va_por_puntaje_para_poder_auditar_lo_bueno(sitio):
+    """Acá la pregunta es otra: no "¿qué hice ayer?" sino "¿me equivoqué al
+    descartar algo bueno?".
+
+    Por fecha, una de 90 quedaba quinta, abajo de dos de 0, y las que hay que
+    mirar son justamente las de arriba.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {**_marcada("https://e/floja", "Floja pero recién descartada", "ACME",
+                    False, "2026-09-09T10:00:00+00:00", "no sirve"), "score": 0},
+        {**_marcada("https://e/buena", "Buena y descartada hace rato", "Otra SA",
+                    False, "2026-08-01T10:00:00+00:00", "no sirve"), "score": 90},
+        {**_marcada("https://e/media", "Del medio", "Tercera",
+                    False, "2026-09-08T10:00:00+00:00", "no sirve"), "score": 45},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=descartadas")
+    assert (html.index("Buena y descartada hace rato")
+            < html.index("Del medio")
+            < html.index("Floja pero recién descartada"))
+
+
+def test_a_descarte_no_se_le_aplican_los_filtros_del_sistema(sitio):
+    """Lo que descartaste vos se muestra siempre, aunque el filtro también la
+    sacara por idioma o por lugar.
+
+    Si no, revisar tus propios descartes mostraría una lista recortada sin
+    decirlo, que es justo lo contrario de para lo que sirve esa pestaña.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {**_marcada("https://e/1", "Descartada y además pide inglés", "ACME",
+                    False, HOY_ISO, "no sirve"),
+         "score": 90, "requires_english": True, "english_level": "C1"},
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=descartadas")
+    assert "Descartada y además pide inglés" in html
+    # Y no llega a Sin marcar, que es donde el filtro sí manda.
+    assert "Descartada y además pide inglés" not in get(
+        base, "/trabajos?perfil=test&ver=pendientes")[1]
 
 
 def test_la_tarjeta_dice_cuando_la_marcaste(sitio):
@@ -1576,6 +1705,212 @@ def test_al_descartar_el_aviso_tambien_la_nombra(sitio):
     assert "Descartaste" in url and "Analista+de+Datos" in url
 
 
+# --- auditar el filtro automático ------------------------------------------
+#
+# La primera semana de prueba: el sistema descarta solo por idioma y por lugar,
+# y un día trajo 23 ofertas nuevas de las cuales 20 las sacó el filtro. Sin
+# poder revisar esos descartes no hay forma de saber si el filtro está bien
+# calibrado o si está tirando media lista a la basura.
+
+def _filtrada(url, titulo, score=90):
+    """Una oferta que el filtro saca por idioma."""
+    return {"url": url, "title": titulo, "score": score, "aplicado": None,
+            "requires_english": True, "english_level": "C1",
+            "found_at": HOY_ISO, "posted_at": HOY_YMD}
+
+
+def test_las_que_saca_el_filtro_tienen_su_propia_pestania(sitio):
+    """No llegan a Sin marcar, y hasta ahora no llegaban a ningún lado."""
+    base, tmp = sitio
+    _con_historial(tmp, [
+        _filtrada("https://e/1", "La saca el filtro", 95),
+        {"url": "https://e/2", "title": "Esta sí llega", "score": 70,
+         "aplicado": None, "found_at": HOY_ISO, "posted_at": HOY_YMD},
+    ])
+
+    _, pendientes, _ = get(base, "/trabajos?perfil=test&ver=pendientes")
+    assert "Esta sí llega" in pendientes
+    assert "La saca el filtro" not in pendientes
+
+    _, filtradas, _ = get(base, "/trabajos?perfil=test&ver=filtradas")
+    assert "La saca el filtro" in filtradas
+    assert "Esta sí llega" not in filtradas
+    # Y se lee el motivo que dio el sistema, que es lo que hay que auditar.
+    assert "Piden un inglés más alto que el tuyo" in filtradas
+    # Con las dos respuestas a la vista, y ninguna en rojo.
+    assert "Bien descartada" in filtradas and "Mal descartada" in filtradas
+    assert 'class="rojo"' not in filtradas
+
+
+def test_la_pildora_de_filtradas_se_encuentra_de_un_vistazo(sitio):
+    """No es una pestaña más: es la tarea de la semana de prueba.
+
+    Se pinta en el azul de "estado del sistema", que es lo que son esas
+    ofertas: algo que decidió el sistema. **No en el índigo de acción**, que
+    convertiría la píldora en un botón, y **no en rojo**, que en este sistema
+    significa error o destrucción y un descarte del filtro no es ninguna de las
+    dos. El color no viaja solo: lo acompañan la palabra y el embudo.
+    """
+    import re
+
+    from vacantia.ui.render import CSS
+
+    base, _ = sitio
+    _, html, _ = get(base, "/trabajos?perfil=test")
+    fila = html[html.index('class="filtros"'):html.index("</div>", html.index('class="filtros"'))]
+
+    # Sólo esta píldora lleva la marca, y lleva su ícono.
+    assert fila.count("revisar") == 1
+    pildora = fila[fila.index("class='revisar'"):]
+    assert "<svg" in pildora[:pildora.index("</a>")]
+    assert "Filtradas" in pildora[:pildora.index("</a>")]
+
+    regla = CSS[CSS.index(".filtros a.revisar {"):]
+    regla = regla[:regla.index("}")]
+    assert "var(--color-info)" in regla and "var(--color-info-surface)" in regla
+    assert "var(--color-action)" not in regla
+    assert "var(--color-danger)" not in regla
+
+
+def test_mal_descartada_vuelve_a_sin_marcar(sitio):
+    """Es el punto de marcarla: si el filtro se equivocó, la oferta sigue
+    estando y todavía se le puede aplicar."""
+    base, tmp = sitio
+    _con_historial(tmp, [_filtrada("https://e/1", "El filtro se equivocó", 95)])
+
+    _, _, url = post(base, "/revisar-filtro", {
+        "perfil": "test", "url": "https://e/1", "revision": "mal", "desde": "todo"})
+    assert "error" not in url
+
+    _, pendientes, _ = get(base, "/trabajos?perfil=test&ver=pendientes")
+    assert "El filtro se equivocó" in pendientes
+    assert "Apliqué" in pendientes                  # ya se le puede aplicar
+
+    # Y sale de Filtradas: se revisa una vez y no vuelve a aparecer.
+    _, filtradas, _ = get(base, "/trabajos?perfil=test&ver=filtradas")
+    assert "El filtro se equivocó" not in filtradas
+
+    guardada = json.loads((tmp / "state" / "test" / "job_history.json")
+                          .read_text(encoding="utf-8"))[0]
+    assert guardada["revision_filtro"] == "mal"
+    assert guardada["fecha_revision_filtro"]
+    assert guardada["aplicado"] is None             # no es un veredicto de la oferta
+
+
+def test_bien_descartada_queda_encajonada(sitio):
+    """Se va de Filtradas y no vuelve a Sin marcar: el filtro acertó."""
+    base, tmp = sitio
+    _con_historial(tmp, [_filtrada("https://e/1", "Bien sacada")])
+
+    post(base, "/revisar-filtro", {
+        "perfil": "test", "url": "https://e/1", "revision": "bien", "desde": "todo"})
+
+    assert "Bien sacada" not in get(base, "/trabajos?perfil=test&ver=filtradas")[1]
+    assert "Bien sacada" not in get(base, "/trabajos?perfil=test&ver=pendientes")[1]
+    # Sigue en el historial: no se borra nada.
+    assert "Bien sacada" in get(base, "/trabajos?perfil=test&ver=todas")[1]
+
+
+def test_el_marcador_cuenta_las_dos_y_es_acumulativo(sitio):
+    """Con dos días de muestra, un porcentaje sobre lo de hoy no dice nada.
+
+    El marcador cuenta contra el historial entero y no contra el rango de
+    fechas que esté elegido, para poder mirar la semana completa.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [_filtrada(f"https://e/{i}", f"Filtrada {i}")
+                         for i in range(4)])
+
+    # Sin revisar nada, el marcador dice qué va a pasar en vez de mostrar ceros.
+    _, vacio, _ = get(base, "/trabajos?perfil=test&ver=filtradas")
+    assert 'class="callout marcador"' in vacio
+    assert "Acá se revisa si el sistema descartó bien" in vacio
+    assert '<span class="valor">0</span>' not in vacio
+
+    for i, revision in enumerate(("bien", "bien", "mal")):
+        post(base, "/revisar-filtro", {"perfil": "test", "url": f"https://e/{i}",
+                                       "revision": revision, "desde": "todo"})
+
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=filtradas")
+    assert '<span class="valor">2</span> bien descartadas' in html
+    assert '<span class="valor">1</span> mal descartadas' in html
+    # El progreso hacia la meta, y no un porcentaje de aciertos: con 3 revisadas
+    # un "100% de aciertos" suena a veredicto y todavía no lo es.
+    assert "Sobre 3 revisadas. Con 40 ya se puede decir" in html
+    assert "te faltan 37" in html
+
+    # Acumulativo: filtrar por fecha no lo achica.
+    _, con_filtro, _ = get(base, "/trabajos?perfil=test&ver=filtradas&desde=hoy")
+    assert "Sobre 3 revisadas" in con_filtro
+
+    # Y el marcador vive sólo acá: en Sin marcar no va ningún recuento.
+    _, otras, _ = get(base, "/trabajos?perfil=test&ver=pendientes")
+    assert "bien descartadas" not in otras
+
+
+def test_una_revision_inventada_no_se_guarda(sitio):
+    base, tmp = sitio
+    _con_historial(tmp, [_filtrada("https://e/1", "Una")])
+    _, _, url = post(base, "/revisar-filtro", {
+        "perfil": "test", "url": "https://e/1", "revision": "cualquiera"})
+    assert "error" in url
+    guardada = json.loads((tmp / "state" / "test" / "job_history.json")
+                          .read_text(encoding="utf-8"))[0]
+    assert "revision_filtro" not in guardada
+
+
+def test_en_filtradas_manda_el_puntaje_y_no_la_fecha(sitio):
+    """Las de más puntaje son las que más duele perder si el filtro se
+    equivocó, así que son las primeras que hay que mirar."""
+    base, tmp = sitio
+    _con_historial(tmp, [
+        _filtrada("https://e/floja", "Floja pero nueva", 55),
+        _filtrada("https://e/buena", "Buena y vieja", 95),
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=filtradas")
+    assert html.index("Buena y vieja") < html.index("Floja pero nueva")
+    # Sin la banda de recientes: acá la pregunta no es a cuál postularse.
+    assert "Recién publicadas" not in html
+
+
+def test_debajo_de_50_no_se_revisa(sitio):
+    """Si el filtro se equivocó con una de 20, esa oferta no te iba a servir.
+
+    Revisar ese tramo es gastar la atención donde el error no tiene
+    consecuencia, y son las que más quedan cuando el pozo se va agotando.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        _filtrada("https://e/vale", "Vale revisarla", 50),      # el borde entra
+        _filtrada("https://e/justo-abajo", "Justo abajo", 49),
+        _filtrada("https://e/no-vale", "No vale la pena", 20),
+        _filtrada("https://e/cero", "Ni ahí", 0),
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=filtradas")
+    assert "Vale revisarla" in html
+    for fuera in ("Justo abajo", "No vale la pena", "Ni ahí"):
+        assert fuera not in html, fuera
+
+    # El contador de la píldora dice lo que hay para revisar, no el total: si
+    # dijera 4 y la lista mostrara 1, el número estaría mintiendo.
+    assert ">Filtradas <span class=\"cuenta\">1</span>" in html
+
+
+def test_cuando_no_queda_nada_dice_por_que(sitio):
+    """Una pantalla vacía sin explicación se lee como "se terminaron las ofertas"."""
+    base, tmp = sitio
+    _con_historial(tmp, [
+        _filtrada("https://e/1", "Puntúa poco", 30),
+        _filtrada("https://e/2", "Puntúa poco también", 10),
+    ])
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=filtradas")
+    assert "No queda ninguna por revisar" in html
+    assert "Quedan 2 que el" in html          # cuántas quedaron abajo del corte
+    assert "puntúan menos de 50" in html
+    # Y la salida: buscar más, que es lo único que puede traer una de 50 o más.
+    assert "Buscar ahora" in html
+
+
 # --- archivar --------------------------------------------------------------
 
 def test_archivar_saca_de_sin_marcar_sin_descartar(sitio):
@@ -1637,3 +1972,46 @@ def test_el_boton_de_archivar_solo_aparece_donde_sirve(sitio):
     base, _ = sitio
     assert "Archivar los avisos viejos" not in get(
         base, "/trabajos?perfil=test&ver=aplicadas")[1]
+
+
+def test_la_explicacion_larga_vive_detras_del_signo_de_pregunta():
+    """Tres renglones de texto chico al lado del botón que importa competían
+    con él. Escondido detrás del ícono, está cuando se busca y no antes.
+
+    Se abre con el mouse y también con el foco: quien tabula no pasa el mouse
+    por ningún lado. Y el texto está en el DOM desde el principio, para que un
+    lector de pantalla lo lea como nota del rótulo.
+    """
+    from vacantia.ui.estilos import CSS
+    from vacantia.ui.render import linkedin
+
+    html = linkedin("ana", "publicaciones", [])
+    assert 'class="ayuda-al-lado" tabindex="0" role="note"' in html
+    assert "Contá acá lo que vayas mandando" in html
+    # El rótulo va arriba del control, no al costado.
+    assert html.index("Apliqué desde acá") < html.index('class="stepper"')
+
+    assert ".ayuda-al-lado:hover .globo" in CSS
+    assert ".ayuda-al-lado:focus-within .globo" in CSS
+
+
+def test_el_anotador_es_una_sola_pieza_y_solo_el_numero_va_en_verde():
+    """Tres cajas iguales no dicen que se tocan juntas ni cuál es el número.
+
+    Y el verde acá significa lo que ya hiciste: el más y el menos todavía no
+    son nada, así que van en neutro.
+    """
+    from vacantia.ui.estilos import CSS
+    from vacantia.ui.render import linkedin
+
+    html = linkedin("ana", "publicaciones", [], apliques={"pendientes": 3,
+                                                          "confirmadas": 8})
+    assert '<b class="numero">3</b>' in html
+    assert "Ya sumaste 8." in html
+    # Sin nada anotado, no hay nada que confirmar ni que sacar.
+    vacio = linkedin("ana", "publicaciones", [])
+    assert vacio.count("disabled") == 2
+
+    stepper = CSS[CSS.index(".stepper {"):CSS.index(".apliques .confirmar {")]
+    assert "var(--color-success)" in stepper.split(".stepper .numero {")[1]
+    assert "var(--color-success)" not in stepper.split(".stepper .numero {")[0]

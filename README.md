@@ -83,7 +83,21 @@ es la salida de ese dato.
 
 ### Trabajos
 
-La lista de ofertas, ordenadas por qué tan bien te quedan. Cada una tiene:
+Arriba de todo, **cuántos trabajos aplicaste**, grande y en verde, con un
+selector de período: última semana, dos semanas, un mes, dos meses, tres meses o
+desde que empezaste. Al lado, el reparto por semana.
+
+Cuenta las dos cosas: las ofertas que marcaste **Apliqué** acá, y las que
+anotaste a mano en LinkedIn URLs. Cuando hay de las segundas, la línea de abajo
+lo dice.
+
+Ese reparto es lo que hace que el número signifique algo: 9 postulaciones en un
+mes puede ser tres semanas sin hacer nada y una a los tiros, y en el total eso no
+se ve. Es lo único de la app que mide tu trabajo y no el del sistema, y por eso
+es lo más grande de la pantalla.
+
+Debajo, la lista de ofertas, ordenadas por qué tan bien te quedan. Cada una
+tiene:
 
 - **El puntaje** de 0 a 100, y abajo la razón que escribió el modelo.
 - **Un botón: Apliqué.** Es la acción que venís a hacer, y es el único en color.
@@ -113,34 +127,102 @@ vos, así que terminan al final.
 
 Arriba hay dos filtros que se combinan:
 
-- **Por estado**: sin marcar, apliqué, descarté, archivadas, todas. Al marcar una
-  oferta se va de *Sin marcar* y aparece en su pestaña, así no perdés la cuenta
-  de a cuáles ya les diste bola.
+- **Por estado**: sin marcar, apliqué, descarté, filtradas, archivadas, todas. Al
+  marcar una oferta se va de *Sin marcar* y aparece en su pestaña, así no perdés
+  la cuenta de a cuáles ya les diste bola.
 - **Por antigüedad del aviso**: hoy, últimos 7 días, últimos 30 días, sin filtro.
   Los avisos de hace un mes suelen estar cubiertos. Y hay un atajo para archivar
   de una todas las de más de 7, 14 o 30 días, que dice cuántas son antes de
   apretar.
 
-**Apliqué y Descarté son para revisar, no para elegir**, así que se ordenan por
-cuándo las marcaste, lo último arriba, y cada tarjeta dice cuándo fue. Sirven
-para cuando te llaman y no te acordás a qué empresa le mandaste el CV, o para
-releer por qué habías descartado algo. Esas tarjetas pierden el relieve y quedan
-planas: de un vistazo se ve qué falta hacer y qué ya está hecho.
+**Apliqué y Descarté son para revisar, no para elegir**, y cada tarjeta dice
+cuándo la marcaste. Esas tarjetas pierden el relieve y quedan planas: de un
+vistazo se ve qué falta hacer y qué ya está hecho.
+
+Se ordenan distinto porque contestan preguntas distintas:
+
+- **Apliqué**, por cuándo la marcaste, lo último arriba. Sirve para cuando te
+  llaman y no te acordás a qué empresa le mandaste el CV.
+- **Descarté**, por puntaje, de mayor a menor. Acá la pregunta no es "¿qué hice
+  ayer?" sino **"¿me equivoqué al descartar algo bueno?"**, y eso se contesta
+  mirando primero las de 90 y 95.
+
+A ninguna de las dos se le aplican los filtros del sistema: lo que marcaste vos
+se muestra siempre, aunque el filtro también la sacara por idioma o por lugar.
+
+### Filtradas
+
+El sistema descarta solo por dos cosas: que el aviso pida más inglés del que
+declaraste, y que el lugar o la modalidad no te sirvan. Esas ofertas no llegan a
+*Sin marcar*, y son muchas: pueden ser 20 de 23 en un día.
+
+Acá caen todas, con el motivo que dio el sistema, para que puedas contestar si
+acertó:
+
+- **Bien descartada**: el filtro tenía razón. Se va de la lista.
+- **Mal descartada**: se equivocó. Se va de la lista **y vuelve a Sin marcar**,
+  para que puedas aplicar.
+
+Sólo aparecen las de **50 puntos para arriba**: si el filtro se equivocó con una
+de 20, esa oferta no te iba a servir igual.
+
+Arriba hay un marcador con las dos cuentas, acumulativo desde que empezaste, y
+cuántas te faltan para las **40** que hacen falta para poder decir algo. Con 40
+revisadas y ningún error, el filtro está bien; con 4 o más errores hay un patrón
+para mirar.
 
 ### LinkedIn URLs
 
-El buscador trae lo que se publicó hace uno a tres días. Lo de hoy todavía no lo
-indexó nadie, y son justo los avisos a los que menos gente se postuló. Acá van a
-salir las direcciones de búsqueda de LinkedIn que los muestran, en dos pestañas:
-**Jobs** y **Publicaciones**.
+Muchas vacantes se publican como un **posteo del muro** y nunca llegan a la
+pestaña de empleos. El buscador las indexa uno a tres días tarde, cuando ya se
+llenaron de postulantes, así que el sistema no puede traerlas solo.
 
-Por ahora es el lugar: las pestañas andan y dice qué va en cada una, pero todavía
-no genera ninguna dirección.
+La pantalla está partida al medio: **a la izquierda lo que elegís, a la derecha
+lo que sale**. Tildás los puestos, si el reclutador escribe en español o en
+inglés, dónde, qué dejar afuera y de cuándo. Apretás **Armar la búsqueda** y la
+dirección aparece al lado, entera y a la vista, con tres botones: **Abrir en
+LinkedIn**, **Copiar link** y **Guardar en favoritos**.
+
+La página en sí no scrollea: lo que se mueve es cada mitad por dentro. Armar la
+búsqueda ya no te devuelve arriba de todo.
+
+Al lado del botón hay un anotador: **Apliqué desde acá**, con un menos, el
+número, un más y **Confirmar**. Lo que mandás desde un posteo de LinkedIn no
+pasa por ninguna oferta de la lista, así que no hay tarjeta que marcar y el
+sistema no se entera.
+
+Contás mientras vas mandando y apretás *Confirmar* al terminar: recién ahí
+**suma al contador grande de Trabajos** y el anotador vuelve a cero. Lo que no
+confirmes sigue ahí cuando volvés. El signo de pregunta al lado del rótulo tiene
+la explicación entera.
+
+Las guardadas quedan abajo, con **Abrir** en violeta, para volver a abrirlas de
+un toque. La idea es tener cuatro o cinco y revisarlas dos veces por día: los
+posteos buenos duran horas. La misma dirección no se guarda dos veces: si ya la
+tenías, te dice con qué nombre.
+
+Los puestos tildables **son tus palabras clave de Mi perfil**, no una lista
+aparte: lo que agregues o saques allá aparece o desaparece acá. Ojo con el otro
+efecto, que las mismas palabras son las que el buscador usa contra los portales.
+
+La pestaña **Jobs** queda para más adelante: eso ya lo cubre el buscador
+automático.
 
 ### Métricas
 
 Los totales, qué descartó el sistema sin preguntarte, por qué descartaste vos y
 de qué portal viene cada oferta.
+
+El primero es un gráfico que no existía y es el que más dice: **qué tan bien te
+encajan las ofertas que entran**, o sea cuántas hay en cada tramo de puntaje. Una
+montaña pegada al cero significa que las búsquedas están mal apuntadas; una
+repartida significa que el problema es otro. Los tramos verdes son los que pasan
+el puntaje mínimo, o sea de ahí para arriba te avisa por Telegram.
+
+Los desgloses van en barras cuando hay tres o más cosas que comparar, y en tabla
+cuando son dos: para dos números la tabla ocupa menos y se lee más rápido. Cuando
+hay gráfico, la tabla sigue estando debajo en *Ver los números*, porque un
+gráfico no da el valor exacto ni se puede copiar.
 
 Y abajo de todo, **Cómo viene funcionando**: si está programado y cuándo vuelve,
 cuánto tardó la última corrida y qué encontró, cuándo fue el último aviso por
@@ -679,6 +761,8 @@ vacantia/
 │   ├── linkedin_jobs.py   LinkedIn Jobs vía JobSpy
 │   ├── rrhh_profiles.py   los reclutadores que seguís
 │   ├── portales_ar.py     Bumeran / Zonajobs / Computrabajo
+│   ├── indeed.py          Indeed AR (Cloudflare: ver las notas)
+│   ├── getonbrd.py        Get on Board, por su API pública
 │   └── dummy.py           ofertas de ejemplo, sin credenciales
 └── notifiers/
     ├── base.py       interfaz Notifier: send(jobs) -> bool
@@ -713,7 +797,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  401 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  481 passed
 ```
 
 ---

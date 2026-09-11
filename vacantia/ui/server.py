@@ -168,6 +168,9 @@ class Handler(BaseHTTPRequestHandler):
             pagina=pagina, paginas=paginas,
             viejas={d: len(data.viejas_sin_marcar(perfil, d)) for d in (7, 14, 30)},
             corriendo=corrida.esta_corriendo(),
+            revision=data.resumen_revision(perfil),
+            aplicadas=data.aplicadas_en(perfil, (params.get("apliq") or [""])[0]
+                                        or data.PERIODO_POR_DEFECTO),
         )
         self._pagina("Trabajos", cuerpo, perfil, "trabajos")
 
@@ -248,17 +251,62 @@ class Handler(BaseHTTPRequestHandler):
             desde = "todo"
         cuerpo = render.estadisticas(perfil, data.estadisticas(perfil, desde),
                                      desde, _mensajes(params),
-                                     salud=corrida.salud())
+                                     salud=corrida.salud(),
+                                     puntajes=data.distribucion_de_puntajes(perfil))
         self._pagina("Métricas", cuerpo, perfil, "estadisticas")
 
     def _get_linkedin(self, perfil: str, params: dict) -> None:
         """Las direcciones de búsqueda de LinkedIn, en dos pestañas.
 
-        Jobs es la que se abre por defecto: es la que cubre el hueco más grande,
-        los avisos publicados hoy que ningún buscador indexó todavía.
+        **Publicaciones** es la que se abre por defecto: es la que cubre el
+        hueco que el scraper no puede tapar, los posteos del muro que nunca
+        llegan a la pestaña de empleos.
+
+        El constructor es un `<form method=get>`, así que lo elegido viaja en
+        estos mismos parámetros y la URL de la pantalla queda compartible.
         """
-        tab = (params.get("tab") or ["jobs"])[0]
-        cuerpo = render.linkedin(perfil, tab, _mensajes(params))
+        from vacantia.ui import linkedin_urls
+
+        tab = (params.get("tab") or ["publicaciones"])[0]
+        idioma = (params.get("idioma") or ["es"])[0]
+        gatillos = {
+            "es": linkedin_urls.GATILLOS_ES,
+            "en": linkedin_urls.GATILLOS_EN,
+        }.get(idioma, linkedin_urls.GATILLOS_ES + linkedin_urls.GATILLOS_EN)
+
+        elegido = {
+            "puestos": params.get("puesto") or [],
+            "lugares": params.get("lugar") or [],
+            "idioma": idioma,
+            "sin_junior": bool(params.get("sin_junior")),
+            "cuando": (params.get("cuando") or ["24h"])[0],
+            "orden": (params.get("orden") or ["recientes"])[0],
+            "de_quien": (params.get("de_quien") or ["todos"])[0],
+        }
+        # La URL se arma sólo si la persona eligió algo. Al abrir la pantalla
+        # por primera vez no hay nada que mostrar todavía, y una dirección
+        # armada sola sería una que nadie pidió.
+        url = ""
+        if elegido["puestos"]:
+            fuera = linkedin_urls.EXCLUIR if elegido["sin_junior"] else ()
+            texto = linkedin_urls.armar_boolean(
+                elegido["puestos"], gatillos, elegido["lugares"], fuera)
+            url = linkedin_urls.armar_url(texto, elegido["cuando"],
+                                          elegido["orden"], elegido["de_quien"])
+            # Si el texto no entraba, se recortó: la pantalla lo dice.
+            entraron = linkedin_urls.que_entro(
+                elegido["puestos"], gatillos, elegido["lugares"], fuera)
+            elegido["pedidos"] = {"gatillos": len(gatillos), "excluir": len(fuera)}
+            elegido["entraron"] = entraron
+
+        cuerpo = render.linkedin(
+            perfil, tab, _mensajes(params), elegido=elegido, url=url,
+            guardados=linkedin_urls.favoritos(perfil),
+            # Los puestos salen de las palabras clave del perfil: un solo lugar
+            # donde se agregan y se sacan, y no dos que se desincronizan.
+            puestos=linkedin_urls.puestos_de(data.leer_perfil(perfil)),
+            apliques={"pendientes": linkedin_urls.pendientes(perfil),
+                      "confirmadas": len(linkedin_urls.postulaciones(perfil))})
         self._pagina("LinkedIn URLs", cuerpo, perfil, "linkedin")
 
     # --- POST -----------------------------------------------------------
@@ -282,6 +330,12 @@ class Handler(BaseHTTPRequestHandler):
                                          con_llm=True)
             if ruta == "/buscar":
                 return self._post_buscar(form)
+            if ruta == "/linkedin-favorito":
+                return self._post_linkedin_favorito(form)
+            if ruta == "/linkedin-apliques":
+                return self._post_linkedin_apliques(form, self.path)
+            if ruta == "/revisar-filtro":
+                return self._post_revisar_filtro(form)
             if ruta == "/archivar":
                 return self._post_archivar(form)
             if ruta == "/archivar-viejas":
@@ -312,6 +366,115 @@ class Handler(BaseHTTPRequestHandler):
         arranco, mensaje = corrida.arrancar(perfil)
         clave = "ok" if arranco else "error"
         return self._redirigir("/trabajos", perfil=perfil, **{clave: mensaje})
+
+    def _post_linkedin_favorito(self, form: dict) -> None:
+        """Guardar o sacar una búsqueda de la libreta.
+
+        No lleva toast: el favorito aparece (o desaparece) de la lista de abajo,
+        y avisar lo que ya se ve es ruido.
+        """
+        from vacantia.ui import linkedin_urls
+
+        perfil = form.get("perfil", "")
+        url = form.get("url", "").strip()
+        volver = {"perfil": perfil, "tab": "publicaciones"}
+
+        if form.get("borrar"):
+            if not linkedin_urls.borrar_favorito(perfil, url):
+                return self._redirigir("/linkedin", **volver,
+                                       error="Esa búsqueda ya no estaba guardada.")
+            return self._redirigir("/linkedin", **volver)
+
+        paso = linkedin_urls.guardar_favorito(perfil, form.get("nombre", ""), url)
+        if paso == "invalida":
+            return self._redirigir("/linkedin", **volver,
+                                   error="Esa dirección no es una búsqueda de "
+                                         "publicaciones de LinkedIn.")
+        if paso == "repetida":
+            # No es un error de la persona: la búsqueda ya está donde la fue a
+            # buscar. Se dice con qué nombre, que es el dato que falta para
+            # encontrarla en la lista.
+            como = linkedin_urls.guardada_como(perfil, url)
+            return self._redirigir("/linkedin", **volver,
+                                   ok=f"Esa búsqueda ya estaba guardada, "
+                                      f"como «{como}».")
+        self._redirigir("/linkedin", **volver)
+
+    #: Lo único que se acepta de vuelta en el `volver` del contador. Ese valor
+    #: vuelve del navegador y termina en un header `Location`: se rearma desde
+    #: cero con las claves conocidas en vez de reenviarlo tal cual.
+    _CLAVES_DEL_ARMADOR = ("perfil", "tab", "puesto", "lugar", "idioma",
+                           "sin_junior", "cuando", "orden", "de_quien")
+
+    def _post_linkedin_apliques(self, form: dict, camino: str) -> None:
+        """Sumar o restar una postulación hecha desde un posteo de LinkedIn.
+
+        No hay ninguna oferta que marcar: estas postulaciones no entraron por el
+        scraper y no están en el historial. Por eso se cuentan a mano acá, y por
+        eso suman al contador grande de Trabajos, que es el mismo trabajo.
+
+        Son dos pasos: el más y el menos mueven un anotador que todavía no
+        cuenta para nada, y *Confirmar* lo pasa al contador de Trabajos y lo
+        deja en cero. Un número que sube y nunca vuelve a cero no se puede
+        confirmar ni corregir.
+
+        Se vuelve a la misma pantalla con la misma búsqueda armada: anotar no
+        puede costarte la dirección que acabás de construir.
+        """
+        from vacantia.ui import linkedin_urls
+
+        perfil = form.get("perfil", "")
+        aviso = None
+        if form.get("confirmar"):
+            cuantas = linkedin_urls.confirmar_pendientes(perfil)
+            if cuantas:
+                total = len(linkedin_urls.postulaciones(perfil))
+                una = "postulación" if cuantas == 1 else "postulaciones"
+                aviso = (f"Sumaste {cuantas} {una} al contador de Trabajos. "
+                         f"Van {total} desde posteos de LinkedIn.")
+        elif form.get("menos"):
+            linkedin_urls.restar_pendiente(perfil)
+        else:
+            linkedin_urls.sumar_pendiente(perfil)
+
+        crudo = parse_qs(urlparse(camino).query).get("volver", [""])[0]
+        vuelta = [(k, v) for k, vs in parse_qs(crudo).items()
+                  if k in self._CLAVES_DEL_ARMADOR for v in vs]
+        vuelta = vuelta or [("perfil", perfil), ("tab", "publicaciones")]
+        # Confirmar es el único de los tres que deja rastro: el más y el menos
+        # se ven en el número mismo, y avisar lo que ya se ve es ruido.
+        if aviso:
+            vuelta.append(("ok", aviso))
+        self.send_response(303)
+        self.send_header("Location", f"/linkedin?{urlencode(vuelta)}")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _post_revisar_filtro(self, form: dict) -> None:
+        """¿El filtro automático acertó con esta oferta, o se equivocó?
+
+        Las dos respuestas la sacan de la pestaña Filtradas. La diferencia es
+        que "mal" además la devuelve a Sin marcar, porque si el filtro se
+        equivocó la oferta sigue estando y todavía se le puede aplicar.
+        """
+        perfil = form.get("perfil", "")
+        url = form.get("url", "").strip()
+        revision = form.get("revision", "")
+        volver = {"ver": "filtradas", "desde": form.get("desde", "todo"),
+                  "p": form.get("p", "1")}
+
+        oferta = data.buscar_oferta(perfil, url) or {}
+        titulo = (oferta.get("scored_title") or oferta.get("title") or "")[:70]
+        if not data.revisar_filtro(perfil, url, revision):
+            return self._redirigir("/trabajos", perfil=perfil, **volver,
+                                   error="No encontré esa oferta en el historial.")
+        if revision == "mal":
+            aviso = (f"«{titulo}» vuelve a Sin marcar." if titulo
+                     else "Vuelve a Sin marcar.")
+        else:
+            aviso = (f"Bien descartada: «{titulo}»." if titulo
+                     else "Bien descartada.")
+        self._redirigir("/trabajos", perfil=perfil, **volver, ok=aviso)
 
     def _post_archivar(self, form: dict) -> None:
         """Una sola oferta: el aviso ya no está, o quedó viejo.
