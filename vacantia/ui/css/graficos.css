@@ -1,0 +1,246 @@
+
+/* ===========================================================================
+   EL CONTADOR DE POSTULACIONES Y LOS GRÁFICOS
+   =========================================================================== */
+
+/* --- "Apliqué a N trabajos". Es lo único de la app que mide el trabajo de la
+       persona y no el del sistema, y por eso es lo más grande de la pantalla.
+       Va en verde porque el verde acá significa lo que significa en todo el
+       sistema: lo que ya hiciste. Y va con la palabra al lado, nunca sólo el
+       color. --- */
+/* El selector de período vive SIEMPRE en la esquina de arriba a la derecha.
+   Con la fila flexible se movía solo: sin gráfico quedaba arriba a la derecha y
+   con gráfico se metía entre el número y las barras, así que cambiar de período
+   movía de lugar el control que acababas de tocar. Con una grilla, cada cosa
+   tiene su celda: el número a la izquierda ocupando las dos filas, el selector
+   arriba a la derecha, y el gráfico abajo, en el medio de lo que queda. */
+.postulaciones {
+  display: grid; align-items: end;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "cuenta periodo"
+                       "cuenta reparto";
+  column-gap: var(--spacing-xl); row-gap: var(--spacing-md);
+  margin: 0 0 var(--spacing-lg);
+  padding: var(--spacing-lg);
+  border: var(--border-hairline) solid var(--color-success);
+  border-radius: var(--rounded-lg);
+  background: var(--color-success-surface);
+}
+.postulaciones .cuenta { grid-area: cuenta; align-self: end; margin: 0; }
+.postulaciones .numero {
+  display: block; font-size: var(--text-hero);
+  font-weight: var(--weight-semibold); line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-success);
+}
+.postulaciones .que { display: block; margin-top: var(--spacing-xs);
+                      color: var(--color-text-primary);
+                      font-size: var(--text-body-md); }
+.postulaciones .cuando { display: block; margin-top: 2px;
+                         color: var(--color-text-secondary);
+                         font-size: var(--text-body-sm); }
+.postulaciones .periodo { grid-area: periodo;
+                          justify-self: end; align-self: start; }
+.postulaciones .periodo label { color: var(--color-text-secondary);
+                                font-size: var(--text-body-sm); }
+/* El reparto, abajo del selector y al lado del número. 12 postulaciones en un
+   mes puede ser tres semanas sin hacer nada y una a los tiros: eso es lo que se
+   ve acá y no en el total. Las barras son más altas que antes porque ahora
+   tienen la tarjeta entera de ancho: chatas y anchas no se comparan. */
+.postulaciones .reparto,
+.postulaciones .vacio-corto { grid-area: reparto; min-width: 0;
+                              align-self: end; }
+.postulaciones .reparto .columnas { height: 88px; max-width: none;
+                                    margin-bottom: 0; }
+.postulaciones .reparto .columna-relleno { background: var(--color-success); }
+.postulaciones .reparto .columna-valor { color: var(--color-success); }
+/* Un tramo sin postulaciones no merece el verde: no hay nada que celebrar y el
+   color llamaba la atención sin tener nada que decir. */
+.columna.vacia .columna-valor,
+.postulaciones .reparto .columna.vacia .columna-valor {
+  color: var(--color-text-tertiary); }
+.columna.vacia .columna-relleno { background: var(--color-border); }
+.postulaciones .vacio-corto { color: var(--color-text-secondary);
+                              font-size: var(--text-body-sm);
+                              max-width: var(--content-max-ch); }
+
+/* --- la misma tarjeta, parado en Descarté -----------------------------------
+
+   Misma forma y misma posición, porque es el mismo lugar de la pantalla
+   contestando la pregunta de esa pestaña. Lo que cambia es el color, y cambia
+   porque tiene que cambiar: **el verde de esta app significa lo que ya
+   hiciste**, y descartar no es un logro que uno quiera coleccionar, es
+   higiene. En verde, 78 descartes se leían como una felicitación.
+
+   Neutro y no rojo: tampoco es un error. Descartar bien es exactamente lo que
+   hace que el sistema aprenda. */
+.postulaciones.descartes { border-color: var(--color-border);
+                           background: var(--color-surface); }
+.postulaciones.descartes .numero { color: var(--color-text-primary); }
+/* Las barras acá son horizontales (un motivo por fila) y no columnas, así que
+   no tienen alto fijo: crecen con la cantidad de motivos. */
+.postulaciones.descartes .reparto .barras { max-width: none; margin-bottom: 0; }
+/* Con uno o dos motivos no hay nada que comparar y el gráfico sobra: el número
+   pegado a la etiqueta dice lo mismo en un renglón. */
+.motivos-cortos { grid-area: reparto; align-self: end;
+                  margin: 0; padding: 0; list-style: none;
+                  display: flex; flex-direction: column; gap: var(--spacing-xs);
+                  color: var(--color-text-secondary);
+                  font-size: var(--text-body-sm); }
+.motivos-cortos b { color: var(--color-text-primary);
+                    font-variant-numeric: tabular-nums; }
+
+/* --- la estructura de Métricas ----------------------------------------------
+
+   La pantalla cuenta tres cosas y en este orden: qué hiciste (las tarjetas de
+   arriba), qué te piden ahí afuera (el bloque en foco), y qué está entrando (los
+   desgloses). Al final, aparte, el estado del programa.
+
+   **Los desgloses NO van en tarjetas.** Es el error que hacía confusa esta
+   pantalla y `DESIGN.md` ya lo tenía escrito: *trocear todo el contenido en
+   cards iguales es el default genérico y aplana la jerarquía*. Con cinco
+   rectángulos idénticos con borde y fondo, nada decía cuál mirar primero, y
+   encima competían con las tarjetas de métrica de arriba, que sí son tarjetas
+   porque son cinco valores que se comparan entre sí.
+
+   Lo que separa un desglose del siguiente es el espacio y una línea fina
+   arriba del título. Alcanza, y deja la jerarquía intacta: lo único con
+   superficie propia en esta pantalla es lo que de verdad se destaca. --- */
+
+/* El título de sección. Ordena la pantalla en capítulos en vez de dejar una
+   pila de gráficos sin nada que diga de qué va cada tramo. */
+h2.seccion { margin: var(--spacing-2xl) 0 var(--spacing-lg);
+             padding-bottom: var(--spacing-sm);
+             border-bottom: var(--border-hairline) solid var(--color-border); }
+
+/* El bloque en foco es el único de la pantalla con superficie propia, y la
+   tiene porque es el único accionable: lo que está arriba y no sabés es lo que
+   te conviene ir a aprender. Los demás describen, éste sugiere qué hacer.
+
+   Se llama `foco` y no `destacado` porque `destacado` ya existe: es el
+   modificador de la tarjeta de "sin mirar", acá arriba. Cuando las dos usaban
+   el mismo nombre, la tarjeta se comía el padding y el margen de esta sección y
+   quedaba más baja que las otras cuatro de su fila.
+
+   Superficie plana y borde sutil, no vidrio: el vidrio se gasta en la barra
+   lateral, las ofertas sin marcar y los toasts, y en ningún lado más. */
+.foco { margin-bottom: var(--spacing-xl);
+        padding: var(--spacing-xl);
+        border: var(--border-hairline) solid var(--color-border);
+        border-radius: var(--rounded-lg);
+        background: var(--color-surface); }
+.foco > h2 { margin: 0 0 var(--spacing-xs); }
+.foco > :last-child { margin-bottom: 0; }
+/* Con la tarjeta entera de ancho, quince barras en una columna son una torre
+   que no se abarca de un vistazo. En dos columnas se leen como una lista.
+   
+   **`display: block` es obligatorio acá**: `.barras` es flex, y un contenedor
+   flex ignora `columns` por completo. Sin esta línea la regla de abajo no hace
+   absolutamente nada y las barras siguen en una sola columna. */
+.foco .barras { display: block; max-width: none;
+                columns: 2; column-gap: var(--spacing-2xl); }
+.foco .barra-fila { break-inside: avoid; margin-bottom: var(--spacing-sm); }
+/* La columna del nombre se achica: dentro de media pantalla, 14rem de etiqueta
+   dejaban la barra sin lugar para decir nada. */
+.foco .barra-fila { grid-template-columns: minmax(0, 10rem) 1fr auto; }
+
+/* Multicolumna y no grid, y la razón es el alto: los desgloses miden cosas muy
+   distintas. Con un grid, cada fila mide lo que el bloque más alto de esa fila,
+   así que al lado del más corto quedaba un agujero. Multicolumna reparte por
+   alto y no por filas.
+
+   Se paga con el orden de lectura, que pasa a ser la columna izquierda entera y
+   después la derecha. Se puede pagar porque los desgloses son independientes:
+   ninguno se entiende sólo después de leer el de al lado. */
+.paneles { columns: 2; column-gap: var(--spacing-2xl); }
+/* Abajo de 60rem, dos columnas dejan el nombre de cada barra en tres renglones.
+   Una sola y se leen. Vale para los desgloses y para el bloque en foco. */
+@media (max-width: 60rem) {
+  .paneles { columns: 1; }
+  .foco { padding: var(--spacing-lg); }
+  .foco .barras { columns: 1; }
+}
+
+.panel { break-inside: avoid; margin-bottom: var(--spacing-xl);
+         padding-top: var(--spacing-md);
+         border-top: var(--border-hairline) solid var(--color-border-subtle); }
+.panel > h2 { margin: 0 0 var(--spacing-xs); font-size: var(--text-h3); }
+.panel > :last-child { margin-bottom: 0; }
+.panel .barras:last-child, .panel .columnas:last-child { margin-bottom: 0; }
+
+/* El estado del programa, al pie y visiblemente aparte: no es un dato sobre tu
+   búsqueda de trabajo, es si la máquina anda. Leerlo al lado de "cuántas piden
+   inglés" los pone en la misma categoría y no lo son. */
+.salud { margin-top: var(--spacing-2xl); padding-top: var(--spacing-lg);
+         border-top: var(--border-hairline) solid var(--color-border); }
+.salud > h2 { margin: 0 0 var(--spacing-xs); }
+
+/* --- barras horizontales. La etiqueta a la izquierda, la barra en el medio y
+       el valor a la derecha en mono: el largo sirve para comparar de un
+       vistazo y el número evita tener que estimarlo contra una grilla. --- */
+.barras { display: flex; flex-direction: column; gap: var(--spacing-sm);
+          max-width: var(--content-max-ch); margin: 0 0 var(--spacing-lg); }
+.barra-fila { display: grid; grid-template-columns: minmax(0, 14rem) 1fr auto;
+              align-items: center; gap: var(--spacing-md);
+              font-size: var(--text-body-sm); }
+.barra-nombre { color: var(--color-text-primary); overflow-wrap: anywhere; }
+.barra-riel { display: block; height: 10px; border-radius: var(--rounded-full);
+              background: var(--data-track); overflow: hidden; }
+.barra-relleno { display: block; width: var(--ancho); height: 100%;
+                 border-radius: var(--rounded-full);
+                 background: var(--data-fill); }
+.barra-valor { font-family: var(--font-mono); font-size: var(--text-mono);
+               font-variant-numeric: tabular-nums;
+               color: var(--color-text-secondary); text-align: right;
+               min-width: 3ch; }
+
+/* --- barras verticales. Para cuando el eje tiene un orden propio que no se
+       puede reordenar por tamaño: los tramos de puntaje van de 0 a 100 y las
+       semanas de la más vieja a la más nueva. --- */
+.columnas { display: flex; align-items: flex-end; gap: var(--spacing-sm);
+            height: 180px; max-width: var(--content-max-ch);
+            margin: 0 0 var(--spacing-lg);
+            border-bottom: var(--border-hairline) solid var(--color-border); }
+.columna { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+           align-items: center; justify-content: flex-end; height: 100%;
+           gap: var(--spacing-xs); }
+.columna-relleno { display: block; width: 100%; height: var(--alto);
+                   background: var(--data-fill);
+                   border-radius: var(--rounded-sm) var(--rounded-sm) 0 0; }
+.columna.destacada .columna-relleno { background: var(--data-destacada); }
+.columna-valor { font-family: var(--font-mono); font-size: var(--text-mono);
+                 font-variant-numeric: tabular-nums;
+                 color: var(--color-text-secondary); }
+.columna.destacada .columna-valor { color: var(--color-success); }
+/* El nombre del eje cuelga por debajo de la línea base, para que la línea
+   quede donde tiene que quedar: en el cero. `top: 100%` lo cuelga del alto de
+   la columna; con un `translateY(100%)` se corría su propio alto y terminaba
+   montado sobre la línea y sobre el pie del gráfico. */
+.columna { position: relative; }
+.columna-nombre { position: absolute; top: 100%; margin-top: var(--spacing-xs);
+                  color: var(--color-text-tertiary); font-size: var(--text-caption);
+                  white-space: nowrap; }
+/* El renglón que dejan libre los nombres colgados, para que nada se les monte. */
+.columnas { margin-bottom: var(--spacing-xl); }
+
+/* La leyenda de un gráfico de una sola serie no existe: el título dice qué se
+   está midiendo. Lo que sí va es la aclaración de qué significa el color
+   distinto, cuando lo hay. */
+.pie-grafico { max-width: var(--content-max-ch);
+               margin: 0 0 var(--spacing-lg);
+               color: var(--color-text-tertiary); font-size: var(--text-caption); }
+.pie-grafico .marca-color { display: inline-block; width: 10px; height: 10px;
+                            border-radius: 2px; margin-right: var(--spacing-xs);
+                            background: var(--data-destacada);
+                            vertical-align: baseline; }
+
+@media (max-width: 640px) {
+  .barra-fila { grid-template-columns: 1fr auto; }
+  .barra-nombre { grid-column: 1 / -1; }
+  /* En pantalla angosta el número solo ya ocupa el ancho: las tres cosas se
+     apilan y el selector sigue siendo lo primero de arriba a la derecha. */
+  .postulaciones { grid-template-columns: minmax(0, 1fr);
+                   grid-template-areas: "periodo" "cuenta" "reparto"; }
+  .postulaciones .cuenta { align-self: start; }
+}

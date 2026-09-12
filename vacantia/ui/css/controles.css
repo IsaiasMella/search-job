@@ -1,0 +1,98 @@
+
+/* ===========================================================================
+   CONTROLES: botones, desplegables y campos.
+
+   Un solo botón primario por pantalla, y es la acción que la persona vino a
+   hacer. Nunca dos botones del mismo peso enfrentados: obligan a decidir antes
+   de leer, que es exactamente lo que pasaba con "Apliqué" verde contra "No
+   apliqué" rojo.
+   =========================================================================== */
+button, .boton {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--spacing-sm);
+  min-height: var(--control-height); padding: var(--spacing-sm) var(--spacing-lg);
+  font-family: var(--font-sans); font-size: var(--text-body-sm);
+  font-weight: var(--weight-medium); line-height: 1.2;
+  border-radius: var(--rounded-md);
+  border: var(--border-hairline) solid var(--color-border);
+  background: var(--color-surface-raised); color: var(--color-text-primary);
+  text-decoration: none; cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard),
+              border-color var(--duration-fast) var(--ease-standard),
+              box-shadow var(--duration-fast) var(--ease-standard);
+}
+button:hover, .boton:hover { background: var(--color-border); color: var(--color-text-primary); }
+button:disabled, .boton[aria-disabled="true"] {
+  background: var(--color-surface); color: var(--color-text-tertiary);
+  cursor: not-allowed; }
+button:disabled:hover { background: var(--color-surface); }
+
+.primario, button.primario {
+  background: var(--color-action); border-color: var(--color-action);
+  color: var(--color-text-on-action); }
+.primario:hover, button.primario:hover {
+  background: var(--color-action-hover); border-color: var(--color-action-hover);
+  box-shadow: var(--glow-action); }
+.primario:active, button.primario:active {
+  background: var(--brand-700); border-color: var(--brand-700); }
+.primario:disabled {
+  background: var(--color-border); border-color: var(--color-border);
+  color: var(--color-text-tertiary); box-shadow: none; }
+
+/* Mantenimiento: archivar, devolver a la lista, limpiar. No compite. */
+.fantasma, button.fantasma {
+  background: transparent; border-color: transparent;
+  color: var(--color-text-secondary);
+  padding: var(--spacing-sm) var(--spacing-md); }
+.fantasma:hover, button.fantasma:hover {
+  background: var(--color-surface); color: var(--color-text-primary); }
+
+/* Los desplegables se ven y se comportan igual que los botones: mismo alto,
+   mismo borde, mismo radio, mismo hover. `appearance: none` saca la flecha
+   nativa, la única parte que no se puede pintar, y dibujamos la nuestra. La
+   lista desplegada la dibuja el sistema operativo: lo único que la hace
+   acompañar el tema es `color-scheme`, que está puesto arriba en :root. */
+select {
+  appearance: none; -webkit-appearance: none;
+  font-family: var(--font-sans); font-size: var(--text-body-sm);
+  min-height: var(--control-height); max-width: 100%;
+  padding: var(--spacing-sm) var(--spacing-xl) var(--spacing-sm) var(--spacing-md);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--rounded-sm);
+  color: var(--color-text-primary); cursor: pointer;
+  background-color: var(--color-surface);
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-md) center;
+  background-size: 11px 8px;
+  transition: background-color var(--duration-fast) var(--ease-standard),
+              border-color var(--duration-fast) var(--ease-standard);
+}
+select:hover { background-color: var(--color-surface-raised); }
+select:focus { border-color: var(--color-focus-ring); }
+select.mal { border-color: var(--color-danger); }
+select option { background: var(--color-surface-raised); color: var(--color-text-primary); }
+
+input[type=text], input[type=number], input[type=password], textarea {
+  width: 100%; min-height: var(--control-height);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-family: var(--font-sans); font-size: var(--text-body-sm);
+  line-height: var(--leading-body);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface); color: var(--color-text-primary);
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+input::placeholder, textarea::placeholder {
+  color: var(--color-text-tertiary); opacity: 1; }
+input:focus, textarea:focus { border-color: var(--color-focus-ring); }
+input.mal, textarea.mal { border-color: var(--color-danger); }
+input:disabled, textarea:disabled {
+  background: var(--color-background); color: var(--color-text-tertiary);
+  border-color: var(--color-border-subtle); }
+textarea { font-family: var(--font-mono); font-size: var(--text-mono);
+           line-height: var(--leading-body); resize: vertical; }
+
+input[type=checkbox] { width: var(--checkbox-size); height: var(--checkbox-size);
+                       margin: 0; cursor: pointer;
+                       accent-color: var(--color-action); }

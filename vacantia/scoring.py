@@ -43,7 +43,7 @@ For each job output:
   "job_number": 1,
   "score": 0-100,
   "title": "extracted job title",
-  "stack": "key tech from JD (comma-separated, max 6 items)",
+  "stack": "skills the posting REQUIRES (comma-separated, max 6 items)",
   "location_remote": "location + remote policy",
   "reason": "one sentence why this fits or doesn't fit the candidate",
   "worth_applying": true/false,
@@ -62,7 +62,14 @@ not clearly state it. Do NOT infer:
   and Content ARE part of the posting, so a location named there is reliable
   ("Bologna Senior Python Developer" -> city Bologna, country Italia). What you
   must NOT do is infer a location from the company's headquarters or from the
-  language the posting is written in.
+  language the posting is written in. Concretely, ALL of these are "":
+    * "Carda Health ... we work with America's largest hospitals" -> the company
+      is American. The JOB has no stated location. country = "".
+    * a company with a well-known HQ, or investors, or an .com domain.
+    * "our team is distributed" with no country named.
+  A US or European company hiring remotely is not a US or European job: getting
+  this wrong silently throws away the best-scoring postings, which is the exact
+  failure this rule exists to prevent.
 - work_mode: "" unless the posting actually says remote/hybrid/onsite. A posting
   that never mentions the arrangement is "", not "onsite".
 - english_level: "" if no English requirement is stated. Only give a level when
@@ -76,6 +83,19 @@ not clearly state it. Do NOT infer:
   international/English-speaking team, English-speaking clients). false if the
   job can plausibly be done entirely in the local language. Being written in
   English is itself weak evidence of true, but not proof.
+
+STACK — this feeds a chart of "what are they asking for", so it has to work
+for ANY occupation, not just software. List what the posting actually requires:
+tools, software, platforms, certifications, standards, methodologies, languages,
+techniques. A marketing posting yields things like "Google Analytics, Meta Ads,
+SEO"; a health-and-safety one, "ISO 45001, IRAM, auditoría interna". Rules:
+- Name the thing, not the sentence. "Python", not "solid Python experience".
+- One canonical name each: no versions ("Python", not "Python 3.11"), no
+  seniority ("React", not "advanced React"), no duplicates in the same list.
+- Prefer the name used in the industry over a translation of it.
+- Leave it "" if the posting lists no concrete requirement. Do NOT pad the list
+  with filler like "experience", "teamwork" or "knowledge": a generic word here
+  is a bar on a chart that tells the candidate nothing to go learn.
 
 Scoring: 80-100 near-perfect; 60-79 good fit; 40-59 partial; <40 poor.
 Set worth_applying=true only if score >= {min_score}.

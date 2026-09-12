@@ -19,6 +19,9 @@ import pytest
 
 from vacantia.ui import data
 
+# El fixture y los helpers viven en test_ui: una sola instalación de juguete.
+from tests.test_ui import _con_historial, post, sitio  # noqa: F401
+
 PERFIL = {
     "min_score": 60,
     "filters": {
@@ -153,3 +156,75 @@ def test_los_motivos_que_no_ensenian_estan_marcados():
     # Lo que se escribe a mano SÍ enseña: es el descarte que dice algo del
     # puesto, y por eso queda fuera del desplegable y sin clave.
     assert data.clave_de_motivo(oferta(motivo_descarte="Pide .NET")) == ""
+
+
+# --- todos los motivos, no el primero ---------------------------------------
+
+def test_una_oferta_puede_caer_por_dos_filtros_y_se_dicen_los_dos():
+    """Mostrando uno solo la pantalla de auditoría mentía.
+
+    Si el que se mostraba estaba mal atribuido, la respuesta honesta era "mal
+    descartada" y la oferta volvía a la lista aunque el otro motivo la sacara
+    con todo derecho. Medido sobre el historial real el 11/9/2026: 28 de 204
+    caen por los dos.
+    """
+    o = oferta(requires_english=True, english_level="C1",
+               work_mode="onsite", city="Recoleta")
+    claves = [c for c, _ in data.motivos_del_sistema(o, PERFIL["filters"])]
+    assert claves == ["idioma", "lugar"]
+
+    # Y cada uno trae su explicación, que es lo que se compara contra el aviso.
+    for _, explica in data.motivos_del_sistema(o, PERFIL["filters"]):
+        assert explica
+
+
+def test_el_motivo_mas_firme_es_el_idioma():
+    """El idioma se verifica leyendo el aviso y tiene red determinista. El lugar
+    sale de lo que extrajo el modelo, y ahí hay deducciones: el caso que disparó
+    esto fue un aviso sin ninguna ubicación al que le puso "Estados Unidos", que
+    era la sede de la empresa."""
+    o = oferta(requires_english=True, english_level="C1",
+               work_mode="onsite", city="Recoleta")
+    assert data.motivo_del_sistema(o, PERFIL["filters"])[0] == "idioma"
+
+
+def test_la_que_no_saca_ningun_filtro_no_tiene_motivos():
+    assert data.motivos_del_sistema(oferta(), PERFIL["filters"]) == []
+
+
+def test_la_tarjeta_de_filtradas_muestra_los_dos_motivos_y_tres_respuestas():
+    """Faltaba la respuesta del medio: bien sacada, pero por el motivo
+    equivocado. Con dos botones eso había que contestarlo mintiendo."""
+    from vacantia.ui.render import trabajos
+
+    o = {**oferta(requires_english=True, english_level="C1",
+                  work_mode="onsite", city="Recoleta"), "score": 90}
+    o["_motivos_sistema"] = data.motivos_del_sistema(o, PERFIL["filters"])
+    html = trabajos("ana", [o], {}, "filtradas", [], "todo")
+
+    assert "Piden un inglés más alto que el tuyo" in html
+    assert "El lugar o la modalidad no te sirven" in html
+    assert "Cae por los dos" in html
+    for valor in ("bien", "motivo", "mal"):
+        assert f'name="revision" value="{valor}"' in html
+
+
+def test_el_motivo_equivocado_cuenta_como_acierto_del_filtro(sitio):
+    """La oferta no tenía que llegarte: el filtro acertó. Lo que falló es la
+    explicación, que es otra cosa y se arregla en otro lado. Por eso no devuelve
+    la oferta a Sin marcar y sí suma a las bien descartadas."""
+    base, tmp = sitio
+    _con_historial(tmp, [{**oferta(url="https://e/1", requires_english=True,
+                                   english_level="C1"), "score": 90}])
+
+    post(base, "/revisar-filtro",
+         {"perfil": "test", "url": "https://e/1", "revision": "motivo"})
+    resumen = data.resumen_revision("test")
+    assert resumen["bien"] == 1
+    assert resumen["mal"] == 0
+    assert resumen["motivo_errado"] == 1
+
+    # Y no volvió a Sin marcar: sigue sin ser una oferta para vos.
+    from vacantia.state import State
+    historial = State("test").load_history()
+    assert data._sin_marcar(historial, data.filtros_del_perfil("test")) == []

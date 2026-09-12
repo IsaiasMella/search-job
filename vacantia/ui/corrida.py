@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -37,6 +38,14 @@ LOG = RAIZ / "vacantia.log"
 #: la pantalla deja de saber que existe. Es aceptable: el aviso de "entraron
 #: ofertas nuevas" avisa igual cuando termina.
 _proceso: subprocess.Popen | None = None
+
+#: Dónde terminaba el registro justo antes de arrancar la corrida que se está
+#: mirando, y a qué hora arrancó. Leer el archivo **sólo desde ahí para
+#: adelante** es lo que hace que el progreso hable de ESTA corrida y no de la de
+#: ayer, y además que no cueste nada: el registro pesa varios MB y de acá se
+#: leen unos pocos KB.
+_desde_byte: int = 0
+_arrancada: float = 0.0
 
 
 def esta_corriendo() -> bool:
@@ -64,6 +73,16 @@ def arrancar(perfil: str = "") -> tuple[bool, str]:
     extra = {}
     if os.name == "nt":
         extra["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    # El final del registro ANTES de lanzar: todo lo que se escriba de acá en
+    # adelante es de esta corrida. Se toma antes del Popen y no después para no
+    # perderse las primeras líneas si el proceso arranca rápido.
+    global _desde_byte, _arrancada
+    try:
+        _desde_byte = LOG.stat().st_size
+    except OSError:
+        _desde_byte = 0
+    _arrancada = time.time()
 
     try:
         _proceso = subprocess.Popen(
@@ -244,3 +263,115 @@ def salud() -> dict:
         "problemas": list(reversed(problemas[-5:])),
         "programada": programada.get("tareas") if programada else None,
     }
+
+
+# --- qué está haciendo ahora mismo -------------------------------------------
+#
+# El motor deja en el registro una línea por cada etapa. Acá se leen esas líneas
+# y se traducen a una oración en castellano, que es lo que muestra el cartel de
+# la barra lateral mientras la búsqueda corre.
+#
+# **No hay barra de progreso con porcentaje, y es a propósito.** No se sabe de
+# antemano cuántas fuentes van a contestar ni cuántas ofertas van a entrar, así
+# que cualquier porcentaje sería inventado. Lo que sí se sabe con exactitud es
+# en qué etapa está y, durante el puntaje, cuántas lleva de cuántas. Eso se
+# muestra, y nada más.
+
+#: Los hitos del motor, en el orden del pipeline. El progreso es siempre el hito
+#: más avanzado que ya apareció en el registro de esta corrida.
+_PERFIL_ARRANCA = re.compile(r"=== vacantia .* perfil '(.+?)' ===")
+_FUENTE_EMPIEZA = re.compile(r"--- Fuente: (.+?) ---")
+_FUENTE_TERMINA = re.compile(r"--- (.+?): (\d+) oferta\(s\) ---")
+_RECOLECTADO = re.compile(r"Total recolectado: (\d+) oferta")
+_A_PUNTUAR = re.compile(r"Puntuando (\d+) oferta\(s\)")
+_YA_PUNTUADA = re.compile(r"^\[\s*\d+\]")
+_FILTRADAS = re.compile(r"Filtros: (\d+) pasaron")
+
+#: Cuánto se lee como mucho del tramo de esta corrida. Una corrida larga con
+#: `--all` y el nivel DEBUG escribe bastante; con el último medio MB alcanza y
+#: sobra para saber en qué etapa está.
+_TRAMO_MAXIMO = 500_000
+
+
+def _lineas_de_esta_corrida() -> list[str]:
+    """El registro desde que arrancó la búsqueda que se está mirando.
+
+    Devuelve `[]` si no hay ninguna arrancada desde la pantalla. Es un `seek` a
+    un offset conocido, así que el tamaño del archivo no importa.
+    """
+    if not _desde_byte:
+        return []
+    try:
+        with LOG.open("rb") as f:
+            f.seek(0, os.SEEK_END)
+            fin = f.tell()
+            # El registro se rota o se borra: el offset viejo ya no significa
+            # nada y leer desde ahí daría cualquier cosa.
+            if fin < _desde_byte:
+                return []
+            f.seek(max(_desde_byte, fin - _TRAMO_MAXIMO))
+            return f.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+
+
+def progreso() -> dict:
+    """En qué anda la búsqueda ahora. Siempre las mismas claves.
+
+    * `corriendo`: si hay un proceso vivo arrancado desde la pantalla.
+    * `paso`: la oración que se muestra, ya en castellano.
+    * `hechas` / `total`: sólo durante el puntaje, que es la etapa larga.
+    * `perfil`: cuál se está procesando, que con `--all` va cambiando.
+    * `segundos`: cuánto hace que arrancó.
+    """
+    corriendo = esta_corriendo()
+    estado = {
+        "corriendo": corriendo,
+        "paso": "",
+        "perfil": "",
+        "hechas": 0,
+        "total": 0,
+        "segundos": int(time.time() - _arrancada) if _arrancada else 0,
+    }
+    if not corriendo:
+        return estado
+
+    paso = "Arrancando la búsqueda"
+    perfil = fuente = ""
+    recolectadas = puntuar = puntuadas = 0
+
+    for cruda in _lineas_de_esta_corrida():
+        linea = _sin_prefijo(cruda)
+
+        if m := _PERFIL_ARRANCA.search(linea):
+            # Con `--all` cambia de perfil en el medio: todo lo de la etapa
+            # anterior se reinicia o el cartel mezcla dos corridas en una.
+            perfil, fuente = m.group(1), ""
+            recolectadas = puntuar = puntuadas = 0
+            paso = "Arrancando la búsqueda"
+        elif m := _FUENTE_EMPIEZA.search(linea):
+            fuente = m.group(1)
+            paso = f"Buscando en {fuente}"
+        elif _FUENTE_TERMINA.search(linea):
+            # La fuente terminó y todavía no empezó la próxima. Queda el texto
+            # de la anterior: decir "esperando" por medio segundo es peor.
+            pass
+        elif m := _RECOLECTADO.search(linea):
+            recolectadas = int(m.group(1))
+            paso = f"Revisando {recolectadas} ofertas"
+        elif m := _A_PUNTUAR.search(linea):
+            puntuar, puntuadas = int(m.group(1)), 0
+            paso = "Puntuando contra tu CV"
+        elif _YA_PUNTUADA.match(linea):
+            puntuadas += 1
+        elif _FILTRADAS.search(linea):
+            paso = "Aplicando tus filtros"
+        elif _CIERRE in linea:
+            paso = "Terminando"
+
+    if puntuar:
+        # Ojo con `min`: si el motor reintenta un lote, las líneas de puntaje se
+        # repiten y sin el tope se ve "Puntuando 84 de 78".
+        estado["hechas"], estado["total"] = min(puntuadas, puntuar), puntuar
+    estado["paso"], estado["perfil"] = paso, perfil
+    return estado

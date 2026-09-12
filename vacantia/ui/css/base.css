@@ -1,0 +1,70 @@
+
+/* ===========================================================================
+   BASE
+   =========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-md);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
+  color: var(--color-text-primary);
+  background: var(--color-background);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* --- la barra de desplazamiento ---
+   `color-scheme: dark` ya la pinta oscura, pero deja la gris del sistema, que
+   al lado de estos bordes se ve prestada. Se pinta con los tokens de la app:
+   riel invisible y pulgar del color del borde, más claro al pasar por encima.
+   El borde del pulgar es del color del fondo y hace de aire: sin él la barra
+   toca el contenido.
+
+   Firefox no tiene pseudoelementos y usa `scrollbar-color`; los dos caminos
+   dicen lo mismo, así que si uno falla el otro alcanza. */
+* { scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent; }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 3px solid var(--color-background);
+  border-radius: var(--rounded-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-tertiary); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Sentence case en todos lados, peso máximo 600, y ningún título en índigo. */
+h1, h2, h3 { margin: 0; font-weight: var(--weight-semibold);
+             color: var(--color-text-primary); text-wrap: balance; }
+h1 { font-size: var(--text-h1); line-height: 1.25; letter-spacing: var(--tracking-h1); }
+h2 { font-size: var(--text-h2); line-height: var(--leading-title);
+     letter-spacing: var(--tracking-h2); }
+h3 { font-size: var(--text-h3); line-height: 1.4; }
+
+p { margin: 0; max-width: var(--content-max-ch); text-wrap: pretty; }
+
+a { color: var(--color-link); text-underline-offset: 2px; }
+a:hover { color: var(--color-link-hover); }
+
+/* Foco visible en todo lo que se puede tabular, siempre con el mismo anillo y
+   el mismo offset. Nunca se saca un outline sin reemplazarlo. */
+:where(a, button, summary, input, select, textarea, [tabindex]):focus-visible {
+  outline: var(--border-emphasis) solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--rounded-sm);
+}
+
+::selection { background: var(--color-action); color: var(--color-text-on-action); }
+
+.saltar {
+  position: absolute; left: -9999px; top: 0; z-index: var(--z-toast);
+  background: var(--color-action); color: var(--color-text-on-action);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: 0 0 var(--rounded-md) 0;
+  font-size: var(--text-body-sm); font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+.saltar:focus { left: 0; }

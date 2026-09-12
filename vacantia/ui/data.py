@@ -445,8 +445,23 @@ def texto_del_motivo(oferta: dict) -> str:
 # --- lo que el filtro ya había rechazado ------------------------------------
 
 
-def motivo_del_sistema(oferta: dict, filtros: dict) -> tuple[str, str]:
-    """('idioma'|'lugar'|'', explicación). Por qué el sistema ya la descartó.
+def motivos_del_sistema(oferta: dict, filtros: dict) -> list[tuple[str, str]]:
+    """**Todos** los filtros que la sacan, no el primero. [(clave, explicación)]
+
+    Devolvía sólo el primero, y eso hacía mentir a la pantalla de auditoría. Una
+    oferta puede caer por idioma **y** por lugar a la vez: medido sobre el
+    historial de Isaías el 11/9/2026, 28 de 204. En ésas se mostraba el lugar y
+    se callaba el idioma, así que si el lugar estaba mal atribuido la respuesta
+    honesta era "mal descartada" — y la oferta volvía a la lista aunque el
+    idioma la sacara con todo derecho.
+
+    **El idioma va primero porque es el motivo más firme.** Es el idioma en que
+    está escrito el aviso, que se puede verificar leyéndolo, y además tiene una
+    red de seguridad determinista que busca la exigencia en el texto. El lugar
+    sale de lo que el modelo extrajo, y ahí hay deducciones: el caso que
+    disparó esto fue un aviso sin ninguna ubicación al que el modelo le puso
+    "Estados Unidos", que es la sede de la empresa. El prompt lo prohíbe
+    explícitamente y el modelo lo hizo igual.
 
     **Se calcula al leer, no se guarda.** Es a propósito: el nivel de inglés y
     las ciudades se cambian desde *Mis datos*, y una oferta rechazada hoy por
@@ -463,14 +478,25 @@ def motivo_del_sistema(oferta: dict, filtros: dict) -> tuple[str, str]:
     from vacantia.filters import passes_place
 
     job = Job.from_dict(oferta)
+    motivos = []
+    ok, why = passes_language(job, filtros.get("language") or {})
+    if not ok:
+        motivos.append(("idioma", why))
     ok, why, _ = passes_place(job, filtros.get("location") or {},
                               filtros.get("work_modes"))
     if not ok:
-        return "lugar", why
-    ok, why = passes_language(job, filtros.get("language") or {})
-    if not ok:
-        return "idioma", why
-    return "", ""
+        motivos.append(("lugar", why))
+    return motivos
+
+
+def motivo_del_sistema(oferta: dict, filtros: dict) -> tuple[str, str]:
+    """El motivo más firme de los que la sacan, o ("", "") si no la saca ninguno.
+
+    Para quien sólo necesita saber si el filtro la sacó. La pantalla de
+    auditoría usa `motivos_del_sistema`, que los devuelve todos.
+    """
+    motivos = motivos_del_sistema(oferta, filtros)
+    return motivos[0] if motivos else ("", "")
 
 
 def filtros_del_perfil(nombre_perfil: str) -> dict:
@@ -624,7 +650,7 @@ def ofertas(nombre_perfil: str, ver: str = "pendientes", desde: str = "todo",
         # El motivo que dio el sistema viaja pegado a cada oferta: es el dato
         # que hay que auditar, y calcularlo acá evita que la pantalla tenga que
         # volver a abrir el perfil por cada tarjeta.
-        historial = [{**h, "_motivo_sistema": motivo_del_sistema(h, filtros)}
+        historial = [{**h, "_motivos_sistema": motivos_del_sistema(h, filtros)}
                      for h in historial]
         historial.sort(
             key=lambda h: (h.get("score") if h.get("score") is not None else -1,
@@ -690,17 +716,22 @@ def resumen_revision(nombre_perfil: str) -> dict[str, int]:
     revisiones = Counter(h.get("revision_filtro") for h in historial)
     bien = revisiones.get("bien", 0)
     mal = revisiones.get("mal", 0)
+    # "Bien sacada, pero el motivo estaba mal". Cuenta como acierto del filtro
+    # —la oferta no tenía que llegarte— y como error de la explicación, que es
+    # otra cosa y se arregla en otro lado.
+    motivo_errado = revisiones.get("motivo", 0)
     sin_revisar = _saco_el_sistema_sin_revisar(historial, filtros)
     return {
-        "bien": bien,
+        "bien": bien + motivo_errado,
         "mal": mal,
+        "motivo_errado": motivo_errado,
         "sin_revisar": sum(1 for h in sin_revisar if _vale_revisarla(h)),
         # Las que el filtro sacó y no se revisan porque puntúan poco. Se cuentan
         # aparte para poder decir por qué la lista está vacía en vez de dejar
         # pensando que se terminaron las ofertas.
         "bajo_puntaje": sum(1 for h in sin_revisar if not _vale_revisarla(h)),
         "meta": META_REVISION,
-        "faltan": max(0, META_REVISION - (bien + mal)),
+        "faltan": max(0, META_REVISION - (bien + motivo_errado + mal)),
     }
 
 
@@ -766,11 +797,16 @@ def estadisticas(nombre_perfil: str, desde: str = "todo") -> dict:
                  if _entra_por_fecha(h, desde)]
     filtros = filtros_del_perfil(nombre_perfil)
 
+    # Se cuenta por CADA filtro que la saca, no por el primero: una oferta que
+    # cae por idioma y por lugar aparece en las dos filas. Por eso las filas
+    # suman más que `sistema_total`, que son ofertas distintas.
     sistema: Counter = Counter()
+    sacadas = 0
     for h in historial:
         if h.get("aplicado") is None and not h.get("archivada"):
-            clave, _ = motivo_del_sistema(h, filtros)
-            if clave:
+            claves = [c for c, _ in motivos_del_sistema(h, filtros)]
+            sacadas += bool(claves)
+            for clave in claves:
                 sistema[clave] += 1
 
     descartadas = [h for h in historial if h.get("aplicado") is False]
@@ -787,7 +823,8 @@ def estadisticas(nombre_perfil: str, desde: str = "todo") -> dict:
         "descartadas": len(descartadas),
         "archivadas": sum(1 for h in historial if h.get("archivada")),
         "sistema": dict(sistema),
-        "sistema_total": sum(sistema.values()),
+        "sistema_total": sacadas,
+        "sistema_solapadas": sum(sistema.values()) - sacadas,
         "motivos": dict(motivos),
         "por_fuente": dict(por_fuente.most_common()),
         "ingles": pena_de_ingles(nombre_perfil, desde),
@@ -964,7 +1001,14 @@ def estado_del_sistema(nombre_perfil: str) -> dict:
             "ventana": ventana,
             # Para que el botón "Buscar ahora" del pie no deje arrancar dos
             # búsquedas encimadas: los límites del plan gratis son de la cuenta.
-            "corriendo": corrida.esta_corriendo()}
+            "corriendo": corrida.esta_corriendo(),
+            # En qué etapa va la búsqueda, para el cartel que se refresca solo.
+            "paso": corrida.progreso(),
+            # Cómo está el historial AHORA. La pantalla se lo guarda al abrir y
+            # después compara contra esto para saber si entraron ofertas
+            # mientras la persona miraba.
+            "marca": marca_de_cambio(nombre_perfil),
+            "pendientes": contar_ofertas(nombre_perfil).get("pendientes", 0)}
 
 
 # --- cuántas apliqué, y cuándo ---------------------------------------------
@@ -1008,14 +1052,25 @@ def _dias_del_periodo(periodo: str) -> int:
     return dict((clave, dias) for clave, _, dias in PERIODOS).get(periodo, 30)
 
 
-def aplicadas_en(nombre_perfil: str, periodo: str = PERIODO_POR_DEFECTO) -> dict:
-    """Cuántas postulaciones en ese período, y cómo se repartieron por semana.
+def aplicadas_en(nombre_perfil: str, periodo: str = PERIODO_POR_DEFECTO,
+                 solo_de_la_lista: bool = False) -> dict:
+    """Cuántas postulaciones en ese período, y cómo se repartieron en el tiempo.
 
-    {cuantas, periodo, etiqueta, por_semana: [(etiqueta, cuantas)], desde}
+    {cuantas, a_mano, periodo, etiqueta, reparto: [(etiqueta, cuantas)],
+     unidad, desde}
 
-    `por_semana` es lo que hace que el número signifique algo: 12 postulaciones
+    El `reparto` es lo que hace que el número signifique algo: 12 postulaciones
     en un mes puede ser tres semanas sin hacer nada y una a los tiros, y eso es
     exactamente lo que conviene ver.
+
+    La `unidad` es "día" para el período de una semana y "semana" para los
+    demás: con siete días, repartir por semana da una barra sola, que no compara
+    con nada.
+
+    Con `solo_de_la_lista` quedan afuera las que se contaron a mano desde un
+    posteo de LinkedIn. Es lo que se muestra parado en la pestaña **Apliqué**:
+    ahí la lista de abajo son las ofertas marcadas una por una, y un número de
+    arriba más grande que la lista de abajo se lee como un error.
     """
     from vacantia.ui import linkedin_urls
 
@@ -1043,29 +1098,224 @@ def aplicadas_en(nombre_perfil: str, periodo: str = PERIODO_POR_DEFECTO) -> dict
         cuando = _dia_local(marca)
         if cuando is None or (desde is not None and cuando < desde):
             continue
-        fechas.append(cuando)
         a_mano += 1
+        if not solo_de_la_lista:
+            fechas.append(cuando)
+    if solo_de_la_lista:
+        a_mano = 0
 
-    # La ventana se corta en semanas cerradas para que las barras sean
-    # comparables entre sí: la última semana siempre está incompleta, pero es la
-    # de hoy y se entiende. Sin ventana, se muestran las últimas 12.
-    semanas = max(1, min(12, -(-dias // 7))) if dias else 12
-    arranque = hoy - timedelta(days=semanas * 7 - 1)
-    por_semana = []
-    for i in range(semanas):
-        inicio = arranque + timedelta(days=i * 7)
-        fin = inicio + timedelta(days=6)
+    # **Una semana se reparte por día, no por semana.** Con el período de 7
+    # días el reparto semanal daba una sola barra, y una sola barra no compara
+    # nada: la pantalla mostraba el número grande y abajo un vacío. Por día son
+    # siete barras y contestan lo que se pregunta en una semana, que es qué días
+    # mandaste y cuáles se te fueron en blanco.
+    #
+    # De 14 días para arriba vuelve a ser por semana: catorce o noventa barras
+    # diarias no se leen, y ahí la pregunta ya es otra, la del ritmo.
+    if dias and dias <= 7:
+        unidad, paso, cuantos = "día", 1, dias
+    else:
+        unidad, paso = "semana", 7
+        # La ventana se corta en semanas cerradas para que las barras sean
+        # comparables entre sí: la última siempre está incompleta, pero es la de
+        # hoy y se entiende. Sin ventana, se muestran las últimas 12.
+        cuantos = max(2, min(12, -(-dias // 7))) if dias else 12
+
+    arranque = hoy - timedelta(days=cuantos * paso - 1)
+    reparto = []
+    for i in range(cuantos):
+        inicio = arranque + timedelta(days=i * paso)
+        fin = inicio + timedelta(days=paso - 1)
         cuantas = sum(1 for f in fechas if inicio <= f <= fin)
-        etiqueta = f"{inicio.day}/{inicio.month}"
-        por_semana.append((etiqueta, cuantas))
+        reparto.append((f"{inicio.day}/{inicio.month}", cuantas))
 
     return {
         "cuantas": len(fechas),
         "a_mano": a_mano,
         "periodo": periodo,
         "etiqueta": dict((c, e) for c, e, _ in PERIODOS)[periodo],
-        "por_semana": por_semana,
+        "reparto": reparto,
+        "unidad": unidad,
         "desde": desde.isoformat() if desde else "",
+    }
+
+
+def descartadas_en(nombre_perfil: str, periodo: str = PERIODO_POR_DEFECTO) -> dict:
+    """Por qué descartaste, en ese período. {cuantas, periodo, etiqueta, motivos}.
+
+    Es el equivalente de `aplicadas_en` para la pestaña **Descarté**, y contesta
+    otra pregunta: no cuántas descartaste sino **por qué**. El total solo no
+    sirve para nada; lo que sirve es ver que de 78 descartes 46 fueron por
+    inglés, porque eso es una perilla de Mi perfil esperando que la muevan.
+
+    Por eso el reparto es por motivo y no por semana: el ritmo importa cuando
+    mandás CVs, porque medís tu trabajo. Descartar no es trabajo que quieras
+    sostener, y saber que descartaste parejo a lo largo del mes no te dice nada.
+
+    `motivos` viene ordenado de mayor a menor y con las etiquetas ya en
+    castellano, listo para el gráfico de barras.
+    """
+    if periodo not in dict((c, e) for c, e, _ in PERIODOS):
+        periodo = PERIODO_POR_DEFECTO
+    dias = _dias_del_periodo(periodo)
+    desde = date.today() - timedelta(days=dias - 1) if dias else None
+
+    motivos: Counter = Counter()
+    for h in State(nombre_perfil).load_history():
+        if h.get("aplicado") is not False:
+            continue
+        # Se filtra por cuándo LA DESCARTASTE, no por cuándo se publicó el
+        # aviso: la pregunta es qué venís rechazando últimamente.
+        cuando = _dia_local(h.get("fecha_feedback"))
+        if desde is not None and (cuando is None or cuando < desde):
+            continue
+        motivos[clave_de_motivo(h) or "otro"] += 1
+
+    etiquetas = {c: t for c, t, _ in MOTIVOS}
+    # "Escrito a mano" y no "Otro": es el descarte que dice algo del puesto, que
+    # es justamente el valioso, y llamarlo "otro" lo manda al cajón de sobras.
+    etiquetas["otro"] = "Escrito a mano"
+    filas = [(etiquetas.get(clave, clave), cuantas)
+             for clave, cuantas in motivos.most_common()]
+
+    return {
+        "cuantas": sum(motivos.values()),
+        "periodo": periodo,
+        "etiqueta": dict((c, e) for c, e, _ in PERIODOS)[periodo],
+        "motivos": filas,
+        "desde": desde.isoformat() if desde else "",
+    }
+
+
+# --- qué te están pidiendo -------------------------------------------------
+#
+# La lista de habilidades sale del campo `stack`, que el modelo ya venía
+# devolviendo por cada oferta cuando la puntúa. **No cuesta ninguna llamada
+# extra**: ya le estamos pasando el aviso entero para que lo puntúe, y pedirle
+# de paso qué piden son unos pocos tokens más de respuesta.
+#
+# Eso es también lo que la hace servir para cualquier oficio. No hay ninguna
+# lista de tecnologías escrita en el código, que es lo que habría que mantener
+# para siempre y aun así nunca cubriría marketing ni seguridad e higiene. El
+# modelo lee el aviso y devuelve lo que ese aviso pide, sea LangChain, Google
+# Analytics o la ISO 45001.
+
+#: Con qué se corta un `stack` en habilidades sueltas. La barra está porque el
+#: modelo agrupa alternativas ("AWS/Azure/GCP" es una sola entrada suya y son
+#: tres cosas distintas para contar), y el punto y coma porque a veces cambia de
+#: separador a mitad de la lista.
+_CORTES = re.compile(r"[,;/|]| \+ |\band\b|\bo\b|\by\b", re.I)
+
+#: Lo que no es una habilidad aunque venga en la lista. Son las muletillas con
+#: las que el modelo rellena cuando el aviso no dice nada concreto: no nombran
+#: nada que se pueda ir a aprender, que es para lo que sirve este gráfico.
+_NO_ES_HABILIDAD = frozenset({
+    "", "n/a", "na", "none", "null", "-", "?", "varios", "otros", "etc",
+    "no especificado", "not specified", "unknown", "experiencia", "experience",
+    "conocimientos", "skills", "habilidades", "tecnologias", "tecnologías",
+})
+
+#: Cuántas habilidades distintas se muestran. Con más, el gráfico deja de ser un
+#: "qué me piden" y pasa a ser un inventario: la cola larga son las que
+#: aparecieron una sola vez, y una sola vez no es una tendencia.
+TOPE_HABILIDADES = 15
+
+
+def _habilidades_de(texto: str) -> list[str]:
+    """Un campo `stack` cortado en habilidades sueltas, sin normalizar todavía."""
+    salida = []
+    for parte in _CORTES.split(texto or ""):
+        limpia = " ".join(parte.split()).strip(" .-•·")
+        if limpia.lower() in _NO_ES_HABILIDAD:
+            continue
+        # Una "habilidad" de 40 caracteres es una frase que el modelo metió
+        # donde iba un nombre; contarla ensucia el gráfico con una barra única.
+        if 1 < len(limpia) <= 32:
+            salida.append(limpia)
+    return salida
+
+
+def _mismo_nombre(conteo: Counter) -> dict[str, str]:
+    """Qué escrituras distintas son en realidad la misma habilidad.
+
+    Devuelve {como vino: nombre canónico}. Resuelve dos cosas y **sólo** dos, a
+    propósito: mezclar de más es peor que no mezclar, porque inventa una
+    tendencia que no existe.
+
+    1. **Mayúsculas.** "python" y "Python" son la misma. Gana la escritura más
+       frecuente, que es la que usa el mercado: así sale "PostgreSQL" y no
+       "postgresql", sin tener una tabla de nombres propios.
+    2. **Plurales, pero sólo cuando las dos formas aparecen de verdad.** "LLMs"
+       se une a "LLM" porque en los avisos están las dos. "Kubernetes" y
+       "Analytics" no se tocan, porque el singular no existe en ningún lado.
+       Es lo que hace que esto ande igual en marketing o en seguridad e higiene
+       sin saber nada del rubro: la regla la ponen los datos, no una lista.
+    """
+    # Paso 1: agrupar por minúsculas y quedarse con la escritura más usada.
+    por_minuscula: dict[str, Counter] = {}
+    for nombre, cuantas in conteo.items():
+        por_minuscula.setdefault(nombre.lower(), Counter())[nombre] += cuantas
+    canonico = {clave: variantes.most_common(1)[0][0]
+                for clave, variantes in por_minuscula.items()}
+
+    # Paso 2: el plural cae en el singular, si el singular existe en los datos.
+    for clave in list(canonico):
+        singular = clave[:-1] if clave.endswith("s") else ""
+        if singular and singular in canonico:
+            canonico[clave] = canonico[singular]
+
+    return {nombre: canonico[nombre.lower()] for nombre in conteo}
+
+
+def habilidades_pedidas(nombre_perfil: str, desde: str = "todo",
+                        tope: int = TOPE_HABILIDADES) -> dict:
+    """Qué piden los avisos que entraron. {cuantas, ofertas, filas, sin_datos}.
+
+    `filas` es [(habilidad, en cuántas ofertas)] de mayor a menor, lista para el
+    gráfico de barras. `sin_datos` son las ofertas que todavía no pasaron por el
+    modelo y por lo tanto no tienen nada que aportar: se dice en pantalla, para
+    que un número bajo no se lea como "nadie pide nada".
+
+    Se cuenta **una vez por oferta**: si un aviso nombra Python cuatro veces,
+    sigue siendo un solo trabajo que pide Python. Lo que contesta el gráfico es
+    en cuántas búsquedas te lo van a pedir, no cuánto insisten.
+
+    Son dos pasadas y tienen que ser dos: primero se ve qué nombres hay para
+    poder unificarlos, y recién después se cuenta. Al revés, un aviso que dice
+    "Python, python" cuenta dos.
+    """
+    historial = [h for h in State(nombre_perfil).load_history()
+                 if _entra_por_fecha(h, desde)]
+
+    # Primera pasada: qué nombres aparecen y con qué frecuencia. Es lo que
+    # necesita `_mismo_nombre` para decidir cuál escritura gana y qué plurales
+    # tienen singular de verdad.
+    por_oferta: list[list[str]] = []
+    crudo: Counter = Counter()
+    for h in historial:
+        habilidades = _habilidades_de(h.get("stack") or "")
+        if not habilidades:
+            continue
+        por_oferta.append(habilidades)
+        crudo.update(habilidades)
+
+    canonico = _mismo_nombre(crudo)
+
+    # Segunda pasada: recién ACÁ se cuenta, y se cuenta una vez por oferta.
+    #
+    # El orden importa y fue un bug: deduplicando antes de unificar los nombres,
+    # un aviso que decía "Python, python" contaba dos, y uno que decía "LLM" y
+    # "LLMs" también. Son un solo trabajo pidiendo una sola cosa. Unificar
+    # primero y deduplicar después es lo que lo arregla de raíz.
+    unidas: Counter = Counter()
+    for habilidades in por_oferta:
+        unidas.update({canonico[n] for n in habilidades})
+
+    return {
+        "filas": unidas.most_common(tope),
+        "distintas": len(unidas),
+        "ofertas": len(por_oferta),
+        "sin_datos": len(historial) - len(por_oferta),
     }
 
 

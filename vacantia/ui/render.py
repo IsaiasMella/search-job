@@ -20,10 +20,10 @@ consideración cuando se toca una pantalla:
 
 from datetime import date, datetime  # noqa: F401  (date, para la anotación)
 from html import escape
+from pathlib import Path
 from urllib.parse import quote, urlencode
 
 from vacantia.fechas import dias_desde, fecha_de, parse_posted
-from vacantia.ui.estilos import CSS  # noqa: F401  (lo importan los tests y `pagina`)
 
 #: Cómo se abre el aviso en el portal. **`noreferrer` no es cosmético ni está
 #: por privacidad: sin él, Computrabajo se rompe.**
@@ -73,250 +73,39 @@ ICONOS = {
                   '<circle cx="19" cy="12" r=".6"/>'),
 }
 
-# Lo único que necesita JavaScript: que el motivo sea obligatorio al descartar,
-# volver al mismo lugar de la lista después de marcar, y avisar si entraron
-# ofertas con la pantalla abierta. Todo lo demás anda sin JavaScript: el bloque
-# de motivo y el menú de tres puntos son `<details>`, que se abren solos.
-#
-# El error se muestra al lado del campo, no con un alert(): el alert tapa la
-# pantalla, hay que sacarlo antes de poder escribir, y no deja ver cuál de las
-# ofertas lo pidió cuando hay veinte en la lista. El servidor lo valida igual
-# (`_post_feedback`), así que esto es comodidad, no la garantía.
-JS = """
-function marcarBien(form) {
-  var campo = form.querySelector('input[name=motivo]');
-  var error = form.querySelector('.error-motivo');
-  var select = form.querySelector('select[name=motivo_clave]');
-  [campo, select].forEach(function (el) {
-    if (!el) { return; }
-    el.classList.remove('mal');
-    el.removeAttribute('aria-invalid');
-  });
-  if (error) { error.classList.remove('visible'); }
-}
+#: **El JavaScript de la pantalla vive en `static/app.js`, no acá**, y htmx en
+#: `static/htmx.min.js`. Se sirven como archivos aparte, igual que el CSS y por
+#: la misma razón: adentro de un string de Python no hay resaltado de sintaxis,
+#: ni autocompletado, ni linter que te avise que te comiste un paréntesis.
+#:
+#: Se leen de disco en cada pedido, así que editás el archivo, apretás F5 y lo
+#: ves. No hay que reiniciar el servidor.
+ESTATICOS = Path(__file__).parent / "static"
 
-// Alcanza con CUALQUIERA de los dos: elegir un motivo de la lista, o
-// escribirlo. No hay opción "Otro motivo" en el desplegable a propósito —
-// obligaba a abrirlo, bajar hasta "Otro" y recién ahí escribir, tres pasos de
-// más justo cuando ya tenías la mano en el teclado.
-function descartar(boton) {
-  var form   = boton.closest('form');
-  var select = form.querySelector('select[name=motivo_clave]');
-  var campo  = form.querySelector('input[name=motivo]');
-  var error  = form.querySelector('.error-motivo');
-  if ((select && select.value) || (campo && campo.value.trim())) {
-    marcarBien(form);
-    return true;
-  }
-  var flojo = select || campo;
-  flojo.classList.add('mal');
-  flojo.setAttribute('aria-invalid', 'true');
-  if (error) { error.classList.add('visible'); }
-  flojo.focus();
-  return false;
-}
 
-// Volver al mismo lugar de la lista después de marcar una oferta.
-//
-// Marcar es un POST que redirige a un GET (si no, recargar reenviaría el
-// formulario), y el navegador abre esa página nueva arriba de todo. Con 40
-// ofertas eso significa que después de marcar la número 30 hay que volver a
-// bajar hasta ahí. Se guarda dónde estabas justo antes de enviar y se vuelve
-// al llegar; la clave se consume una sola vez, así un F5 posterior no te
-// mueve.
-var CLAVE_SCROLL = 'vacantia:scroll';
+def estatico(nombre: str) -> str:
+    """Un archivo de `static/`, tal cual está en disco.
 
-function recordarScroll() {
-  try { sessionStorage.setItem(CLAVE_SCROLL, String(window.scrollY)); } catch (e) {}
-}
+    Binario y decodificado a mano: `read_text()` en Windows traduce los finales
+    de línea, y el contenido tiene que salir byte por byte como se escribió.
+    """
+    return (ESTATICOS / nombre).read_bytes().decode("utf-8")
 
-function volverAlScroll() {
-  var y;
-  try {
-    y = sessionStorage.getItem(CLAVE_SCROLL);
-    sessionStorage.removeItem(CLAVE_SCROLL);
-  } catch (e) { return; }
-  if (y === null) { return; }
-  // 'instant' y no 'smooth': ya estabas ahí, no es un viaje.
-  window.scrollTo({ top: parseInt(y, 10) || 0, behavior: 'instant' });
-}
 
-// Lo mismo, pero para la columna del constructor de LinkedIn.
-//
-// Ahí la página entera no scrollea: scrollea cada columna por dentro. Armar la
-// búsqueda es un GET, o sea una recarga, y la columna vuelve arriba: si venías
-// eligiendo abajo de todo, cada intento te devolvía al principio del
-// formulario. Se guarda dónde estabas y se vuelve, igual que en la lista.
-var CLAVE_TALLER = 'vacantia:taller';
+def __getattr__(nombre: str):
+    """`render.JS` y `render.CSS` siguen andando, leyendo el archivo de ahora.
 
-function elLado() { return document.querySelector('.taller > .controles'); }
+    Son los nombres que existían cuando el código estaba adentro de strings de
+    Python. Los usan los tests, y al leer en el momento un test mira lo que hay
+    en disco y no lo que había cuando se importó el módulo.
+    """
+    if nombre == "JS":
+        return estatico("app.js")
+    if nombre == "CSS":
+        from vacantia.ui import estilos
 
-function recordarTaller() {
-  var col = elLado();
-  if (!col) { return; }
-  try { sessionStorage.setItem(CLAVE_TALLER, String(col.scrollTop)); } catch (e) {}
-}
-
-function volverAlTaller() {
-  var col = elLado(), y;
-  if (!col) { return; }
-  try {
-    y = sessionStorage.getItem(CLAVE_TALLER);
-    sessionStorage.removeItem(CLAVE_TALLER);
-  } catch (e) { return; }
-  if (y === null) { return; }
-  col.scrollTop = parseInt(y, 10) || 0;
-}
-
-// El menú de tres puntos se cierra al tocar afuera. Sin esto quedan tres menús
-// abiertos tapando la lista y hay que cerrarlos de a uno.
-function cerrarMenus(salvo) {
-  document.querySelectorAll('details.menu[open]').forEach(function (m) {
-    if (m !== salvo) { m.removeAttribute('open'); }
-  });
-}
-
-// Una columna que scrollea recorta lo que se le sale, y el menú de la última
-// guardada se abre justo contra el borde de abajo. Al abrirlo se lo trae a la
-// vista; 'nearest' mueve lo mínimo, así que si ya entraba no mueve nada.
-function menuALaVista(menu) {
-  var panel = menu.querySelector('.panel');
-  if (panel && panel.scrollIntoView) {
-    panel.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-  }
-}
-
-document.addEventListener('DOMContentLoaded', function () {
-  volverAlScroll();
-  volverAlTaller();
-  // Para los envíos que sí pasan por 'submit': archivar, y marcar cuando la
-  // animación está apagada por prefers-reduced-motion.
-  document.querySelectorAll('form.acciones').forEach(function (form) {
-    form.addEventListener('submit', recordarScroll);
-  });
-  document.querySelectorAll('form.armador').forEach(function (form) {
-    form.addEventListener('submit', recordarTaller);
-  });
-  document.querySelectorAll('details.menu').forEach(function (m) {
-    m.addEventListener('toggle', function () { if (m.open) { menuALaVista(m); } });
-  });
-  document.addEventListener('click', function (ev) {
-    var dentro = ev.target.closest ? ev.target.closest('details.menu') : null;
-    cerrarMenus(dentro);
-  });
-});
-
-// Marcar una oferta: se la ve irse antes de que la página se recargue.
-//
-// El servidor sigue haciendo todo el trabajo; esto es sólo para que se note
-// CUÁL se fue. Con dos ofertas de 90 pegadas, la página vuelve y la lista se
-// ve igual: no hay forma de saber a cuál le diste.
-//
-// Sin JavaScript el botón envía el formulario como siempre, y quien pidió
-// menos movimiento tampoco espera la animación.
-function marcar(boton, esDescarte) {
-  if (esDescarte && !descartar(boton)) { return false; }
-  var tarjeta = boton.closest('.oferta');
-  var quieto = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!tarjeta || quieto) { return true; }
-
-  // `form.submit()` no manda el botón apretado, así que se agrega a mano:
-  // sin esto el servidor no sabría si fue "apliqué" o "no apliqué".
-  var form = boton.closest('form');
-  var oculto = document.createElement('input');
-  oculto.type = 'hidden';
-  oculto.name = boton.name;
-  oculto.value = boton.value;
-  form.appendChild(oculto);
-
-  tarjeta.classList.add('yendose');
-  // OJO: `form.submit()` NO dispara el evento 'submit', así que el listener de
-  // más abajo no alcanza y hay que guardar la posición a mano. Es exactamente
-  // lo que hacía que después de marcar volvieras arriba de todo.
-  recordarScroll();
-  setTimeout(function () { form.submit(); }, 220);
-  return false;
-}
-
-// Copiar la URL armada al portapapeles, y avisar que se copió.
-//
-// Es el único caso de toast de la app, y está porque el resultado NO se ve: el
-// portapapeles es invisible. Guardar un favorito no lleva toast, porque el
-// favorito aparece en la lista y avisar lo que ya se ve es ruido.
-//
-// Sin `navigator.clipboard` (pasa si la página no es segura) se cae a
-// seleccionar el texto, que deja el Ctrl+C a un paso.
-function copiar(boton, url) {
-  var listo = function () { avisar('Link copiado'); };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(listo, function () { seleccionar(boton); });
-  } else {
-    seleccionar(boton);
-  }
-  return false;
-}
-
-function seleccionar(boton) {
-  var bloque = boton.closest('section, li');
-  var texto = bloque && bloque.querySelector('.url-generada');
-  if (!texto) { return; }
-  var rango = document.createRange();
-  rango.selectNodeContents(texto);
-  var sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(rango);
-  avisar('Seleccionada: apretá Ctrl+C');
-}
-
-// El toast: 4 segundos, abajo a la derecha, uno solo a la vez. El anterior se
-// reemplaza en vez de apilarse, que es lo que convierte un aviso en un estorbo.
-var TOAST_TIMER = null;
-
-function avisar(texto) {
-  var toast = document.getElementById('toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.id = 'toast';
-    toast.className = 'toast';
-    toast.setAttribute('role', 'status');
-    document.body.appendChild(toast);
-  }
-  toast.textContent = texto;
-  toast.classList.add('visible');
-  if (TOAST_TIMER) { clearTimeout(TOAST_TIMER); }
-  TOAST_TIMER = setTimeout(function () { toast.classList.remove('visible'); }, 4000);
-}
-
-// Avisa cuando entraron ofertas mientras la pantalla estaba abierta, para no
-// tener que apretar F5. Le pregunta al servidor cada 20 segundos si el archivo
-// del historial cambió; es una request local y no lee el archivo entero.
-//
-// NO recarga sola a propósito: si alguien está escribiendo el motivo de un
-// descarte, una recarga se lo borra. Avisa, y decide la persona. El cartel es
-// texto quieto: no parpadea, no pulsa y no cuenta nada hacia atrás.
-function vigilarNovedades(perfil, marca, pendientesAlAbrir) {
-  var cartel = document.getElementById('novedades');
-  if (!cartel) { return; }
-  setInterval(function () {
-    fetch('/novedades?perfil=' + encodeURIComponent(perfil))
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d.marca || d.marca === marca) { return; }
-        // La diferencia contra lo que habia al abrir, no el total: "entraron
-        // 211 ofertas" cuando entraron 3 es peor que no decir nada.
-        var nuevas = d.pendientes - pendientesAlAbrir;
-        var texto = document.getElementById('novedades-texto');
-        if (texto) {
-          texto.textContent = nuevas > 0
-            ? ('Entraron ' + nuevas + (nuevas === 1 ? ' oferta nueva' : ' ofertas nuevas'))
-            : 'La lista cambió';
-        }
-        cartel.classList.add('visible');
-      })
-      .catch(function () { /* la ventana negra se cerro: se reintenta solo */ });
-  }, 20000);
-}
-"""
+        return estilos.hoja()
+    raise AttributeError(f"module {__name__!r} no tiene {nombre!r}")
 
 
 def esc(texto) -> str:
@@ -364,6 +153,101 @@ def _boton_buscar(perfil: str, corriendo: bool, primario: bool = False) -> str:
 </form>"""
 
 
+#: Cada cuánto le pregunta la pantalla al servidor cómo viene la búsqueda.
+#:
+#: Dos valores y no uno: mientras busca, el cartel cambia de etapa y dos
+#: segundos es lo que hace que se sienta vivo; quieto, lo único que puede pasar
+#: es que arranque la corrida programada, y preguntar cada dos segundos por eso
+#: es tirar 1800 pedidos por hora a la basura.
+#:
+#: **El intervalo viaja en el fragmento, no en el JavaScript.** Cada respuesta
+#: trae el suyo, así que el ritmo se acelera solo al arrancar la búsqueda y se
+#: afloja solo al terminar, sin una línea de código nuestro.
+LATIDO_BUSCANDO = "2s"
+LATIDO_QUIETO = "15s"
+
+
+def corrida_estado(perfil: str, paso: dict, marca: str, pendientes: int,
+                   nuevas: int = 0, cambio: bool = False) -> str:
+    """El cartel del pie de la barra lateral: el botón, o en qué anda la búsqueda.
+
+    Es el único pedazo de la pantalla que se actualiza solo. Se pide cada tantos
+    segundos y se reemplaza entero; como el fragmento que vuelve trae de nuevo
+    sus propios atributos, el ciclo se mantiene sin que nadie lo programe.
+
+    `marca` y `pendientes` son **cómo estaba el historial cuando se abrió la
+    página**, no ahora. Viajan en la dirección del pedido y vuelven iguales en
+    cada respuesta, así que la comparación siempre es contra el momento en que
+    la persona empezó a mirar. Sin eso, el aviso de "entraron 3 ofertas" se
+    reiniciaría solo cada dos segundos y no diría nada.
+
+    Cuando la corrida terminó y entraron ofertas, además del cartel vuelve el
+    aviso de novedades marcado para reemplazar al de la página. **No recarga
+    sola a propósito**: si alguien está escribiendo el motivo de un descarte,
+    una recarga se lo borra. Avisa, y decide la persona.
+    """
+    destino = (f"/corrida?{urlencode({'perfil': perfil, 'marca': marca, 'pend': pendientes})}")
+    latido = LATIDO_BUSCANDO if paso.get("corriendo") else LATIDO_QUIETO
+    abre = (f'<div class="corrida" id="corrida" hx-get="{esc(destino)}" '
+            f'hx-trigger="every {latido}" hx-swap="outerHTML">')
+
+    if paso.get("corriendo"):
+        # Dos renglones: qué está haciendo, y cuánto lleva de eso cuando el
+        # total se sabe de verdad. Durante el puntaje se sabe; durante las
+        # fuentes no, y un porcentaje inventado es peor que no poner ninguno.
+        segunda = ""
+        if paso.get("total"):
+            segunda = f'{paso["hechas"]} de {paso["total"]}'
+        elif paso.get("perfil"):
+            segunda = f'Perfil {paso["perfil"]}'
+        detalle = f'<p class="detalle">{esc(segunda)}</p>' if segunda else ""
+        return (f'{abre}<p class="que" role="status">{esc(paso.get("paso", ""))}</p>'
+                f'{detalle}</div>')
+
+    boton = f"""<form method="post" action="/buscar" hx-post="/buscar"
+      hx-target="#corrida" hx-swap="outerHTML">
+  <input type="hidden" name="perfil" value="{esc(perfil)}">
+  <input type="hidden" name="marca" value="{esc(marca)}">
+  <input type="hidden" name="pend" value="{esc(pendientes)}">
+  <button type="submit">Buscar ahora</button>
+</form>"""
+    return f"{abre}{boton}</div>{_aviso_novedades(nuevas, cambio)}"
+
+
+def _aviso_novedades(cuantas: int, cambio: bool) -> str:
+    """El cartel de "entraron ofertas", listo para pisar al que está en la página.
+
+    `hx-swap-oob` es lo que le permite a una respuesta tocar un elemento que no
+    es el que la pidió: el cartel de la corrida vive en la barra lateral y el
+    aviso abajo a la derecha, y los dos se actualizan con el mismo pedido.
+
+    Vuelve vacío cuando no hay nada que avisar. Ojo: vacío de verdad, no el
+    cartel escondido. Si volviera escondido, pisaría al que la persona está
+    mirando y el aviso desaparecería solo a los dos segundos.
+
+    **Que el historial cambie y que haya ofertas nuevas no son lo mismo.** Una
+    corrida puede traer veinte avisos y que los veinte se caigan por filtro, o
+    la persona puede estar marcando desde otra pestaña. En esos casos el número
+    no sube pero la lista que está mirando ya no es la que hay, y eso también
+    hay que decirlo.
+    """
+    if not cambio:
+        return ""
+    if cuantas <= 0:
+        # El botón también cambia: "Ver las nuevas" abajo de "La lista cambió"
+        # promete ofertas que a lo mejor no hay.
+        que, hacer = "La lista cambió", "Actualizar"
+    else:
+        que = (f"Entraron {cuantas} ofertas nuevas" if cuantas != 1
+               else "Entró 1 oferta nueva")
+        hacer = "Ver las nuevas"
+    return f"""
+<div class="toast novedades visible" id="novedades" role="status" hx-swap-oob="true">
+  <span>{esc(que)}</span>
+  <button type="button" onclick="location.reload()">{esc(hacer)}</button>
+</div>"""
+
+
 def _estado_del_sistema(perfil: str, estado: dict | None) -> str:
     """El pie fijo de la barra lateral.
 
@@ -388,8 +272,13 @@ def _estado_del_sistema(perfil: str, estado: dict | None) -> str:
                  f"días.</p>")
     else:
         cubre = "<p>Trae avisos sin límite de antigüedad.</p>"
-    return (f'<div class="estado"><p>{linea}</p>{cubre}'
-            f'{_boton_buscar(perfil, bool(estado.get("corriendo")))}</div>')
+    # El cartel de la corrida va adentro del estado del sistema porque es el
+    # mismo dato: "la última búsqueda fue hace seis horas" y "está buscando
+    # ahora" se leen juntos o no se leen.
+    cartel = corrida_estado(perfil, estado.get("paso") or {},
+                            estado.get("marca") or "",
+                            int(estado.get("pendientes") or 0))
+    return f'<div class="estado"><p>{linea}</p>{cubre}{cartel}</div>' 
 
 
 def pagina(titulo: str, cuerpo: str, perfil: str, perfiles: list[str], tab: str,
@@ -414,7 +303,9 @@ def pagina(titulo: str, cuerpo: str, perfil: str, perfiles: list[str], tab: str,
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Las ofertas de trabajo de varios portales, en una sola lista y con un puntaje de ajuste.">
 <title>{esc(titulo)} · vacantia</title>
-<style>{CSS}</style><script>{JS}</script>
+<link rel="stylesheet" href="/estilos.css">
+<script src="/htmx.min.js" defer></script>
+<script src="/app.js" defer></script>
 </head><body class="app">
 <a class="saltar" href="#contenido">Saltar al contenido</a>
 <aside class="lateral">
@@ -433,6 +324,11 @@ def pagina(titulo: str, cuerpo: str, perfil: str, perfiles: list[str], tab: str,
   {_estado_del_sistema(perfil, estado)}
 </aside>
 <main id="contenido">{cuerpo}</main>
+<!-- El aviso de que entraron ofertas. Nace escondido y en TODAS las pantallas,
+     no sólo en Trabajos: el cartel de la corrida lo pisa con `hx-swap-oob`
+     cuando la búsqueda termina, y para pisarlo tiene que existir. Si sólo
+     estuviera en Trabajos, buscar desde Métricas no avisaría nada. -->
+<div class="toast novedades" id="novedades" role="status"></div>
 </body></html>"""
 
 
@@ -584,32 +480,48 @@ def _tarjeta_filtrada(oferta: dict, perfil: str, desde: str, pagina: int,
 
     Lo que se lee acá es distinto de lo que se lee en Sin marcar. En Sin marcar
     la pregunta es "¿me postulo?"; acá es "¿el filtro acertó?", y para
-    contestarla hacen falta dos cosas juntas: **el motivo que dio el sistema** y
-    **el aviso**, para poder ir a mirarlo. Por eso el motivo va arriba de todo y
-    con su explicación completa, y no escondido en un tooltip.
+    contestarla hacen falta dos cosas juntas: **los motivos que dio el sistema**
+    y **el aviso**, para poder ir a mirarlo. Por eso van arriba de todo y con su
+    explicación completa, y no escondidos en un tooltip.
 
-    Dos botones, y los dos sacan la oferta de esta lista: se revisa una vez y no
-    vuelve a aparecer, así la pila baja y no hay que acordarse dónde se quedó
-    uno. El primario es "Bien descartada" porque es la respuesta que se va a dar
-    la mayoría de las veces; "Mal descartada" es la que encuentra el error, y
-    además de anotarlo devuelve la oferta a Sin marcar.
+    **Van todos los motivos, no el primero.** Una oferta puede caer por idioma y
+    por lugar a la vez, y mostrando uno solo la pantalla mentía: si el que se
+    mostraba estaba mal atribuido, la respuesta honesta era "mal descartada" y
+    la oferta volvía a la lista aunque el otro motivo la sacara con derecho.
+
+    **Tres respuestas y no dos.** Faltaba justo la del medio, que es la que
+    apareció usándolo: bien sacada, pero por el motivo equivocado. Con dos
+    botones eso había que contestarlo mintiendo para un lado o para el otro.
+    Sólo "mal" devuelve la oferta a Sin marcar; las otras dos la dejan afuera,
+    que es lo correcto, y se cuentan por separado para poder ver qué filtro es
+    el que atribuye mal.
     """
     url = oferta.get("url", "")
     razon = oferta.get("reason") or ""
-    clave, explica = oferta.get("_motivo_sistema") or ("", "")
-    etiqueta = _MOTIVOS_SISTEMA.get(clave, "El sistema la descartó")
+    motivos = oferta.get("_motivos_sistema") or []
+    if not motivos:
+        motivos = [("", "")]
+    porques = "".join(
+        f'<p class="por-que"><b>{esc(_MOTIVOS_SISTEMA.get(clave, "El sistema la descartó"))}</b>'
+        f'{f"""<span class="detalle">{esc(explica)}</span>""" if explica else ""}</p>'
+        for clave, explica in motivos
+    )
+    y_ademas = ('<p class="ayuda">Cae por los dos: alcanza con que uno esté bien '
+                'para que no tenga que llegarte.</p>' if len(motivos) > 1 else "")
     return f"""<article class="oferta filtrada">
 {cabecera}
-    <p class="por-que"><b>{esc(etiqueta)}</b>
-    {f'<span class="detalle">{esc(explica)}</span>' if explica else ''}</p>
+    {porques}{y_ademas}
     {f'<p class="razon">{esc(razon)}</p>' if razon else ''}
     <form class="acciones" method="post" action="/revisar-filtro">
       {_ocultos(perfil, "filtradas", desde, pagina, url)}
       <button class="primario" name="revision" value="bien"
               onclick="return marcar(this, false)">Bien descartada</button>
+      <button name="revision" value="motivo"
+              onclick="return marcar(this, false)">Bien, motivo equivocado</button>
       <button name="revision" value="mal"
               onclick="return marcar(this, false)">Mal descartada</button>
-      <span class="ayuda">Si estuvo mal, vuelve a Sin marcar para que puedas aplicar.</span>
+      <span class="ayuda">Sólo <b>Mal descartada</b> la devuelve a Sin marcar
+      para que puedas aplicar.</span>
     </form>
   </div>
 </article>"""
@@ -745,36 +657,20 @@ VACIO = {
 }
 
 
-def _postulaciones(perfil: str, ver: str, desde: str, aplicadas: dict | None) -> str:
-    """"Apliqué a N trabajos", grande y en verde, arriba de la lista.
+def _selector_de_periodo(perfil: str, ver: str, desde: str, elegido: str) -> str:
+    """El desplegable de 7 días / 2 semanas / mes / ... del cartel de arriba.
 
-    Es lo único de la app que mide el trabajo de **la persona** y no el del
-    sistema: los otros contadores dicen cuántas ofertas hay, éste dice cuántas
-    veces te postulaste. Por eso es lo más grande de la pantalla y por eso es lo
-    único que usa `text-hero`.
-
-    Va sólo en **Sin marcar**, que es la pantalla que se abre por defecto. En
-    las otras pestañas la persona está revisando algo puntual y el contador
-    sería un cartel de fondo; en Filtradas ya está el marcador de la auditoría,
-    y dos marcadores en la misma pantalla no se leen, compiten.
-
-    El verde no decora: en este sistema significa lo que ya hiciste, igual que
-    en la tarjeta de una oferta aplicada. Y va con la palabra al lado, nunca
-    sólo el color.
+    Es un GET con los otros filtros escondidos adentro: cambiar el período no
+    tiene que perder en qué pestaña estabas ni el filtro de antigüedad.
     """
     from vacantia.ui.data import PERIODOS
-    from vacantia.ui.graficos import columnas
 
-    if ver != "pendientes" or not aplicadas:
-        return ""
-
-    cuantas = aplicadas.get("cuantas", 0)
     opciones = "".join(
         f'<option value="{esc(clave)}"'
-        f'{" selected" if clave == aplicadas.get("periodo") else ""}>{esc(etiqueta)}</option>'
+        f'{" selected" if clave == elegido else ""}>{esc(etiqueta)}</option>'
         for clave, etiqueta, _ in PERIODOS
     )
-    selector = f"""<form class="periodo" method="get" action="/trabajos">
+    return f"""<form class="periodo" method="get" action="/trabajos">
   <input type="hidden" name="perfil" value="{esc(perfil)}">
   <input type="hidden" name="ver" value="{esc(ver)}">
   <input type="hidden" name="desde" value="{esc(desde)}">
@@ -783,31 +679,128 @@ def _postulaciones(perfil: str, ver: str, desde: str, aplicadas: dict | None) ->
   <noscript><button>Ver el período</button></noscript>
 </form>"""
 
+
+def _postulaciones(perfil: str, ver: str, desde: str, aplicadas: dict | None,
+                   descartadas: dict | None = None) -> str:
+    """El cartel grande de arriba de la lista. **Cambia según la pestaña.**
+
+    Antes era uno solo y vivía únicamente en *Sin marcar*. El problema es que el
+    número de arriba y la lista de abajo hablaban de cosas distintas: parado en
+    *Apliqué* veías nueve tarjetas y un cartel que decía once, porque el cartel
+    sumaba las que contaste a mano desde un posteo de LinkedIn.
+
+    Ahora cada pestaña trae el número que corresponde a lo que estás mirando:
+
+    * **Sin marcar** — el total de postulaciones, de donde sea que salgan. Es la
+      pantalla que se abre por defecto y la pregunta ahí es "¿estoy haciendo
+      algo?", que no distingue de dónde salió cada una.
+    * **Apliqué** — sólo las que marcaste en esta lista, que son las que tenés
+      abajo. Un número más grande que la lista se lee como un error.
+    * **Descarté** — no cuántas sino **por qué**, que es la única parte de esto
+      que se puede accionar: "46 de 78 por inglés" es una perilla de Mi perfil
+      esperando que la muevan.
+    * **Filtradas** ya tiene su propio marcador de auditoría, y dos marcadores
+      en la misma pantalla no se leen, compiten.
+
+    El verde no decora: en este sistema significa lo que ya hiciste, igual que
+    en la tarjeta de una oferta aplicada. Y va con la palabra al lado, nunca
+    sólo el color. Por eso *Descarté* **no** va en verde: descartar no es un
+    logro, es higiene.
+    """
+    if ver == "descartadas":
+        return _cartel_de_descartes(perfil, ver, desde, descartadas)
+    if ver not in ("pendientes", "aplicadas") or not aplicadas:
+        return ""
+
+    from vacantia.ui.graficos import columnas
+
+    cuantas = aplicadas.get("cuantas", 0)
+    selector = _selector_de_periodo(perfil, ver, desde, aplicadas.get("periodo", ""))
+
     if not cuantas:
         cuerpo = ('<p class="vacio-corto">Todavía no marcaste ninguna en este '
                   'período. Cuando mandes un CV, tocá <b>Apliqué</b> en esa '
                   'oferta y el número empieza a subir.</p>')
     else:
-        # El reparto por semana es lo que hace que el total signifique algo: 12
+        # El reparto es lo que hace que el total signifique algo: 12
         # postulaciones en un mes puede ser tres semanas sin hacer nada y una a
         # los tiros, y eso no se ve en el total.
-        semanas = [{"etiqueta": e, "cuantas": n}
-                   for e, n in aplicadas.get("por_semana") or []]
-        cuerpo = (f'<div class="semanas">{columnas(semanas, "postulaciones")}</div>'
-                  if len(semanas) > 1 else "")
+        #
+        # En una semana el reparto es por día y no por semana: repartir siete
+        # días en semanas daba una barra sola, que no compara con nada, y la
+        # tarjeta quedaba con el número grande y un vacío al lado.
+        tramos = [{"etiqueta": e, "cuantas": n}
+                  for e, n in aplicadas.get("reparto") or []]
+        por = "día" if aplicadas.get("unidad") == "día" else "semana"
+        cuerpo = (f'<div class="reparto" aria-label="Postulaciones por {por}">'
+                  f'{columnas(tramos, "postulaciones")}</div>'
+                  if len(tramos) > 1 else "")
 
     trabajo = "trabajo" if cuantas == 1 else "trabajos"
-    # De dónde salió el número, cuando parte no salió de esta lista. Sin esto,
-    # el total sube sin que se haya marcado ninguna tarjeta y no hay forma de
-    # entender por qué.
-    a_mano = aplicadas.get("a_mano") or 0
     cuando = esc(aplicadas.get("etiqueta", ""))
-    if a_mano:
-        cuando += f" · {a_mano} desde un posteo de LinkedIn"
+    if ver == "aplicadas":
+        # Parado acá el número YA es sólo el de la lista, así que en vez de
+        # explicar qué se sumó hay que explicar qué se restó: si no, el cartel
+        # y el contador de la barra de arriba no cierran y parece un bug.
+        cuando += " · sólo las de esta lista"
+    else:
+        # De dónde salió el número, cuando parte no salió de esta lista. Sin
+        # esto, el total sube sin que se haya marcado ninguna tarjeta y no hay
+        # forma de entender por qué.
+        a_mano = aplicadas.get("a_mano") or 0
+        if a_mano:
+            cuando += f" · {a_mano} desde un posteo de LinkedIn"
     return f"""<section class="postulaciones" aria-label="Postulaciones">
   <p class="cuenta"><span class="numero">{cuantas}</span>
      <span class="que">{trabajo} a los que apliqué</span>
      <span class="cuando">{cuando}</span></p>
+  {selector}
+  {cuerpo}
+</section>"""
+
+
+def _cartel_de_descartes(perfil: str, ver: str, desde: str,
+                         descartadas: dict | None) -> str:
+    """Por qué venís descartando, con el mismo selector de período.
+
+    El total de descartes no sirve para nada por sí solo: descartar no es
+    trabajo que quieras sostener, así que no hay ritmo que cuidar. Lo que sirve
+    es el desglose, porque cada motivo que se repite mucho es una perilla de Mi
+    perfil que conviene mover: si 46 de 78 caen por inglés, o subís el nivel
+    declarado o dejás de buscar puestos que lo piden, pero hay algo que hacer.
+
+    Por eso acá el gráfico es de barras por motivo y no de columnas por semana,
+    y por eso el número grande no va en verde: el verde en este sistema
+    significa lo que ya hiciste, y descartar no es un logro.
+    """
+    from vacantia.ui.graficos import barras, vale_un_grafico
+
+    if not descartadas:
+        return ""
+
+    cuantas = descartadas.get("cuantas", 0)
+    filas = descartadas.get("motivos") or []
+    selector = _selector_de_periodo(perfil, ver, desde, descartadas.get("periodo", ""))
+
+    if not cuantas:
+        cuerpo = ('<p class="vacio-corto">No descartaste ninguna en este período. '
+                  'Cuando una no sirva, tocá <b>No apliqué</b> y elegí por qué: '
+                  'ese motivo es lo que después afina las búsquedas.</p>')
+    elif vale_un_grafico(filas):
+        cuerpo = (f'<div class="reparto" aria-label="Motivos de descarte">'
+                  f'{barras(filas, "ofertas")}</div>')
+    else:
+        # Con uno o dos motivos no hay nada que comparar: el gráfico sería una
+        # barra al 100% al lado de otra al 30%, que dice menos que la frase.
+        cuerpo = '<ul class="motivos-cortos">' + "".join(
+            f"<li><b>{esc(n)}</b> {esc(etiqueta.lower())}</li>"
+            for etiqueta, n in filas) + "</ul>"
+
+    oferta = "oferta" if cuantas == 1 else "ofertas"
+    return f"""<section class="postulaciones descartes" aria-label="Motivos de descarte">
+  <p class="cuenta"><span class="numero">{cuantas}</span>
+     <span class="que">{oferta} que descarté</span>
+     <span class="cuando">{esc(descartadas.get("etiqueta", ""))}</span></p>
   {selector}
   {cuerpo}
 </section>"""
@@ -834,6 +827,12 @@ def _marcador_del_filtro(ver: str, revision: dict | None) -> str:
   <p class="ayuda">Con {revision.get('meta', 0)} revisadas ya se puede decir algo.</p>
 </div>"""
     revisadas = bien + mal
+    # De las bien descartadas, cuántas lo estaban por el motivo equivocado. Va
+    # adentro del contador de aciertos y no al lado: es un acierto del filtro y
+    # un error de la explicación, y son dos cosas distintas.
+    con_motivo_mal = revision.get("motivo_errado", 0)
+    errado = (f'<span class="valor">{con_motivo_mal}</span> con el motivo mal'
+              if con_motivo_mal else "")
     faltan = revision.get("faltan", 0)
     meta = revision.get("meta", 0)
     if faltan:
@@ -846,7 +845,7 @@ def _marcador_del_filtro(ver: str, revision: dict | None) -> str:
                   "Ya tenés la muestra.")
     return f"""<div class="callout marcador">
   <p class="cuenta"><span class="valor">{bien}</span> bien descartadas
-     <span class="valor">{mal}</span> mal descartadas</p>
+     <span class="valor">{mal}</span> mal descartadas{errado}</p>
   <p class="ayuda">{esc(cierre)} Las que marcaste mal volvieron a Sin marcar.</p>
 </div>"""
 
@@ -1007,7 +1006,8 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
              conteo_fecha: dict | None = None,
              marca: str = "", pagina: int = 1, paginas: int = 1,
              viejas: dict | None = None, corriendo: bool = False,
-             revision: dict | None = None, aplicadas: dict | None = None) -> str:
+             revision: dict | None = None, aplicadas: dict | None = None,
+             descartadas: dict | None = None) -> str:
     """La lista.
 
     Arriba no va ningún recuento de lo que se pierde: cuántas ofertas quedan
@@ -1058,21 +1058,15 @@ def trabajos(perfil: str, ofertas: list[dict], conteo: dict, ver: str,
                   if se_arregla_buscando else "")
         listado = f'<div class="vacio"><b>{titulo}</b>{detalle}{salida}</div>'
 
-    # El vigilante avisa si entran ofertas con la pantalla abierta. `marca` es
-    # cómo estaba el historial al servir esta página: si cambia, hubo corrida.
-    vigilante = ""
-    if marca:
-        pendientes = int((conteo or {}).get("pendientes", 0))
-        vigilante = f"""<div class="toast novedades" id="novedades" role="status">
-  <span id="novedades-texto">Entraron ofertas nuevas</span>
-  <button type="button" onclick="location.reload()">Ver las nuevas</button>
-</div>
-<script>vigilarNovedades({esc(perfil)!r}, {esc(marca)!r}, {pendientes});</script>"""
+    # El aviso de "entraron ofertas nuevas" ya no se arma acá. Lo trae el cartel
+    # de la corrida del pie de la barra lateral: pregunta por la marca del
+    # historial en el mismo pedido con el que pregunta en qué anda la búsqueda,
+    # y pisa el aviso del shell con `hx-swap-oob`. Antes eran dos relojes
+    # distintos preguntando por cosas parecidas.
 
     return f"""{avisos(mensajes)}
-{vigilante}
 <h1>Trabajos</h1>
-{_postulaciones(perfil, ver, desde, aplicadas)}
+{_postulaciones(perfil, ver, desde, aplicadas, descartadas)}
 <div class="filtros">{por_estado}</div>
 {_encabezado(ver, conteo, por_fecha)}
 {_marcador_del_filtro(ver, revision)}
@@ -1490,6 +1484,23 @@ def _tabla(encabezados: tuple[str, str], filas: list[tuple[str, int]]) -> str:
 
 
 #: Cómo se lee cada motivo del sistema en la pantalla.
+def _solapadas(e: dict) -> str:
+    """Aviso de que las filas suman más que las ofertas.
+
+    Una oferta puede caer por idioma y por lugar a la vez, y acá se cuenta en
+    las dos filas: la pregunta que contesta esta tabla es cuánto saca cada
+    filtro, no de a cuántas le tocó cada una. Sin decirlo, la suma no cierra
+    contra el total de arriba y parece un error de cuentas.
+    """
+    cuantas = e.get("sistema_solapadas") or 0
+    if not cuantas:
+        return ""
+    una = "oferta cae" if cuantas == 1 else "ofertas caen"
+    return (f'<p class="explica">Las filas suman más que las ofertas: '
+            f'{cuantas} {una} por los dos filtros a la vez y se cuentan en '
+            f'los dos. Son {e.get("sistema_total", 0)} distintas.</p>')
+
+
 _MOTIVOS_SISTEMA = {
     "idioma": "Piden un inglés más alto que el tuyo",
     "lugar": "El lugar o la modalidad no te sirven",
@@ -1574,11 +1585,14 @@ def _como_viene_funcionando(perfil: str, salud: dict | None) -> str:
     if not salud:
         return ""
 
-    if salud.get("corriendo"):
-        ahora = ("<p>Hay una búsqueda en curso. Cuando entren ofertas nuevas te "
-                 "avisa la pantalla de Trabajos.</p>")
-    else:
-        ahora = f'<p class="acciones-sueltas">{_boton_buscar(perfil, False)}</p>'
+    # **Acá NO va el botón de buscar.** Métricas es una pantalla de lectura: se
+    # entra a entender qué está pasando, no a hacer algo. El botón vivía suelto
+    # al final de todo, lejos de cualquier cosa con la que tuviera relación, y
+    # además ya está donde corresponde, al pie de la barra lateral, que se ve
+    # desde todas las pantallas y ésta incluida.
+    ahora = ("<p>Hay una búsqueda en curso. Cuando entren ofertas nuevas te "
+             "avisa la pantalla de Trabajos.</p>"
+             if salud.get("corriendo") else "")
 
     tareas = salud.get("programada")
     if tareas is None:
@@ -1625,17 +1639,86 @@ def _como_viene_funcionando(perfil: str, salud: dict | None) -> str:
   Si siempre aparece la misma, algo hay que mirar.</p>
 </details>"""
 
-    return f"""<h2>Cómo viene funcionando</h2>
-{programado}
-{encontro}
-{aviso}
-{problemas}
-{ahora}"""
+    # Va en su propia sección al pie y **no como un panel más**: no es un dato
+    # sobre tu búsqueda de trabajo, es el estado de la máquina. Mezclarlo con
+    # los desgloses obliga a leer "cuántas ofertas piden inglés" y "cuándo corre
+    # la tarea programada" como si fueran la misma clase de cosa.
+    return f"""<section class="salud">
+  <h2>Cómo viene funcionando</h2>
+  <p class="explica">El estado del programa, no de tu búsqueda. Mirá acá cuando
+  algo no cierre: si hace días que no entra nada, la respuesta suele estar
+  abajo.</p>
+  {programado}
+  {encontro}
+  {aviso}
+  {problemas}
+  {ahora}
+</section>"""
+
+
+def _habilidades(h: dict | None) -> str:
+    """Qué te están pidiendo los avisos que entraron.
+
+    Sale del campo que el modelo ya devolvía por cada oferta cuando la puntúa,
+    así que **no cuesta ninguna llamada extra**: el aviso ya se le manda entero
+    para puntuarlo, y pedirle de paso qué piden son unos tokens más de
+    respuesta.
+
+    Eso es también lo que la hace servir para cualquier oficio. No hay ninguna
+    lista de tecnologías escrita en el código: el modelo lee el aviso y devuelve
+    lo que ese aviso pide, sea LangChain, Google Analytics o la ISO 45001. Una
+    lista escrita a mano habría que mantenerla para siempre y aun así nunca
+    cubriría los oficios de los demás perfiles de la casa.
+
+    Cuando quedan ofertas sin analizar se dice cuántas. Sin eso, un gráfico
+    flaco se lee como "no piden nada" en vez de "todavía no lo miré todo".
+    """
+    from vacantia.ui.graficos import barras
+
+    if not h or not h.get("filas"):
+        return ""
+
+    pie = ""
+    if h.get("sin_datos"):
+        cuantas = h["sin_datos"]
+        una = "oferta todavía no pasó" if cuantas == 1 else "ofertas todavía no pasaron"
+        pie = (f'<p class="pie-grafico">{cuantas} {una} por el analizador y no '
+               f'suman acá. Entran solas en la próxima búsqueda.</p>')
+    return f"""{barras(h["filas"], "ofertas")}
+{pie}"""
+
+
+def _panel(titulo: str, explica: str, cuerpo: str) -> str:
+    """Un bloque de Métricas: título, para qué sirve, y el gráfico.
+
+    Métricas era una columna larguísima de secciones apiladas, con el gráfico de
+    una y la explicación de la siguiente pegados, y media pantalla vacía a la
+    derecha. Cada bloque encerrado en su propio panel se puede acomodar en dos
+    columnas, y sobre todo deja de haber duda de a qué gráfico corresponde cada
+    texto.
+
+    **La explicación va arriba del gráfico y nunca abajo.** Un gráfico sin saber
+    qué mide no se puede leer, así que leerlo primero y buscar el pie después es
+    hacer el trabajo dos veces.
+
+    El `explica` llega con los saltos y la sangría del f-string que lo escribió;
+    se aplastan acá para que el HTML no salga con veinte espacios en el medio de
+    una oración.
+    """
+    if not cuerpo.strip():
+        return ""
+    texto = " ".join(explica.split())
+    return f"""<section class="panel">
+  <h2>{esc(titulo)}</h2>
+  <p class="explica">{texto}</p>
+  {cuerpo}
+</section>"""
 
 
 def estadisticas(perfil: str, e: dict, desde: str, mensajes,
                  salud: dict | None = None,
-                 puntajes: list[dict] | None = None) -> str:
+                 puntajes: list[dict] | None = None,
+                 habilidades: dict | None = None) -> str:
     """Los números que antes vivían apretados en los botones de arriba.
 
     Se separó porque compiten: mientras uno revisa ofertas, el único número que
@@ -1665,30 +1748,54 @@ def estadisticas(perfil: str, e: dict, desde: str, mensajes,
 
     ventana = e.get("max_age_days")
     fuentes = list((e.get("por_fuente") or {}).items())
+
+    # La pantalla cuenta tres cosas distintas y en este orden, que es el orden
+    # en que sirven: qué hiciste, qué te piden ahí afuera, y qué está entrando.
+    # Antes eran cinco paneles idénticos uno atrás del otro sin nada que dijera
+    # cuál mirar primero, que es lo que la hacía confusa: todo pesaba igual.
+    pedido = _habilidades(habilidades)
+    foco = f"""<section class="foco">
+  <h2>Qué te están pidiendo</h2>
+  <p class="explica">Las habilidades, herramientas y certificaciones que nombran
+  los avisos que entraron, y en cuántos aparece cada una. <b>Es lo único de esta
+  pantalla que dice qué hacer mañana</b>: lo que está arriba y no tenés es lo que
+  más te está costando entrevistas.</p>
+  {pedido}
+</section>""" if pedido else ""
+
     return f"""{avisos(mensajes)}
 <h1>Métricas</h1>
 <div class="tarjetas">{tarjetas}</div>
 
-<h2>Qué tan bien te encajan las ofertas que entran</h2>
-<p class="explica">Cuántas hay en cada tramo de puntaje, sobre todo lo que se
-buscó alguna vez. Una montaña pegada al cero significa que las búsquedas están
-mal apuntadas; una repartida significa que el problema es otro.</p>
-{_grafico_de_puntajes(puntajes)}
+{foco}
 
-<h2>Lo que descartó el sistema, sin preguntarte</h2>
-<p class="explica">Son las que no llegan a <b>Sin marcar</b> porque ya hay un
-veredicto: no las borra nadie y vuelven solas si cambiás el filtro que las sacó.
-Antes aparecían en la lista y había que descartarlas a mano una por una.</p>
-{_desglose(("Motivo", "Ofertas"), sistema_filas)}
-{_cuesta_el_ingles(perfil, ingles)}
+<h2 class="seccion">Qué está entrando, y qué queda afuera</h2>
+<div class="paneles">
+{_panel("Qué tan bien te encajan",
+        '''Cuántas ofertas hay en cada tramo de puntaje, sobre todo lo que se
+        buscó alguna vez. Una montaña pegada al cero significa que las búsquedas
+        están mal apuntadas; una repartida significa que el problema es otro.''',
+        _grafico_de_puntajes(puntajes))}
 
-<h2>Por qué descartaste vos</h2>
-{_desglose(("Motivo", "Ofertas"), motivos_filas)}
+{_panel("Por qué descartaste vos",
+        '''Los motivos que elegiste al marcar <b>No apliqué</b>. Es lo único que
+        el sistema puede aprender de vos: si la mayoría cae en un mismo motivo,
+        ahí hay un filtro que conviene apretar en Mi perfil.''',
+        _desglose(("Motivo", "Ofertas"), motivos_filas))}
 
-<h2>De dónde vienen</h2>
-{_desglose(("Portal", "Ofertas"), fuentes)}
-<p class="explica">Ventana de búsqueda: los últimos
-{esc(ventana if ventana is not None else "?")} días. Se cambia en Mi perfil.</p>
+{_panel("Lo que descartó el sistema, sin preguntarte",
+        '''Son las que no llegan a <b>Sin marcar</b> porque ya hay un veredicto:
+        no las borra nadie y vuelven solas si cambiás el filtro que las sacó.''',
+        _solapadas(e)
+        + _desglose(("Motivo", "Ofertas"), sistema_filas)
+        + _cuesta_el_ingles(perfil, ingles))}
+
+{_panel("De dónde vienen",
+        f'''Qué portal trajo cada oferta. Ventana de búsqueda: los últimos
+        {esc(ventana if ventana is not None else "?")} días, que se cambia en
+        Mi perfil.''',
+        _desglose(("Portal", "Ofertas"), fuentes))}
+</div>
 
 {_como_viene_funcionando(perfil, salud)}"""
 

@@ -270,7 +270,12 @@ class State:
     def revisar_filtro(self, urls: list[str], revision: str) -> int:
         """Anota si el filtro automático acertó o se equivocó. Cuántas tocó.
 
-        `revision` es `"bien"` o `"mal"`. Es la auditoría de la primera semana:
+        `revision` es `"bien"`, `"motivo"` o `"mal"`. La del medio es "bien
+        sacada, pero por el motivo equivocado": la oferta no tenía que llegarte,
+        pero el filtro la atribuyó mal. Se anota aparte porque es lo único que
+        permite ver qué filtro atribuye mal sin perder la oferta de vista.
+
+        Es la auditoría de la primera semana:
         el sistema descarta solo por idioma y por lugar, y hasta que no se sepa
         si esos descartes son correctos no hay forma de saber si el filtro está
         bien calibrado o si está tirando a la basura media lista.
@@ -281,7 +286,7 @@ class State:
         descartar; el campo queda igual, así el contador no se pierde cuando la
         oferta sigue su curso.
         """
-        if revision not in ("bien", "mal"):
+        if revision not in ("bien", "motivo", "mal"):
             raise ValueError(f"revisión inválida: {revision!r}")
         claves = {_url_key(u) for u in urls if u}
         if not claves:

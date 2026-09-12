@@ -1,0 +1,186 @@
+
+/* ===========================================================================
+   TOKENS. Los del front matter de DESIGN.md, uno a uno.
+   Primitivos primero, semánticos después: las reglas de abajo referencian
+   SIEMPRE los semánticos, nunca un primitivo y nunca un valor literal.
+   =========================================================================== */
+:root {
+  color-scheme: dark;
+
+  /* --- primitivos: neutrales fríos, nunca grises puros ni negro tintado --- */
+  --neutral-50:  #F4F5F9;
+  --neutral-100: #DCDEE8;
+  --neutral-300: #9AA0B4;
+  --neutral-500: #868EA2;
+  --neutral-700: #2A2F3E;
+  --neutral-900: #0F1117;
+  --brand-300:   #A9ABFF;
+  --brand-500:   #6366E8;
+  --brand-700:   #4A4CC4;
+
+  /* --- semánticos --- */
+  --color-background:     var(--neutral-900);
+  --color-surface:        #171A23;
+  --color-surface-raised: #1E222E;
+  --color-border:         var(--neutral-700);
+  --color-border-subtle:  #232735;
+  --color-text-primary:   var(--neutral-50);
+  --color-text-secondary: var(--neutral-300);
+  --color-text-tertiary:  var(--neutral-500);
+  --color-text-on-action: #FFFFFF;
+  --color-action:         var(--brand-700);
+  --color-action-hover:   var(--brand-500);
+  --color-focus-ring:     var(--brand-300);
+  /* El índigo de acción (#6366E8) da 4.13:1 contra el fondo: alcanza para un
+     relleno de botón con texto blanco, pero NO para texto índigo sobre oscuro.
+     Los links usan el índigo claro, que da 8.95:1. Token nuevo, propuesto acá
+     porque el front matter no traía un color de link. */
+  --color-link:           var(--brand-300);
+  --color-link-hover:     var(--neutral-50);
+
+  /* --- datos. TOKENS NUEVOS: el front matter de DESIGN.md no tiene ninguno
+         para gráficos, y Métricas los necesita.
+
+         Son pocos porque **todos los gráficos de la app son de una sola
+         serie**: la magnitud la lleva el largo de la barra, no el tono. No hay
+         paleta categórica que validar ni leyenda que poner, porque no hay dos
+         series que distinguir; el título dice qué se está midiendo.
+
+         El relleno es el índigo de marca. En una tarjeta eso significaría
+         "tocame", pero adentro de un gráfico con su eje y sus etiquetas una
+         barra no se confunde con un botón, y el sistema tiene un solo hue.
+         3.80:1 contra la superficie, arriba del 3:1 que piden los elementos
+         gráficos no textuales. --- */
+  --data-fill:      var(--brand-500);
+  --data-track:     var(--color-border-subtle);
+  --data-destacada: var(--color-success);
+
+  /* --- estados. Verde = lo que ya hiciste. Rojo = error o destrucción, y
+         nada más: "sin mirar" o "descartada" NO son errores. --- */
+  --color-success:         #4ADE80;
+  --color-success-surface: #16241C;
+  --color-warning:         #E9B949;
+  --color-warning-surface: #26200F;
+  --color-danger:          #F87171;
+  --color-danger-surface:  #26161A;
+  --color-info:            #7DA8FF;
+  --color-info-surface:    #151C2B;
+
+  /* --- tipografía. Inter para todo; la mono sólo donde el ancho fijo
+         significa algo: puntajes, contadores y columnas numéricas. --- */
+  --font-sans: Inter, "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* TOKEN NUEVO. `display` (2rem) es el tope de la escala del front matter y
+     alcanza para una tarjeta de métrica, donde hay cinco números del mismo
+     peso. No alcanza para el contador de postulaciones, que es UN número y
+     tiene que leerse cruzando la habitación: es lo único de la app que mide el
+     trabajo de la persona y no el del sistema. Sigue la misma progresión de
+     1.2 desde display. */
+  --text-hero:      3.5rem;
+  --text-display:   2rem;
+  --text-h1:        1.75rem;
+  --text-h2:        1.375rem;
+  --text-h3:        1.125rem;
+  --text-body-lg:   1.0625rem;
+  --text-body-md:   1rem;
+  --text-body-sm:   0.875rem;
+  --text-caption:   0.75rem;
+  --text-mono:      0.8125rem;
+  --leading-tight:  1.2;
+  --leading-title:  1.3;
+  --leading-body:   1.6;
+  --leading-snug:   1.45;
+  --tracking-display: -0.02em;
+  --tracking-h1:      -0.015em;
+  --tracking-h2:      -0.01em;
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;   /* el máximo. En oscuro, más pesado florece. */
+
+  /* --- espaciado, escala de 4 --- */
+  --spacing-xs:  4px;
+  --spacing-sm:  8px;
+  --spacing-md:  16px;
+  --spacing-lg:  24px;
+  --spacing-xl:  40px;
+  --spacing-2xl: 64px;
+  --spacing-3xl: 96px;
+
+  /* --- formas. El radio sigue la jerarquía del elemento: un solo radio para
+         todo es la señal más clara de una interfaz hecha con plantilla. --- */
+  --rounded-none: 0px;
+  --rounded-sm:   6px;    /* inputs, desplegables, bloques de URL */
+  --rounded-md:   10px;   /* botones, ítems de navegación, callouts */
+  --rounded-lg:   16px;   /* tarjetas, modales, estados vacíos */
+  --rounded-full: 9999px; /* etiquetas y píldoras de filtro */
+
+  /* --- elevación. En oscuro la sombra funciona mal como señal, así que las
+         capas se separan con borde y translucidez primero. --- */
+  --elevation-flat:    none;
+  --elevation-raised:  0 1px 2px rgba(0, 0, 0, 0.4);
+  --elevation-overlay: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --elevation-modal:   0 24px 64px rgba(0, 0, 0, 0.65);
+
+  /* --- efectos: la audacia del sistema, y se gasta en tres lugares --- */
+  --glass-background: rgba(30, 34, 46, 0.72);
+  --glass-blur:       blur(16px);
+  --glass-border:     1px solid rgba(244, 245, 249, 0.06);
+  --glow-action:      0 0 32px -8px rgba(99, 102, 232, 0.35);
+
+  /* --- bordes --- */
+  --border-hairline: 1px;
+  --border-regular:  1px;
+  --border-emphasis: 2px;
+
+  /* --- layout --- */
+  --container-max:   1200px;
+  --content-max-ch:  72ch;
+  --sidebar-width:   260px;
+  --gutter:          var(--spacing-md);
+
+  /* --- movimiento --- */
+  --duration-instant: 80ms;
+  --duration-fast:    140ms;
+  --duration-normal:  220ms;
+  --duration-slow:    320ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-enter:    cubic-bezier(0.0, 0, 0.2, 1);
+  --ease-exit:     cubic-bezier(0.4, 0, 1, 1);
+
+  /* --- medidas de control. No estaban en el front matter y los componentes
+         las necesitan: se agregan como token en vez de repetirlas sueltas.
+         44px es el mínimo táctil que fija DESIGN.md y el alto de botón, input
+         y select; 36px es el alto de la píldora de filtro; 40px el del ítem
+         de navegación. --- */
+  --control-height:    44px;
+  --control-height-sm: 36px;
+  --nav-item-height:   40px;
+  --checkbox-size:     18px;
+  --score-width:       64px;   /* la caja del puntaje en la tarjeta */
+  --menu-width:        240px;  /* el panel de tres puntos */
+  --menu-aire:         112px;  /* lo que mide ese panel, para dejarle lugar
+                                  cuando se abre adentro de una columna que
+                                  scrollea y lo recortaría */
+  --table-max:         560px;  /* dos columnas: texto y número */
+  --metric-min:        160px;  /* mínimo de una tarjeta de métrica */
+  --textarea-min:      180px;
+
+  /* --- iconografía (Lucide, dibujada a mano en el HTML) --- */
+  --icon-stroke: 1.5;
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+
+  /* --- z-index: una escala, sin 9999 sueltos --- */
+  --z-base:     0;
+  --z-sticky:   100;
+  --z-dropdown: 200;
+  --z-overlay:  300;
+  --z-modal:    400;
+  --z-toast:    500;
+
+  /* La flecha del desplegable, dibujada por nosotros: el color viaja adentro
+     del SVG y ahí no se puede referenciar una variable, así que vive como
+     token para que nadie cambie la paleta y se la olvide. Es text-secondary. */
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239AA0B4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}

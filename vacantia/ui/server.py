@@ -23,6 +23,22 @@ PUERTO = 8756
 HOST = "127.0.0.1"
 
 
+#: Lo que sirve la app además del HTML: {ruta: (content-type, cómo se lee)}.
+#:
+#: El cuerpo se pide con una función y no se guarda en una constante para que
+#: se lea del disco en cada pedido. Editar un `.css` y ver el cambio con F5, sin
+#: reiniciar el servidor, es la mitad de la razón por la que el CSS dejó de ser
+#: un string de Python.
+_ESTATICOS = {
+    "/estilos.css": ("text/css; charset=utf-8",
+                     lambda: estilos.hoja().encode("utf-8")),
+    "/app.js": ("text/javascript; charset=utf-8",
+                lambda: render.estatico("app.js").encode("utf-8")),
+    "/htmx.min.js": ("text/javascript; charset=utf-8",
+                     lambda: render.estatico("htmx.min.js").encode("utf-8")),
+}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "vacantia"
 
@@ -93,6 +109,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._redirigir("/trabajos")
         if ruta.startswith("/fuentes/"):
             return self._get_fuente(ruta)
+        if ruta in _ESTATICOS:
+            return self._get_estatico(ruta)
 
         perfil = self._perfil_pedido(params)
         if perfil is None:
@@ -111,8 +129,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._estadisticas(perfil, params)
             if ruta == "/linkedin":
                 return self._get_linkedin(perfil, params)
-            if ruta == "/novedades":
-                return self._get_novedades(perfil)
+            if ruta == "/corrida":
+                return self._get_corrida(perfil, params)
         except FileNotFoundError as e:
             return self._pagina("Error", render.avisos([("error", str(e))]), perfil,
                                 "trabajos", 404)
@@ -122,6 +140,22 @@ class Handler(BaseHTTPRequestHandler):
                                 perfil, "trabajos", 500)
 
         self._html("<h1>404</h1>", 404)
+
+    def _get_estatico(self, ruta: str) -> None:
+        """La hoja de estilos y los dos scripts, servidos como archivos.
+
+        **Nunca se cachean.** Es a propósito: son archivos que se editan mientras
+        se trabaja, y un caché acá significa tocar el CSS, apretar F5 y no ver
+        el cambio. La app corre en la misma máquina que el navegador, así que
+        volver a mandar 75 KB no cuesta nada medible.
+
+        htmx se sirve **desde acá y no desde un CDN**, por la misma razón que
+        las fuentes: la máquina puede estar sin internet, y una pantalla que
+        depende de una descarga externa para que anden los botones es una
+        pantalla rota.
+        """
+        tipo, cuerpo = _ESTATICOS[ruta]
+        self._responder(cuerpo(), tipo=tipo, cache="no-store")
 
     def _get_fuente(self, ruta: str) -> None:
         """Inter y JetBrains Mono, servidas por la app y no por un CDN.
@@ -160,6 +194,21 @@ class Handler(BaseHTTPRequestHandler):
             pedida = 1
         mensajes = _mensajes(params)
         ofertas, pagina, paginas = data.ofertas(perfil, ver, desde, pedida)
+
+        # El cartel de arriba cambia según la pestaña, así que sólo se calcula
+        # el que se va a mostrar: leer el historial entero para armar un gráfico
+        # que no se dibuja es trabajo tirado en cada carga de página.
+        periodo = (params.get("apliq") or [""])[0] or data.PERIODO_POR_DEFECTO
+        aplicadas = descartadas = None
+        if ver in ("pendientes", "aplicadas"):
+            # Parado en Apliqué el número tiene que ser el de la lista de abajo:
+            # las contadas a mano desde un posteo de LinkedIn no están ahí, y un
+            # cartel más grande que la lista se lee como un error.
+            aplicadas = data.aplicadas_en(perfil, periodo,
+                                          solo_de_la_lista=(ver == "aplicadas"))
+        elif ver == "descartadas":
+            descartadas = data.descartadas_en(perfil, periodo)
+
         cuerpo = render.trabajos(
             perfil, ofertas, data.contar_ofertas(perfil, desde),
             ver, mensajes, desde,
@@ -169,25 +218,46 @@ class Handler(BaseHTTPRequestHandler):
             viejas={d: len(data.viejas_sin_marcar(perfil, d)) for d in (7, 14, 30)},
             corriendo=corrida.esta_corriendo(),
             revision=data.resumen_revision(perfil),
-            aplicadas=data.aplicadas_en(perfil, (params.get("apliq") or [""])[0]
-                                        or data.PERIODO_POR_DEFECTO),
+            aplicadas=aplicadas, descartadas=descartadas,
         )
         self._pagina("Trabajos", cuerpo, perfil, "trabajos")
 
-    def _get_novedades(self, perfil: str) -> None:
-        """¿Entraron ofertas desde que se abrió la página? JSON, para el poll.
+    def _get_corrida(self, perfil: str, params: dict) -> None:
+        """El cartel del pie de la barra lateral, recién armado.
 
-        Deliberadamente NO recarga la pantalla sola: si alguien está escribiendo
-        el motivo de un descarte, una recarga se lo borra. Se avisa y decide la
-        persona.
+        Es lo único que la pantalla se pregunta sola, y contesta dos cosas en un
+        solo pedido: en qué etapa va la búsqueda, y si entraron ofertas desde
+        que la persona abrió la página.
+
+        `marca` y `pend` son cómo estaba el historial **al abrir**, y los manda
+        el navegador de vuelta en cada pedido. El servidor no se guarda nada: si
+        se abren dos pestañas, cada una compara contra su propio momento.
+
+        Devuelve un pedazo de HTML y no un JSON a propósito. El HTML lo arma
+        `render` como el resto de la pantalla, con las mismas reglas y los
+        mismos tests; un JSON obligaría a tener una segunda copia del texto y
+        del marcado adentro del JavaScript, que es de donde venimos.
         """
-        import json as _json
+        estado = data.estado_del_sistema(perfil)
+        marca_al_abrir = (params.get("marca") or [""])[0]
+        try:
+            pendientes_al_abrir = int((params.get("pend") or ["0"])[0])
+        except ValueError:
+            pendientes_al_abrir = 0
 
-        cuerpo = _json.dumps({
-            "marca": data.marca_de_cambio(perfil),
-            "pendientes": data.contar_ofertas(perfil).get("pendientes", 0),
-        }).encode("utf-8")
-        self._responder(cuerpo, tipo="application/json")
+        # Si el historial cambió, y cuántas entraron desde que se abrió. Son dos
+        # preguntas distintas: puede cambiar sin que suba el número (entraron
+        # veinte y las filtró a todas, o estás marcando desde otra pestaña), y
+        # ahí igual hay que avisar que lo que estás mirando ya no es lo que hay.
+        #
+        # La diferencia y no el total: "entraron 211 ofertas" cuando entraron 3
+        # es peor que no decir nada.
+        cambio = bool(marca_al_abrir) and estado.get("marca") != marca_al_abrir
+        nuevas = int(estado.get("pendientes") or 0) - pendientes_al_abrir if cambio else 0
+
+        self._html(render.corrida_estado(
+            perfil, estado.get("paso") or {}, marca_al_abrir, pendientes_al_abrir,
+            nuevas=nuevas, cambio=cambio))
 
     def _get_mensajes(self, perfil: str, params: dict, con_llm: bool = False) -> None:
         """Los moldes para escribirle a quien publicó. Con `con_llm`, se los
@@ -252,7 +322,8 @@ class Handler(BaseHTTPRequestHandler):
         cuerpo = render.estadisticas(perfil, data.estadisticas(perfil, desde),
                                      desde, _mensajes(params),
                                      salud=corrida.salud(),
-                                     puntajes=data.distribucion_de_puntajes(perfil))
+                                     puntajes=data.distribucion_de_puntajes(perfil),
+                                     habilidades=data.habilidades_pedidas(perfil, desde))
         self._pagina("Métricas", cuerpo, perfil, "estadisticas")
 
     def _get_linkedin(self, perfil: str, params: dict) -> None:
@@ -364,6 +435,21 @@ class Handler(BaseHTTPRequestHandler):
         """
         perfil = form.get("perfil", "")
         arranco, mensaje = corrida.arrancar(perfil)
+
+        # Desde el botón de la barra lateral: vuelve el cartel ya en "buscando"
+        # y la página no se mueve. Era una recarga completa para cambiar tres
+        # palabras, y encima te devolvía arriba de la lista.
+        if self.headers.get("HX-Request"):
+            try:
+                pendientes = int(form.get("pend", "0"))
+            except ValueError:
+                pendientes = 0
+            return self._html(render.corrida_estado(
+                perfil, corrida.progreso(), form.get("marca", ""), pendientes))
+
+        # Sin htmx (el botón grande del estado vacío) sigue el camino de
+        # siempre: POST, redirección y GET, que es lo que evita que recargar
+        # vuelva a disparar la búsqueda.
         clave = "ok" if arranco else "error"
         return self._redirigir("/trabajos", perfil=perfil, **{clave: mensaje})
 
@@ -453,9 +539,12 @@ class Handler(BaseHTTPRequestHandler):
     def _post_revisar_filtro(self, form: dict) -> None:
         """¿El filtro automático acertó con esta oferta, o se equivocó?
 
-        Las dos respuestas la sacan de la pestaña Filtradas. La diferencia es
+        Las tres respuestas la sacan de la pestaña Filtradas. La diferencia es
         que "mal" además la devuelve a Sin marcar, porque si el filtro se
         equivocó la oferta sigue estando y todavía se le puede aplicar.
+
+        "motivo" es la del medio: la oferta no tenía que llegarte, pero el
+        filtro la atribuyó mal. Se queda afuera, como "bien", y se anota aparte.
         """
         perfil = form.get("perfil", "")
         url = form.get("url", "").strip()
@@ -471,6 +560,9 @@ class Handler(BaseHTTPRequestHandler):
         if revision == "mal":
             aviso = (f"«{titulo}» vuelve a Sin marcar." if titulo
                      else "Vuelve a Sin marcar.")
+        elif revision == "motivo":
+            aviso = (f"Anotado: «{titulo}» estaba bien sacada, con el motivo mal."
+                     if titulo else "Anotado: bien sacada, con el motivo mal.")
         else:
             aviso = (f"Bien descartada: «{titulo}»." if titulo
                      else "Bien descartada.")
@@ -559,9 +651,20 @@ class Handler(BaseHTTPRequestHandler):
 
     # --- ruido ----------------------------------------------------------
 
+    #: Lo que no se anota en el registro aunque se pida mil veces.
+    #:
+    #: El cartel de la corrida pregunta cada 2 segundos mientras busca. Sin
+    #: esto son 1800 líneas por hora y por pestaña abierta, en el mismo archivo
+    #: del que sale el panel "Cómo viene funcionando": el registro se infla y
+    #: encontrar un error de verdad ahí adentro se vuelve imposible.
+    _SIN_REGISTRAR = ("/corrida", "/estilos.css", "/app.js", "/htmx.min.js")
+
     def log_message(self, formato, *args):
         """Al log del proyecto, no a stderr: con pythonw no hay consola."""
-        logger.debug("[ui] " + formato % args)
+        linea = formato % args
+        if any(f" {ruta}" in linea for ruta in self._SIN_REGISTRAR):
+            return
+        logger.debug("[ui] " + linea)
 
 
 def _mensajes(params: dict) -> list[tuple[str, str]]:

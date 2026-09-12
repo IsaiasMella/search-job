@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**481 tests pasan.**
+**518 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  481 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  518 passed
 ```
 
 Andando todo: los 3 portales argentinos, Indeed, Get on Board, LinkedIn Jobs,
@@ -17,7 +17,8 @@ Gemini y la pantalla.
 
 | # | Qué | Dónde | Cuánto lleva |
 |---|---|---|---|
-| 1 | **Usarlo una semana** y anotar qué falla antes de pasárselo a nadie | — | tuyo |
+| 1 | **Decidir qué hacés con el inglés.** Hay 90 ofertas ya puntuadas esperando detrás de esa casilla (2.28) | Mi perfil | tuyo |
+| 2 | **Usarlo una semana** y anotar qué falla antes de pasárselo a nadie | — | tuyo |
 
 **Ya está instalado y corriendo solo** (5/9/2026). La tarea `Vacantia - isaias`
 quedó registrada, con la próxima corrida a las 12:00 y los cuatro disparadores:
@@ -702,8 +703,8 @@ renglones se fue a un desplegable *Cómo funciona esto* debajo del campo. La
 ayuda larga no se leía y encima empujaba el campo siguiente fuera de pantalla.
 
 Los colores, tamaños y espacios salen todos de tokens definidos una sola vez en
-`vacantia/ui/estilos.py`. Ninguna regla escribe un color suelto, y hay un test
-que falla si alguien lo hace. Otro test verifica que todo par de texto y fondo
+`vacantia/ui/css/tokens.css`. Ninguna regla escribe un color suelto, y hay un
+test que falla si alguien lo hace. Otro test verifica que todo par de texto y fondo
 llegue a 4.5:1 de contraste; ése fue el que agarró que el índigo de acción no
 servía como color de link sobre fondo oscuro.
 
@@ -1217,6 +1218,369 @@ y avisá: ahí sí hay algo para mirar con datos de verdad.
 
 ---
 
+## 2.25. Cuando el motivo del filtro está mal
+
+El caso que lo disparó: una oferta de 90 puntos, *Full Stack AI Engineer* de
+Carda Health, filtrada por **país 'Estados Unidos' fuera de Argentina**. El
+aviso no dice en ningún lado dónde es. El modelo dedujo el país de la empresa,
+que es estadounidense, y el prompt le prohíbe explícitamente hacer eso.
+
+Estuvo bien que no llegara, porque está en inglés y el inglés está desactivado.
+Lo que estuvo mal fue el motivo. Y ahí está el riesgo de verdad: **alguna va a
+quedar afuera por una deducción equivocada y sin ningún otro motivo que la
+sostenga**.
+
+### Lo que se midió
+
+Sobre las 204 del historial, el 11/9/2026:
+
+| | Ofertas |
+|---|---|
+| Caen sólo por idioma | 121 |
+| Caen por idioma **y** por lugar | 28 |
+| Caen sólo por lugar | 17 |
+| Pasan todo | 38 |
+
+### Los tres arreglos
+
+**1. Se dicen todos los motivos, no el primero.** Eran 28 las que caían por los
+dos y mostraban uno solo. Ahí estaba el daño: si el motivo que se mostraba
+estaba mal atribuido, la respuesta honesta era *mal descartada*, y la oferta
+volvía a la lista aunque el otro motivo la sacara con todo derecho.
+
+**2. El idioma se dice primero.** Es el motivo más firme: es el idioma en que
+está escrito el aviso, se verifica leyéndolo, y encima tiene una red
+determinista que busca la exigencia en el texto. El lugar sale de lo que
+extrajo el modelo, y ahí es donde aparecen las deducciones.
+
+**3. Un botón más: «Bien, motivo equivocado».** Era la respuesta que faltaba, y
+es exactamente la que no tenías cuando apareció el caso. La oferta se queda
+afuera, como con *Bien descartada*, y se anota aparte. El marcador de arriba lo
+muestra al lado de las otras dos cuentas.
+
+En Métricas, la tabla de lo que saca el sistema ahora cuenta por **cada** filtro
+que saca la oferta, no por el primero, y avisa cuántas se cuentan dos veces.
+
+### Y el prompt
+
+Se le agregó al modelo el caso concreto que falló, con nombre y apellido, más la
+consecuencia: una empresa estadounidense o europea contratando en remoto no es
+un trabajo estadounidense ni europeo. Aplica a lo que se puntúe de acá en
+adelante; lo que ya está en el historial quedó con el país que le puso aquel
+día.
+
+**Lo que NO se hizo, y por qué.** Estuve por hacer que un país deducido no
+pudiera filtrar solo. Lo medí antes: de 14 ofertas con un país que el aviso no
+nombra literalmente, 4 volverían a la lista, y al mirarlas una por una **las
+cuatro estaban bien deducidas** — venían de `es.linkedin.com`, decían "Madrid",
+o el que publicaba era `empleoschileve`. O sea que la regla habría dejado pasar
+ofertas de España y de Chile creyendo que arreglaba algo. Quedó afuera hasta
+tener una forma de distinguir deducción buena de deducción inventada.
+
+## 2.26. El CSS y el JavaScript salieron de adentro de Python
+
+Esto es lo que venías sufriendo, y no era culpa de Python.
+
+**El CSS eran 1521 líneas adentro de un string de Python** (`estilos.py`), y el
+HTML 1816 líneas de f-strings (`render.py`). Escribir CSS entre comillas
+significa no tener resaltado de sintaxis, ni autocompletado, ni un linter que te
+avise que te comiste una llave. Cada cambio de pantalla se sentía diez veces más
+caro de lo que era, y por eso terminabas limitando el viewport y explicándole
+media hora al modelo algo que en un archivo `.css` se ve de una.
+
+Ahora el CSS vive en `vacantia/ui/css/`, en siete archivos de verdad, y el
+JavaScript en `vacantia/ui/static/app.js`. `estilos.py` quedó como lo único que
+tiene que estar en Python: junta los siete archivos en orden y arma las
+`@font-face` según qué fuentes haya en disco.
+
+**Se leen del disco en cada pedido.** Tocás un `.css`, apretás F5 y lo ves. No
+hay que reiniciar el servidor ni reconstruir nada. Son 75 KB de un disco local
+para una app que usan tres personas en la misma máquina: no cuesta nada.
+
+### La pantalla dejó de recargarse entera
+
+Se sumó **htmx**, que son 50 KB de JavaScript servidos por la app (**nunca desde
+un CDN**, por lo mismo que las fuentes: la máquina puede estar sin internet). No
+hay Node, no hay paso de compilación, y tu familia sigue instalando sólo Python.
+
+Lo que habilita es que el servidor conteste **un pedacito de HTML** en vez de
+una página entera. Eso es lo que arregla de raíz los tres dolores que veníamos
+parchando de a uno: el scroll que saltaba al marcar, la columna del constructor
+de LinkedIn que volvía arriba al armar, y el anotador que tenía que sobrevivir
+una recarga que no debería existir.
+
+**La pantalla partida al medio de LinkedIn URLs queda como está.** Ahí no era un
+parche: es mejor así.
+
+### Ahora se ve en qué anda la búsqueda
+
+Era lo que faltaba. Antes apretabas *Buscar ahora*, la página se recargaba para
+cambiar tres palabras, y después había un silencio de varios minutos en el que
+no sabías si estaba pasando algo o se había colgado.
+
+Ahora el pie de la barra lateral cuenta la etapa, y cambia sola:
+
+    Buscando en Getonbrd
+    Buscando en LinkedIn Jobs
+    Revisando 103 ofertas
+    Puntuando contra tu CV
+    22 de 24
+
+El motor corre en otro proceso y no puede hablarle a la pantalla, así que el
+progreso sale de leer el registro **desde el byte donde estaba cuando arrancó
+esta corrida**. Por eso no puede confundirse con la de ayer y no cuesta nada
+aunque `vacantia.log` pese 7 MB.
+
+Tres decisiones que conviene no deshacer:
+
+* **No hay barra de porcentaje.** No se sabe de antemano cuántas fuentes van a
+  contestar ni cuántas ofertas van a entrar, así que cualquier porcentaje sería
+  inventado. Durante el puntaje sí se sabe el total, y ahí sí van los números.
+* **No hay spinner, ni punto que late, ni animación de ninguna clase.** El
+  cartel vive al costado de lo que estás leyendo, y algo que se mueve en el
+  borde del campo visual no se puede ignorar. Que el texto cambie de etapa ya
+  informa lo mismo sin obligarte a mirarlo.
+* **Pregunta cada 2 segundos mientras busca y cada 15 cuando está quieto.** El
+  intervalo viaja adentro del pedacito de HTML que vuelve, así que se acelera y
+  se afloja solo, sin una línea de código nuestro.
+
+### El aviso de ofertas nuevas ahora lo manda el servidor
+
+Antes eran dos relojes distintos: uno preguntaba por la corrida y otro le pedía
+un JSON al servidor cada 20 segundos para ver si había entrado algo, y armaba el
+texto del cartel a mano en JavaScript. Ahora es un solo pedido, el servidor
+manda el aviso ya escrito, y htmx lo pone abajo a la derecha sin tocar el resto.
+
+Dos cosas que cambiaron para mejor de paso:
+
+* **El aviso está en todas las pantallas**, no sólo en Trabajos. Antes, si
+  buscabas parado en Métricas, no te enteraba nadie.
+* **Distingue que entren ofertas de que la lista cambie.** Una corrida puede
+  traer veinte avisos y que los veinte se caigan por filtro, o podés estar
+  marcando desde otra pestaña: el número no sube pero lo que estás mirando ya no
+  es lo que hay. Antes ese caso no decía nada; ahora dice *La lista cambió*.
+
+**Lo que no cambió, porque sigue siendo lo correcto: no recarga sola.** Si
+estás escribiendo el motivo de un descarte, una recarga te lo borra. Avisa, y
+decidís vos.
+
+
+## 2.27. Qué te están pidiendo, y el cartel que cambia con la pestaña
+
+### El gráfico de habilidades
+
+Es lo que pediste: ver qué piden los avisos que entran, sin que esté atado a
+programación, porque la misma pantalla le tiene que servir a marketing y a
+seguridad e higiene.
+
+**No cuesta ninguna llamada extra al modelo.** Ya le mandábamos el aviso entero
+para que lo puntúe, y ya nos devolvía un campo con lo que pide: estaba guardado
+en cada oferta desde siempre y no lo estábamos mirando. De tus 219 ofertas, 209
+ya tenían el dato, así que el gráfico salió lleno el primer día:
+
+    Python 153 · AWS 41 · RAG 34 · LLM 33 · LangChain 28 · FastAPI 27 · GCP 24
+
+Lo que sí cambió es lo que le pedimos al modelo. Antes decía *"key tech from
+JD"*, o sea tecnología, que para tu hermana no sirve. Ahora le pedimos las
+habilidades, herramientas, plataformas, certificaciones y normas que el aviso
+exige, con ejemplos de los tres rubros de la casa. Un aviso de marketing va a
+devolver *Google Analytics, Meta Ads, SEO*, y uno de seguridad e higiene
+*ISO 45001, IRAM, auditoría interna*.
+
+**No hay ninguna lista de tecnologías escrita en el código, y es la decisión
+importante.** Una lista habría que mantenerla para siempre y aun así nunca
+cubriría los oficios de los demás. El modelo lee el aviso y devuelve lo que ese
+aviso pide; nosotros sólo contamos.
+
+Lo único que hacemos nosotros es juntar las escrituras distintas de la misma
+cosa, y ahí hay una regla que conviene entender porque es la que evita que el
+gráfico mienta:
+
+* **Mayúsculas**: "python" y "Python" son la misma, y gana la escritura más
+  frecuente. Por eso sale *PostgreSQL* y no *postgresql*, sin tener una tabla de
+  nombres propios.
+* **Plurales, pero sólo cuando las dos formas aparecen de verdad.** "LLMs" se
+  une a "LLM" porque en tus avisos están las dos. *Kubernetes* y *Analytics* no
+  se tocan, porque el singular no existe en ningún lado. **La regla la ponen los
+  datos, no una lista**, y es lo que hace que ande igual en cualquier rubro.
+
+Lo que **no** hace es unir sinónimos: *GenAI* y *Generative AI* salen como dos
+barras. Unirlos necesitaría un diccionario, que es exactamente lo que estamos
+evitando. Mezclar de más inventa una tendencia que no existe, y eso es peor que
+dos barras separadas.
+
+El pie dice cuántas ofertas todavía no pasaron por el modelo. Sin eso, un
+gráfico flaco se lee como "no piden nada" en vez de "todavía no lo miré todo".
+
+### El cartel de arriba ahora habla de la pestaña en la que estás
+
+Tenías razón con lo de los 11 contra los 9. El cartel sumaba las que contás a
+mano desde un posteo de LinkedIn, así que parado en **Apliqué** decía 11 y abajo
+había 9 tarjetas. Un cartel más grande que la lista que tiene debajo se lee como
+un error de la app.
+
+* **Sin marcar** — el total, de donde sea que salga. Ahí la pregunta es "¿estoy
+  haciendo algo?", que no distingue de dónde salió cada postulación.
+* **Apliqué** — sólo las de esta lista, y lo dice: *sólo las de esta lista*.
+* **Descarté** — cambia a los motivos, con el mismo selector de período.
+* **Filtradas** no lleva cartel: ya tiene el marcador de la auditoría, y dos
+  marcadores en la misma pantalla no se leen, compiten.
+
+**El de Descarté no va en verde**, y no es un detalle de color. El verde en esta
+app significa lo que ya hiciste, igual que en una oferta aplicada. En verde, 82
+descartes se leían como una felicitación. Va neutro. Rojo tampoco, porque
+tampoco es un error: descartar bien es lo que hace que el sistema aprenda.
+
+Y ahí el gráfico es por motivo y no por semana, a propósito. El ritmo importa
+cuando mandás CVs, porque estás midiendo tu trabajo. Descartar no es trabajo que
+quieras sostener, así que saber que descartaste parejo a lo largo del mes no te
+dice nada. Lo que te dice algo es que **51 de 82 fueron por inglés**, porque eso
+es una perilla de Mi perfil esperando que la muevas.
+
+### El hueco de la derecha
+
+El contenido tenía un tope fijo de 1200px. Eso dejaba 370px de vacío **pegados
+al borde derecho**: margen enorme de un lado y ninguno del otro, que es lo que
+se veía roto. Ahora usa el 85% de lo que queda después de la barra lateral,
+centrado.
+
+Un detalle por si alguna vez lo tocás: el 85% está hecho con padding en
+porcentaje y no con `width` más `margin: auto`. El contenido es un item flex al
+lado de la barra lateral, así que un porcentaje de `width` se mide contra la
+ventana entera, lateral incluida, y a 1568px se pasaba de largo.
+
+### Métricas, reorganizada
+
+Mi primera versión de esto la dejó peor y tenías razón en decirlo. Había metido
+los cinco gráficos en cinco tarjetas idénticas con borde y fondo, y así nada
+decía cuál mirar primero: todo pesaba igual. Encima competían con las tarjetas
+de números de arriba, que sí tienen que ser tarjetas porque son cinco valores
+que se comparan entre sí.
+
+Lo gracioso es que `DESIGN.md` ya lo tenía escrito hace rato, y yo lo pasé por
+arriba: *trocear todo el contenido en cards iguales es el default genérico y
+aplana la jerarquía*. Es exactamente lo que hice.
+
+Ahora la pantalla cuenta tres cosas, en el orden en que sirven:
+
+1. **Las tarjetas de números**, arriba, como estaban.
+2. **Qué te están pidiendo**, en un bloque con superficie propia. Es el único de
+   la pantalla que la tiene, y la tiene porque es el único accionable: los demás
+   describen lo que pasó, éste sugiere qué hacer. Las quince barras van en dos
+   columnas, porque en una sola eran una torre que no se abarca de un vistazo.
+3. **Qué está entrando, y qué queda afuera**, con título de sección propio, y
+   abajo los cuatro desgloses. **Sin tarjetas**: lo que los separa es el espacio
+   y una línea fina arriba de cada título. Alcanza, y deja la jerarquía intacta.
+
+Los desgloses van en multicolumna y no en grid, por el alto. Miden cosas muy
+distintas, y con un grid cada fila mide lo que el bloque más alto de esa fila,
+así que al lado del más corto quedaba un agujero. Se paga con el orden de
+lectura, que pasa a ser la columna izquierda entera y después la derecha, y se
+puede pagar porque ningún desglose se entiende sólo después de leer el de al
+lado.
+
+### Cómo viene funcionando, al pie y aparte
+
+Estaba desconectado porque efectivamente lo estaba: era un `h2` suelto colgando
+abajo de todo, sin relación visual con nada.
+
+Ahora es una sección propia al pie, separada por una línea, y con un renglón que
+dice qué es: **el estado del programa, no el de tu búsqueda**. Son dos clases de
+cosa distintas, y leerlas juntas las pone en la misma categoría. "Cuántas ofertas
+piden inglés" y "cuándo corre la tarea programada" no se miran por las mismas
+razones ni en los mismos momentos.
+
+**Y le saqué el botón de Buscar ahora.** Tenías razón: Métricas es una pantalla
+de lectura, se entra a entender qué está pasando y no a hacer algo. El botón
+estaba suelto al final de todo, lejos de cualquier cosa con la que tuviera
+relación. Además ya está donde corresponde, al pie de la barra lateral, que se
+ve desde todas las pantallas y ésta incluida.
+
+
+## 2.28. Por qué mandás 11 CV por semana y no 40
+
+Esto salió de la pregunta sobre Apify, y la respuesta terminó siendo otra cosa.
+
+### Primero, la pregunta que hiciste
+
+**Ya scrapeamos LinkedIn, y es nuestra fuente más grande.** De tus 220 ofertas,
+134 vienen de ahí. Los scrapers de Apify de la captura hacen exactamente lo
+mismo que nosotros: leen la página pública del buscador de empleos, sin login.
+Uno de ellos lo dice en su propia documentación, que te recomienda abrir la
+búsqueda en incógnito para copiar la dirección.
+
+Lo único que tienen de más son **proxies residenciales**: IPs de casas reales,
+alquiladas, que rotan en cada pedido. Eso importa sólo cuando LinkedIn te tira
+el `HTTP 999`, que es su bloqueo por reputación y volumen de IP. Nos pasa con
+los perfiles de persona, y por eso los esquivamos vía Google (2.7). Con el
+buscador de empleos no nos pasa.
+
+Dos cosas de la captura, por las dudas: lo que se ve ahí es el agente
+**buscando scrapers en el catálogo y pidiendo su ficha**, no trayendo vacantes.
+Y los 112 que viste, si llegaron, son resultados crudos de una búsqueda: sin
+deduplicar contra lo que ya viste, sin puntuar y sin filtrar. Nuestras 220 son
+el acumulado ya procesado. No son números comparables.
+
+### La respuesta de verdad
+
+Tu embudo al 12/9/2026:
+
+| Etapa | Ofertas |
+|---|---|
+| Recolectadas | 220 |
+| Bloqueadas por el filtro de idioma | 112 |
+| Descartadas por vos por inglés | 51 |
+| Bloqueadas por lugar | 35 |
+| Aplicaste | 9 |
+
+**163 de 220 mueren en inglés**, o sea el 74% de lo que junta el sistema. Y de
+las que el filtro bloqueó sin preguntarte, **33 puntuaban 60 o más**: eran buenas
+y nunca las viste. La mejor puntuaba 95.
+
+Después probé qué pasa si toco cada filtro, sobre las ofertas **que ya están en
+tu base**, sin scrapear nada nuevo:
+
+| Cambio | Para revisar hoy | De esas, con 60+ |
+|---|---|---|
+| Como está ahora | 0 | 0 |
+| Aceptando avisos en inglés | 90 | 12 |
+| Aceptando híbrido y presencial | 2 | 0 |
+| Sin la lista de títulos excluidos | 0 | 0 |
+
+Hay **90 ofertas guardadas, ya puntuadas contra tu CV, esperando detrás de un
+interruptor**. Es tu objetivo de 40 a 50 por semana durante dos semanas,
+disponible ahora y gratis.
+
+Y fijate el detalle: el único filtro que mueve la aguja es el inglés. El modo de
+trabajo cuesta 2 ofertas y la lista de títulos excluidos no cuesta ninguna. No
+hay nada más que aflojar.
+
+El interruptor es `filters.language.allow_english` en tu perfil, o la casilla
+*Aceptar avisos en inglés* en **Mi perfil**. **No lo toqué**: es tu decisión, y
+con A2 declarado mandar CV a avisos en inglés tiene un costo real.
+
+### Por qué no conectamos Apify
+
+Tres razones, y la tercera es la que manda:
+
+1. **Rompe el modelo.** Querías que cada persona de la casa lo instale y lo
+   corra en su máquina. Apify necesita token de API y cuenta con tarjeta: o
+   pagás vos por los cinco y centralizás algo que hoy es local, o les pedís a
+   todos que carguen una tarjeta para buscar trabajo.
+2. **Cuesta plata por resultado.** El plan gratis da 5 dólares de crédito por
+   mes; el de entrada son 19 mensuales, más 8 dólares por GB de tráfico
+   residencial y 1 dólar cada 1000 resultados.
+3. **No resuelve el cuello de botella.** El doble de ofertas en inglés es el
+   doble de ofertas que el filtro va a tirar.
+
+**Cuándo sí valdría la pena:** cuando prendas el inglés, te comas esas 90 y
+sigas quedándote sin cosas para mirar. Ahí el límite pasa a ser de verdad el
+volumen. Si algún día aprendés inglés y el objetivo pasa a ser el mercado de
+afuera, esta nota es el punto de partida para volver a evaluarlo.
+
+
+---
+
 # 3. LO QUE YA ESTÁ HECHO
 
 Sin detalle, para no volver a discutirlo:
@@ -1237,7 +1601,24 @@ Sin detalle, para no volver a discutirlo:
   puntúan 0 son las que no son para vos, y si entraron hoy quedaban primeras.
   Por eso a la banda de recientes sólo suben las que llegan a tu puntaje mínimo.
 - **Aviso de ofertas nuevas sin apretar F5**: si entra una corrida con la
-  pantalla abierta, aparece un cartel abajo y vos decidís cuándo actualizar.
+  pantalla abierta, aparece un cartel abajo y vos decidís cuándo actualizar. En
+  todas las pantallas, no sólo en Trabajos (2.26).
+- **Se ve en qué anda la búsqueda mientras corre**: qué fuente, cuántas
+  recolectó, cuántas lleva puntuadas. Al pie de la barra lateral, sin
+  recargar la página (2.26).
+- **El CSS y el JavaScript son archivos de verdad**, no strings de Python, y la
+  pantalla se actualiza de a pedazos con htmx en vez de recargarse entera
+  (2.26).
+- **Qué habilidades te piden los avisos**, en Métricas. Sale de lo que el modelo
+  ya devolvía al puntuar, así que no cuesta una llamada extra, y sirve para
+  cualquier oficio porque no hay ninguna lista de tecnologías en el código
+  (2.27).
+- **El cartel de arriba de Trabajos cambia con la pestaña**: el total en Sin
+  marcar, sólo las de la lista en Apliqué, y los motivos en Descarté (2.27).
+- **Métricas en dos columnas y el contenido al 85% del ancho**, en vez de un
+  tope de 1200px que dejaba medio monitor vacío a la derecha (2.27).
+- **Métricas ordenada en capítulos**: los números arriba, qué te piden destacado,
+  los desgloses abajo, y el estado del programa aparte al pie (2.27).
 - **Filtro por antigüedad del aviso**: hoy, 7 días, 30 días, sin filtro. Lee las
   cuatro formas distintas en que los portales escriben la fecha.
 - **Cartel de cuántas ofertas se pierden por no saber inglés**, con cuánto
@@ -1284,9 +1665,17 @@ Sin detalle, para no volver a discutirlo:
 - **Que las ofertas lleguen por mail** además de por Telegram, para tu viejo. El
   motor ya tiene la interfaz `Notifier` lista (`vacantia/notifiers/`): agregar un
   canal es un archivo, no tocar el motor.
-- **Un filtro "sólo las que puedo tomar"**, que esconda las que ya cayeron por
-  idioma o ubicación. Hoy aparecen mezcladas con las que sí servís.
 - **Reescribir el `README.md`** como guía de instalación para cada persona.
+- **Apuntar al mercado de afuera** el día que el inglés deje de ser un problema.
+  Hoy el 74% de lo que junta el sistema muere en ese filtro (2.28). Cuando eso
+  cambie, lo que hay que tocar es `filters.language`, la ubicación y las palabras
+  clave; el resto del sistema no se entera. Ahí sí volvería a tener sentido mirar
+  un scraper pago para volumen, y en 2.28 están los números para decidirlo.
+
+> El filtro **"sólo las que puedo tomar" ya está hecho** y salió de esta lista:
+> lo que el sistema descarta por idioma o lugar no ensucia *Sin marcar*, se va a
+> la pestaña **Filtradas** (2.21). Medido el 8/9/2026, antes de eso eran 31 de
+> 41 avisos en la lista sobre los que el sistema ya había decidido.
 
 ---
 
@@ -1336,8 +1725,19 @@ vacantia/
 │   ├── data.py       todo lo que toca disco
 │   ├── formulario.py la pestaña Mi perfil
 │   ├── render.py     el HTML
-│   ├── estilos.py    el CSS: los tokens de DESIGN.md, una sola vez
-│   └── corrida.py    buscar ahora, y como viene funcionando el motor
+│   ├── estilos.py    junta los .css de abajo y arma las @font-face
+│   ├── css/          el CSS, en archivos de verdad
+│   │   ├── tokens.css     los tokens de DESIGN.md, una sola vez
+│   │   ├── base.css       elementos sueltos
+│   │   ├── shell.css      el marco: barra lateral y estado del sistema
+│   │   ├── controles.css  botones y campos
+│   │   ├── piezas.css     los componentes
+│   │   ├── graficos.css   las barras de Métricas
+│   │   └── linkedin.css   el constructor de URLs
+│   ├── static/
+│   │   ├── app.js         lo poco que htmx no cubre
+│   │   └── htmx.min.js    servido por la app, nunca desde un CDN
+│   └── corrida.py    buscar ahora, en qué anda, y cómo viene funcionando
 └── sources/
     ├── rrhh_profiles.py   seguir reclutadores por URL
     ├── portales_ar.py     Bumeran / Zonajobs / Computrabajo

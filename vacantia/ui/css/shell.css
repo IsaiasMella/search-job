@@ -1,0 +1,165 @@
+
+/* ===========================================================================
+   SHELL: barra lateral fija + una sola columna de contenido, alineada a la
+   izquierda. Nada centrado: la lectura empieza siempre en el mismo borde, y
+   bajando por una lista de 40 ofertas eso se nota.
+   =========================================================================== */
+.app { display: flex; align-items: flex-start; min-height: 100dvh; }
+
+/* Vidrio esmerilado 1 de 3. */
+.lateral {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  flex: 0 0 var(--sidebar-width); width: var(--sidebar-width);
+  height: 100dvh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--spacing-xs);
+  padding: var(--spacing-lg) var(--spacing-md);
+  background: var(--glass-background);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: var(--glass-border);
+}
+
+.marca-app {
+  display: flex; align-items: center; gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-text-primary); text-decoration: none;
+  font-size: var(--text-body-lg); font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-h2);
+  border-radius: var(--rounded-md);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.marca-app:hover { background: var(--color-surface); color: var(--color-text-primary); }
+.marca-app .sello {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: var(--icon-lg); height: var(--icon-lg);
+  border-radius: var(--rounded-sm);
+  background: var(--color-action); color: var(--color-text-on-action);
+  font-size: var(--text-caption); font-weight: var(--weight-semibold);
+}
+
+.grupo {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-caption); line-height: var(--leading-snug);
+  padding: var(--spacing-md) var(--spacing-sm) var(--spacing-xs);
+}
+
+.lateral nav { display: flex; flex-direction: column; gap: 2px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: var(--spacing-sm);
+  min-height: var(--nav-item-height); padding: var(--spacing-sm) var(--spacing-md);
+  border: var(--border-hairline) solid transparent;
+  border-radius: var(--rounded-md);
+  background: transparent; color: var(--color-text-secondary);
+  font-size: var(--text-body-sm); text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-standard),
+              color var(--duration-fast) var(--ease-standard);
+}
+.nav-item svg { flex: 0 0 auto; width: var(--icon-md); height: var(--icon-md); }
+.nav-item:hover { background: var(--color-surface); color: var(--color-text-primary); }
+.nav-item.activa {
+  background: var(--color-surface-raised); color: var(--color-text-primary);
+  border: var(--glass-border);
+}
+
+.separador { height: var(--border-hairline); margin: var(--spacing-md) var(--spacing-sm);
+             background: var(--color-border-subtle); border: 0; }
+
+/* El selector de perfil. Cinco personas comparten la máquina y cada una tiene
+   su búsqueda: es lo primero que se toca al abrir. */
+.perfil-sel { display: flex; flex-direction: column; gap: var(--spacing-xs);
+              padding: 0 var(--spacing-sm) var(--spacing-sm); }
+.perfil-sel label { color: var(--color-text-tertiary); font-size: var(--text-caption); }
+
+/* El estado del sistema: cuándo buscó, cuándo vuelve, qué ventana cubre. Es el
+   antídoto de la ansiedad y por eso tiene lugar fijo, no un tooltip. Texto
+   estático: cambia cuando cambia el dato, no solo. */
+.estado {
+  margin-top: auto; padding: var(--spacing-md) var(--spacing-sm) 0;
+  border-top: var(--border-hairline) solid var(--color-border-subtle);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-caption); line-height: var(--leading-snug);
+}
+.estado p { margin: 0 0 var(--spacing-xs); }
+.estado p:last-child { margin-bottom: 0; }
+.estado .valor { color: var(--color-text-secondary); }
+
+/* --- el cartel de la corrida ------------------------------------------------
+
+   El único pedazo de la pantalla que se actualiza solo. Tiene dos caras: el
+   botón para buscar, y en qué etapa va la búsqueda mientras corre.
+
+   **No lleva animación de ningún tipo.** Ni spinner, ni barra que se desliza,
+   ni punto que late. Vive al pie de la barra lateral, o sea al costado de lo
+   que la persona está leyendo, y algo que se mueve en el borde del campo
+   visual no se puede ignorar: te obliga a mirarlo cada vez. Lo que informa
+   es que el texto cambia de etapa, y eso se ve igual sin moverse.
+
+   Que ocupe siempre el mismo alto tampoco es cosmético: el cartel se
+   reemplaza entero cada dos segundos, y si midiera distinto en cada etapa la
+   barra lateral entera saltaría sola mientras busca. --- */
+.corrida { min-height: var(--control-height); display: flex;
+           flex-direction: column; justify-content: center; }
+.corrida .que { color: var(--color-text-primary); font-weight: 500; }
+.corrida .detalle { color: var(--color-text-tertiary);
+                    font-variant-numeric: tabular-nums; }
+.corrida p { margin: 0; }
+
+/* El contenido ocupa el 85% del ancho que queda después de la barra lateral,
+   centrado.
+
+   Tenía un tope fijo de 1200px, y eso hacía dos cosas mal a la vez: dejaba
+   370px de vacío **pegados al borde derecho**, o sea un margen enorme de un
+   lado y ninguno del otro, que es lo que se veía roto. El tope estaba para que
+   las líneas de texto no se hicieran interminables, pero eso ya lo resuelve
+   `--content-max-ch` en los párrafos, que es donde el problema existe de
+   verdad: una tarjeta, una tabla o un gráfico no se leen peor por ser anchos,
+   se leen mejor.
+
+   El 85% se hace con padding en porcentaje y NO con `width` más `margin: auto`,
+   y la razón importa: `main` es un item flex al lado de la barra lateral, así
+   que un porcentaje de `width` se mide contra la ventana entera (lateral
+   incluida) y a 1568px se pasaba de largo. El padding se mide contra el ancho
+   de `main`, que es exactamente "lo que queda", que es lo que uno quiere decir. */
+main {
+  flex: 1 1 auto; min-width: 0;
+  padding: var(--spacing-xl) 7.5% var(--spacing-3xl);
+}
+main > h1 { margin-bottom: var(--spacing-lg); }
+main > h2 { margin: var(--spacing-xl) 0 var(--spacing-md); }
+main > h2:first-child { margin-top: 0; }
+
+/* --- responsive: abajo de md la lateral colapsa a íconos y el estado del
+       sistema pasa a una línea arriba del contenido. --- */
+@media (max-width: 900px) {
+  .app { flex-direction: column; align-items: stretch; }
+  .lateral {
+    flex: 0 0 auto; width: 100%; height: auto;
+    flex-direction: row; flex-wrap: wrap; align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-right: 0; border-bottom: var(--glass-border);
+  }
+  .marca-app { margin: 0; }
+  .marca-app .nombre, .grupo, .nav-item .etiqueta { position: absolute;
+    width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+    white-space: nowrap; }
+  .lateral nav { flex-direction: row; gap: var(--spacing-xs); }
+  .nav-item { min-width: var(--control-height); min-height: var(--control-height);
+              justify-content: center;
+              padding: var(--spacing-sm); }
+  .separador { display: none; }
+  .perfil-sel { flex-direction: row; align-items: center; margin-left: auto;
+                padding: 0; }
+  .estado { order: 9; flex-basis: 100%; margin-top: 0;
+            padding: var(--spacing-sm) 0 0; }
+  /* Las dos líneas del estado pasan a una sola. El punto medio va acá y no en
+     otro lado: está reservado para la línea de estado del sistema. */
+  .estado p { display: inline; margin: 0; }
+  .estado p + p::before { content: " \00b7 "; }
+  main { padding: var(--spacing-lg) var(--spacing-md) var(--spacing-2xl); }
+}
+@media (max-width: 640px) {
+  main { padding: var(--spacing-md) var(--spacing-md) var(--spacing-2xl); }
+}

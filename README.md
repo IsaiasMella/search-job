@@ -81,15 +81,49 @@ avisos. Está ahí para contestar la única pregunta que importa cuando la lista
 ve corta: *"¿esto es todo lo que hay?"*. Y abajo, el botón **Buscar ahora**, que
 es la salida de ese dato.
 
+**Mientras busca, ese mismo lugar cuenta en qué anda**, y cambia solo sin que
+haya que recargar nada:
+
+    Buscando en Getonbrd  →  Buscando en LinkedIn Jobs  →  Revisando 103 ofertas
+    →  Puntuando contra tu CV, 22 de 24  →  vuelve el botón
+
+No hay barra de porcentaje y es a propósito: no se sabe de antemano cuántas
+fuentes van a contestar ni cuántas ofertas van a entrar, así que cualquier
+porcentaje sería inventado. Durante el puntaje sí se sabe el total, y ahí sí van
+los números.
+
 ### Trabajos
 
 Arriba de todo, **cuántos trabajos aplicaste**, grande y en verde, con un
 selector de período: última semana, dos semanas, un mes, dos meses, tres meses o
-desde que empezaste. Al lado, el reparto por semana.
+desde que empezaste. El selector vive fijo arriba a la derecha y el reparto
+abajo, en el medio de la tarjeta.
+
+**Con el período de una semana el reparto es por día**, siete barras, porque lo
+que se pregunta en una semana es qué días mandaste y cuáles se te fueron en
+blanco. De dos semanas para arriba vuelve a ser por semana, que ahí la pregunta
+es la del ritmo.
 
 Cuenta las dos cosas: las ofertas que marcaste **Apliqué** acá, y las que
 anotaste a mano en LinkedIn URLs. Cuando hay de las segundas, la línea de abajo
 lo dice.
+
+**Ese cartel cambia según la pestaña en la que estés**, porque el número de
+arriba y la lista de abajo tienen que hablar de lo mismo:
+
+| Pestaña | Qué muestra el cartel |
+|---|---|
+| Sin marcar | El total, venga de donde venga |
+| Apliqué | Sólo las de esta lista, y lo aclara |
+| Descarté | Los motivos por los que descartaste, no cuántas |
+| Filtradas | Nada: ya tiene su propio marcador de auditoría |
+
+El de *Descarté* no va en verde. El verde en esta app significa lo que ya
+hiciste, y 82 descartes en verde se leen como una felicitación. Va neutro, y el
+gráfico es por motivo y no por semana: el ritmo importa cuando mandás CVs porque
+medís tu trabajo, pero saber que descartaste parejo a lo largo del mes no te
+dice nada. Lo que te dice algo es que 51 de 82 fueron por inglés, porque eso es
+una perilla de *Mi perfil* esperando que la muevas.
 
 Ese reparto es lo que hace que el número signifique algo: 9 postulaciones en un
 mes puede ser tres semanas sin hacer nada y una a los tiros, y en el total eso no
@@ -160,8 +194,14 @@ Acá caen todas, con el motivo que dio el sistema, para que puedas contestar si
 acertó:
 
 - **Bien descartada**: el filtro tenía razón. Se va de la lista.
+- **Bien, motivo equivocado**: no tenía que llegarte, pero el motivo que dio el
+  sistema está mal. Se va de la lista y se anota aparte.
 - **Mal descartada**: se equivocó. Se va de la lista **y vuelve a Sin marcar**,
   para que puedas aplicar.
+
+Si una oferta cae por más de un filtro, **se muestran todos**. Antes se mostraba
+el primero, y si ése estaba mal atribuido parecía un error del filtro cuando en
+realidad el otro motivo la sacaba con derecho.
 
 Sólo aparecen las de **50 puntos para arriba**: si el filtro se equivocó con una
 de 20, esa oferta no te iba a servir igual.
@@ -210,28 +250,67 @@ automático.
 
 ### Métricas
 
-Los totales, qué descartó el sistema sin preguntarte, por qué descartaste vos y
-de qué portal viene cada oferta.
+La pantalla cuenta tres cosas, en el orden en que sirven.
 
-El primero es un gráfico que no existía y es el que más dice: **qué tan bien te
-encajan las ofertas que entran**, o sea cuántas hay en cada tramo de puntaje. Una
-montaña pegada al cero significa que las búsquedas están mal apuntadas; una
-repartida significa que el problema es otro. Los tramos verdes son los que pasan
-el puntaje mínimo, o sea de ahí para arriba te avisa por Telegram.
+**Arriba, los números**: sin mirar, aplicaste, descartaste, archivadas y el total.
+
+**Después, Qué te están pidiendo.** Las habilidades, herramientas y
+certificaciones que nombran los avisos que entraron, y en cuántos aparece cada
+una. Es el único bloque de la pantalla con superficie propia, y la tiene porque
+es el único accionable: los demás describen lo que pasó, éste dice qué conviene
+ir a aprender.
+
+**No cuesta ninguna llamada extra al modelo.** Ya le mandábamos el aviso entero
+para puntuarlo y ya nos devolvía qué pide; estaba guardado en cada oferta desde
+siempre y no lo estábamos mirando.
+
+Y **sirve para cualquier oficio**, que es la parte importante: no hay ninguna
+lista de tecnologías escrita en el código. El modelo lee el aviso y devuelve lo
+que ese aviso pide, sea LangChain, Google Analytics o la ISO 45001. Una lista
+escrita a mano habría que mantenerla para siempre y aun así nunca cubriría los
+oficios de los demás perfiles de la casa.
+
+Lo único que hace el programa es juntar las escrituras distintas de la misma
+cosa. Las mayúsculas no parten una habilidad en dos, y gana la escritura más
+frecuente, que es la que usa el mercado. Los plurales se unen al singular **sólo
+cuando las dos formas aparecen de verdad** en los avisos: así *LLMs* cae en
+*LLM*, pero *Kubernetes* y *Analytics* quedan en paz. La regla la ponen los
+datos y no una lista, y es lo que hace que ande igual en cualquier rubro.
+
+Lo que no hace es unir sinónimos: *GenAI* y *Generative AI* salen como dos
+barras. Unirlos necesitaría un diccionario, que es exactamente lo que se está
+evitando. Al pie dice cuántas ofertas todavía no pasaron por el modelo, para que
+un gráfico flaco no se lea como "no piden nada".
+
+**Por último, Qué está entrando y qué queda afuera**, con cuatro desgloses:
+
+- **Qué tan bien te encajan**: cuántas ofertas hay en cada tramo de puntaje. Una
+  montaña pegada al cero significa que las búsquedas están mal apuntadas; una
+  repartida significa que el problema es otro. Los tramos verdes son los que
+  pasan el puntaje mínimo, o sea de ahí para arriba te avisa por Telegram.
+- **Por qué descartaste vos**: los motivos que elegiste al marcar *No apliqué*.
+- **Lo que descartó el sistema, sin preguntarte**: lo que ni llegó a la lista.
+  Acá está **cuántas ofertas se pierden por no saber inglés** y cuánto puntuaba
+  la mejor, con el link para cambiar tu nivel declarado al lado. Vive acá y no
+  arriba de la lista de trabajos a propósito: un número que no podés accionar,
+  leído todos los días antes de la primera oferta, es un reproche.
+- **De dónde vienen**: qué portal trajo cada oferta.
 
 Los desgloses van en barras cuando hay tres o más cosas que comparar, y en tabla
 cuando son dos: para dos números la tabla ocupa menos y se lee más rápido. Cuando
 hay gráfico, la tabla sigue estando debajo en *Ver los números*, porque un
 gráfico no da el valor exacto ni se puede copiar.
 
-Y abajo de todo, **Cómo viene funcionando**: si está programado y cuándo vuelve,
-cuánto tardó la última corrida y qué encontró, cuándo fue el último aviso por
-Telegram, y las últimas quejas del registro.
+**Ninguno de esos cuatro va en una tarjeta.** Lo que los separa es el espacio y
+una línea fina arriba del título. Trocear todo el contenido en tarjetas iguales
+aplana la jerarquía: con cinco rectángulos idénticos nada dice cuál mirar
+primero.
 
-Acá está también **cuántas ofertas se pierden por no saber inglés** y cuánto
-puntuaba la mejor, con el link para cambiar tu nivel declarado al lado. Vive acá
-y no arriba de la lista de trabajos a propósito: un número que no podés accionar,
-leído todos los días antes de la primera oferta, es un reproche.
+Y al pie, aparte de todo lo demás, **Cómo viene funcionando**: si está programado
+y cuándo vuelve, cuánto tardó la última corrida y qué encontró, cuándo fue el
+último aviso por Telegram, y las últimas quejas del registro. Está separado
+porque es otra clase de cosa: **el estado del programa, no el de tu búsqueda.**
+Ahí no hay ningún botón, a propósito: Métricas es una pantalla de lectura.
 
 ### Mi perfil
 
@@ -246,7 +325,13 @@ Abajo de todo se crea el perfil de otra persona de la casa.
 sólo abre la pantalla, que lee el archivo donde quedaron guardadas las ofertas.
 
 **Y si entran ofertas mientras la mirás, te avisa sola.** Aparece un cartel
-abajo: *"Entraron 3 ofertas nuevas · Ver"*. Lo apretás y se actualiza.
+abajo: *"Entraron 3 ofertas nuevas · Ver las nuevas"*. Lo apretás y se actualiza.
+Aparece **en todas las pantallas**, no sólo en Trabajos, así que buscar parado en
+Métricas también avisa.
+
+Si la lista cambió pero el número de pendientes no subió, lo dice distinto: *La
+lista cambió*. Pasa cuando una corrida trae veinte avisos y el filtro se los come
+a todos, o cuando estás marcando desde otra pestaña.
 
 No se recarga sola a propósito: si estás escribiendo el motivo de un descarte,
 una recarga te lo borraría. Avisa, y decidís vos cuándo.
@@ -255,13 +340,17 @@ Para buscar en el momento, sin esperar el horario, está el botón **Buscar
 ahora**, al pie de la barra lateral. Tarda unos minutos y podés seguir usando la
 pantalla mientras tanto: cuando entren, el cartel de abajo te avisa.
 
-> **Distinto es cuando cambia el código.** La pantalla carga el programa una sola
-> vez, al arrancar: si alguien edita el código con la pantalla abierta, los
-> cambios no se ven hasta cerrarla y volver a abrirla. Es normal, no es un error.
-> **Las búsquedas programadas no tienen ese problema**: cada corrida arranca un
-> proceso nuevo, así que siempre usan la última versión.
+> **Distinto es cuando cambia el código.** La pantalla carga el programa Python
+> una sola vez, al arrancar: si alguien edita un `.py` con la pantalla abierta,
+> los cambios no se ven hasta cerrarla y volver a abrirla. Es normal, no es un
+> error. **Las búsquedas programadas no tienen ese problema**: cada corrida
+> arranca un proceso nuevo, así que siempre usan la última versión.
 >
-> En resumen: **ofertas nuevas → F5 alcanza. Código nuevo → cerrar y abrir.**
+> **El CSS y el JavaScript sí se recargan con F5**, porque se leen del disco en
+> cada pedido. Tocás `ui/css/piezas.css`, apretás F5 y lo ves.
+>
+> En resumen: **ofertas nuevas o estilos → F5 alcanza. Código Python → cerrar y
+> abrir.**
 
 ## Cuando algo no anda
 
@@ -302,6 +391,17 @@ CV con un modelo → filtrar → notificar.
 
 El motor no sabe nada de TinyFish ni de Telegram: sólo habla con las interfaces
 `Source` y `Notifier`. Agregar una fuente nueva no toca `engine.py`.
+
+**La pantalla es un servidor de biblioteca estándar** que escribe sobre los
+mismos archivos que el motor: una sola fuente de verdad, sin sincronizar nada.
+El HTML se arma en `ui/render.py`, el CSS vive en `ui/css/*.css` y el JavaScript
+en `ui/static/`. Las actualizaciones parciales las hace
+[htmx](https://htmx.org/), servido desde la propia app y **nunca desde un CDN**,
+por lo mismo que las fuentes tipográficas: la máquina puede estar sin internet, y
+una pantalla que depende de una descarga externa para que anden los botones es
+una pantalla rota.
+
+**No hay Node, ni paso de compilación, ni nada que instalar aparte de Python.**
 
 ## Instalación a mano
 
@@ -649,6 +749,24 @@ vienen como campos propios, no como texto a interpretar, y `scoring.py` respeta
 lo que la fuente ya trajo en vez de pisarlo con la deducción del modelo. Si no
 está instalada (ver `requirements.txt`), el motor la saltea con un aviso.
 
+Es **la fuente más grande del proyecto**: 134 de las 220 ofertas del historial de
+Isaías al 12/9/2026.
+
+> **Sobre los scrapers de LinkedIn que se pagan** (Apify y parecidos). Hacen lo
+> mismo que esto: leen la página pública del buscador de empleos, sin login. Lo
+> único que tienen de más son **proxies residenciales**, o sea IPs de casas
+> reales que rotan en cada pedido, y eso sólo hace falta cuando LinkedIn te
+> devuelve `HTTP 999`, que es su bloqueo por reputación de IP. Para el buscador
+> de empleos no nos pasa. Para los perfiles de persona sí, y por eso se los
+> esquiva leyendo las publicaciones vía Google.
+>
+> Se evaluó el 12/9/2026 y **se decidió que no**, por tres razones: rompe el
+> modelo de que cada uno corra lo suyo gratis en su máquina, porque hace falta
+> una cuenta con tarjeta por persona; cuesta unos 8 dólares por GB de tráfico
+> residencial más 1 dólar cada 1000 resultados; y sobre todo **no resuelve el
+> cuello de botella**, que es el filtro de idioma y no el volumen. El detalle
+> con los números está en `NOTAS-PARA-ISAIAS.md`.
+
 ## Empresas
 
 `companies.json` alimenta la fuente `careers`. Se edita desde la pantalla. Las
@@ -752,8 +870,19 @@ vacantia/
 │   ├── data.py       todo lo que toca disco
 │   ├── formulario.py la pestaña Mi perfil
 │   ├── render.py     el HTML
-│   ├── estilos.py    el CSS: los tokens de DESIGN.md, una sola vez
-│   └── corrida.py    buscar ahora, y como viene funcionando el motor
+│   ├── estilos.py    junta los .css de abajo y arma las @font-face
+│   ├── css/          el CSS, en archivos de verdad
+│   │   ├── tokens.css     los tokens de DESIGN.md, una sola vez
+│   │   ├── base.css       elementos sueltos
+│   │   ├── shell.css      el marco: barra lateral y estado del sistema
+│   │   ├── controles.css  botones y campos
+│   │   ├── piezas.css     los componentes
+│   │   ├── graficos.css   las barras de Métricas
+│   │   └── linkedin.css   el constructor de URLs
+│   ├── static/
+│   │   ├── app.js         lo poco que htmx no cubre
+│   │   └── htmx.min.js    servido por la app, nunca desde un CDN
+│   └── corrida.py    buscar ahora, en qué anda, y cómo viene funcionando
 ├── sources/
 │   ├── base.py            interfaz Source: fetch() -> list[Job]
 │   ├── careers.py         páginas de empleo vía TinyFish
@@ -797,7 +926,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  481 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  518 passed
 ```
 
 ---

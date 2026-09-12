@@ -1,0 +1,273 @@
+
+/* ===========================================================================
+   EL CONSTRUCTOR DE BÚSQUEDAS DE LINKEDIN
+   =========================================================================== */
+
+/* --- el taller: los controles a la izquierda, lo que sale a la derecha ---
+
+   Antes era una sola columna larga: armabas la búsqueda arriba y la dirección
+   aparecía abajo de todo, fuera de pantalla. Como el constructor es un
+   `form method=get`, apretar "Armar la búsqueda" recarga la página, y el
+   navegador la abre arriba: el resultado nacía justo donde no lo veías y la
+   pantalla saltaba en cada intento.
+
+   Partido en dos, el resultado nace al lado de los controles. La página en sí
+   ya no scrollea: la altura es la del viewport y lo que se mueve es cada
+   columna por dentro. Es la única pantalla que trabaja así, porque es la única
+   donde mirás dos cosas a la vez.
+
+   Se llaman `.lado` y no `.columna` porque `.columna` ya es una barra vertical
+   de los gráficos de Métricas, con su propio `flex` y su `justify-content`.
+   Dos clases con el mismo nombre y distinta idea es un choque silencioso: la
+   primera vez, el formulario apareció encogido y flotando fuera de su caja. */
+.taller {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--gutter);
+}
+.taller > .lado {
+  min-width: 0; min-height: 0;
+  overflow-y: auto; scrollbar-gutter: stable;
+  padding-right: var(--spacing-sm);
+}
+.taller > .lado > h2 { margin: var(--spacing-lg) 0 var(--spacing-sm); }
+.taller > .lado > h2:first-child { margin-top: 0; }
+
+/* --- el aire, más corto que en el resto de la app ---
+   Las separaciones de las pantallas largas están calculadas para leer bajando:
+   ahí el aire ayuda a que un bloque no se confunda con el siguiente. Acá no se
+   baja, se mira todo junto adentro de una ventana, y ese mismo aire empuja
+   controles fuera de la vista. Se acorta un escalón, no dos: sin nada de aire
+   los bloques se pegan y hay que buscar dónde termina uno. */
+.taller .grilla { gap: var(--spacing-md) var(--gutter); }
+.taller form.datos { padding: var(--spacing-md); }
+.taller form.datos h2 { margin: var(--spacing-lg) 0 var(--spacing-sm);
+                        padding-top: var(--spacing-md); }
+/* El primero no lleva nada de eso: no separa dos bloques, abre la tarjeta. La
+   regla general de `form.datos` ya lo dice, pero ésta pesa igual y viene
+   después, así que la pisaba y dejaba 40px de hueco arriba de "Qué buscar". */
+.taller form.datos h2:first-of-type { margin-top: 0; padding-top: 0; }
+.taller .armada { margin-bottom: var(--spacing-lg); }
+.taller .callout { margin-bottom: var(--spacing-md); }
+.taller .guardar { margin: var(--spacing-md) calc(var(--spacing-md) * -1)
+                           calc(var(--spacing-md) * -1);
+                   padding: var(--spacing-sm) var(--spacing-md); }
+
+/* El taller usa todo el ancho que queda, no los 1200px de las pantallas de
+   lectura: son dos columnas mirándose, no un texto para leer de corrido. El
+   tope alto existe igual, porque a 2500px las dos columnas se separan tanto
+   que dejan de leerse juntas. */
+main:has(> .taller) {
+  height: 100dvh; overflow: hidden;
+  display: flex; flex-direction: column;
+  max-width: 1600px;
+  /* Sin el 85% de las otras pantallas: acá no se lee de corrido, se miran dos
+     columnas enfrentadas, y cada píxel que se le saca al ancho las separa. */
+  padding-inline: var(--spacing-lg);
+  padding-bottom: var(--spacing-lg);
+}
+
+/* La grilla del constructor se acomoda al ancho de SU columna, no al de la
+   ventana: adentro de media pantalla, tres columnas de campos no entran. */
+.taller .grilla { grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+
+/* Las tildes de puestos son largas: en una fila sola cada una queda a media
+   pantalla de la siguiente y hay que barrer con la vista. En columnas se leen
+   como una lista. */
+.checks.en-columnas { display: grid; gap: var(--spacing-sm) var(--spacing-lg);
+                      grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.armador { margin-bottom: 0; }
+
+/* --- la barra de abajo del constructor ---
+   A la izquierda la acción, a la derecha el contador de lo que aplicaste desde
+   acá. Van juntos porque son las dos cosas que se tocan en esta pantalla: una
+   abre la búsqueda, la otra anota lo que salió de ella. */
+.armador .guardar { display: flex; flex-wrap: wrap; align-items: center;
+                    justify-content: space-between; gap: var(--spacing-sm); }
+
+/* Nada de esto se encoge: si no entra al lado del botón, baja entero a la
+   línea de abajo. Encogiendo, el "Confirmar" se montaba arriba del "+". */
+.armador .guardar > * { flex: 0 0 auto; }
+
+/* --- el anotador de postulaciones ---
+   El rótulo arriba, el control abajo. Antes iba todo en una fila y con tres
+   renglones de explicación al pie: al lado del único botón que importa de esta
+   pantalla, eso era un párrafo compitiendo con una acción. */
+.apliques { display: flex; flex-direction: column; align-items: flex-end;
+            gap: var(--spacing-xs); }
+.apliques .rotulo { display: flex; align-items: center; gap: var(--spacing-xs);
+                    margin: 0; color: var(--color-text-secondary);
+                    font-size: var(--text-body-sm); }
+.apliques .pasos { display: flex; align-items: center; gap: var(--spacing-sm); }
+.apliques .pasos > * { flex: 0 0 auto; }
+
+/* Una sola pieza, no tres cajas sueltas: tres cajas iguales no dicen que se
+   tocan juntas ni cuál es el número y cuáles los botones. */
+.stepper {
+  display: inline-flex; align-items: stretch; overflow: hidden;
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-raised);
+}
+.stepper .paso {
+  width: 2.5rem; min-width: 0; height: var(--control-height-sm); padding: 0;
+  display: grid; place-items: center;
+  border: 0; border-radius: 0; background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-lg); line-height: 1;
+}
+.stepper .paso:hover:not(:disabled) { background: var(--color-surface);
+                                      color: var(--color-text-primary); }
+.stepper .paso:disabled { opacity: 0.35; cursor: not-allowed; }
+/* El número es lo que se mira, y es lo único verde de la pieza: el más y el
+   menos todavía no son nada, y el verde acá significa lo que ya hiciste. */
+.stepper .numero {
+  display: grid; place-items: center;
+  min-width: 3ch; padding: 0 var(--spacing-xs);
+  border-left: var(--border-hairline) solid var(--color-border);
+  border-right: var(--border-hairline) solid var(--color-border);
+  color: var(--color-success); font-size: var(--text-body-lg);
+  font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums;
+}
+.apliques .confirmar {
+  min-height: var(--control-height-sm); padding: 0 var(--spacing-md);
+  border: var(--border-hairline) solid var(--color-success);
+  border-radius: var(--rounded-md);
+  background: var(--color-success-surface); color: var(--color-success);
+  font-size: var(--text-body-sm); font-weight: var(--weight-medium);
+}
+.apliques .confirmar:hover:not(:disabled) { background: var(--color-success);
+                                            color: var(--color-background); }
+.apliques .confirmar:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* --- el signo de pregunta con la explicación adentro ---
+   Para lo que hace falta una vez y estorba siempre. Se abre con el mouse y
+   también con el foco del teclado: quien tabula no pasa el mouse por ningún
+   lado. Sale del flujo (`position: absolute`) para que abrirlo no mueva nada
+   de lugar. */
+.ayuda-al-lado { position: relative; display: inline-flex; }
+.ayuda-al-lado .signo {
+  display: grid; place-items: center;
+  width: var(--icon-md); height: var(--icon-md);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--rounded-full);
+  color: var(--color-text-tertiary); font-size: var(--text-caption);
+  line-height: 1; cursor: help;
+}
+.ayuda-al-lado:hover .signo, .ayuda-al-lado:focus-visible .signo {
+  border-color: var(--color-text-secondary); color: var(--color-text-primary);
+}
+.ayuda-al-lado .globo {
+  position: absolute; bottom: calc(100% + var(--spacing-xs)); right: 0;
+  z-index: var(--z-dropdown);
+  display: none; width: max-content; max-width: 30ch;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--rounded-sm);
+  background: var(--neutral-700); color: var(--neutral-50);
+  box-shadow: var(--elevation-overlay);
+  font-size: var(--text-caption); line-height: var(--leading-snug);
+  text-align: left; white-space: normal;
+}
+.ayuda-al-lado:hover .globo, .ayuda-al-lado:focus-visible .globo,
+.ayuda-al-lado:focus-within .globo { display: block; }
+
+/* --- abajo del ancho del taller vuelve a ser una sola columna ---
+   Dos columnas de media pantalla adentro de una pantalla chica no son dos
+   columnas, son dos rendijas. Y con la lateral arriba, 100dvh se pasa. */
+@media (max-width: 1100px) {
+  main:has(> .taller) { display: block; height: auto; overflow: visible;
+                        max-width: var(--container-max);
+                        padding-bottom: var(--spacing-3xl); }
+  .taller { display: block; }
+  .taller > .lado { overflow: visible; padding-right: 0; }
+  .taller > .lado + .lado { margin-top: var(--spacing-xl); }
+}
+
+/* --- la dirección armada, entera y a la vista ---
+   Nunca escondida detrás de un botón: es un texto largo con comillas y
+   paréntesis que LinkedIn a veces interpreta distinto, y si algo sale raro lo
+   primero que se mira es esto. Por eso se corta donde sea (`anywhere`) en vez
+   de truncarse con puntos suspensivos. */
+.armada { margin: 0 0 var(--spacing-xl); }
+.armada h2 { margin: 0 0 var(--spacing-md); }
+.url-generada {
+  max-width: var(--content-max-ch);
+  margin: 0 0 var(--spacing-md);
+  padding: var(--spacing-md);
+  border: var(--border-hairline) solid var(--color-border);
+  border-radius: var(--rounded-sm);
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono); font-size: var(--text-mono);
+  line-height: var(--leading-body);
+  overflow-wrap: anywhere;
+}
+/* En la lista de guardadas la dirección se recorta a dos renglones, y ahí sí
+   corresponde: ya la verificaste cuando la guardaste, y lo que hace falta es
+   reconocer cuál es. Con `max-height` cortaba a mitad de un renglón y quedaba
+   media línea de letras comida; `line-clamp` corta limpio y pone los puntos. */
+.url-generada.chica { margin: var(--spacing-sm) 0 0; padding: var(--spacing-sm);
+                      color: var(--color-text-tertiary);
+                      display: -webkit-box; -webkit-box-orient: vertical;
+                      -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+
+.guardar-favorito { display: flex; flex-wrap: wrap; align-items: flex-end;
+                    gap: var(--spacing-sm); margin: 0 0 var(--spacing-md);
+                    max-width: var(--content-max-ch); }
+.guardar-favorito label { color: var(--color-text-secondary);
+                          font-size: var(--text-body-sm);
+                          flex-basis: 100%; }
+.guardar-favorito input[type=text] { flex: 1 1 18rem; min-width: 0; }
+
+/* --- las búsquedas guardadas --- */
+.favoritos { list-style: none; margin: 0 0 var(--spacing-xl); padding: 0;
+             display: flex; flex-direction: column; gap: var(--spacing-sm); }
+.favorito { display: flex; align-items: flex-start; gap: var(--spacing-md);
+            padding: var(--spacing-md);
+            border: var(--border-hairline) solid var(--color-border-subtle);
+            border-radius: var(--rounded-lg);
+            background: var(--color-surface); }
+.favorito .datos { flex: 1 1 auto; min-width: 0; }
+.favorito h3 { margin: 0; }
+.favorito .cuando { margin: 2px 0 0; color: var(--color-text-tertiary);
+                    font-size: var(--text-caption); }
+.favorito .acciones { flex: 0 0 auto; display: flex; align-items: center;
+                      gap: var(--spacing-sm); padding: 0; border: 0; }
+.favorito .menu { margin-left: 0; }
+.favorito:has(.menu[open]) { position: relative; z-index: var(--z-dropdown); }
+
+/* La columna scrollea, así que recorta lo que se salga de ella: el menú de la
+   última guardada quedaría cortado por abajo. Hace falta aire al final, pero
+   **sólo mientras hay un menú abierto**: dejarlo fijo abría un hueco vacío
+   enorme abajo de la lista, todo el tiempo, para algo que se usa un segundo.
+   El `:has()` lo pone al abrir y lo saca al cerrar, y `scrollIntoView` baja
+   hasta él. */
+.taller .favoritos { margin-bottom: 0; }
+.taller .favoritos:has(.menu[open]) { padding-bottom: var(--menu-aire); }
+
+/* --- el toast ---
+   4 segundos, abajo a la derecha, uno solo a la vez. Vidrio esmerilado: es el
+   tercero y último lugar donde se usa, junto con la barra lateral y la tarjeta
+   de oferta sin marcar.
+
+   Avisa sólo lo que NO se ve: el link copiado, porque el portapapeles es
+   invisible. Guardar un favorito no lleva toast, porque el favorito aparece en
+   la lista. */
+.toast {
+  position: fixed; right: var(--spacing-lg); bottom: var(--spacing-lg);
+  z-index: var(--z-toast); display: none;
+  padding: var(--spacing-md);
+  border: var(--glass-border); border-radius: var(--rounded-md);
+  background: var(--glass-background);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--elevation-overlay);
+  color: var(--color-text-primary); font-size: var(--text-body-sm);
+}
+.toast.visible { display: block;
+                 animation: entra-toast var(--duration-normal) var(--ease-enter); }
+
+@media (max-width: 640px) {
+  .favorito { flex-wrap: wrap; }
+  .favorito .acciones { flex-basis: 100%; }
+  .toast { left: var(--spacing-md); right: var(--spacing-md); }
+}

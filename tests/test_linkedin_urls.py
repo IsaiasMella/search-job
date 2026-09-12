@@ -468,8 +468,8 @@ def test_lo_aplicado_desde_linkedin_suma_al_contador_grande(sitio):
     assert despues["a_mano"] == 1
     # Y también en el reparto por semana: si no, el total y las barras se
     # contradicen en la misma tarjeta.
-    assert (sum(n for _, n in despues["por_semana"])
-            == sum(n for _, n in antes["por_semana"]) + 1)
+    assert (sum(n for _, n in despues["reparto"])
+            == sum(n for _, n in antes["reparto"]) + 1)
 
     # Y la pantalla dice de dónde salió, para que el total no suba solo.
     _, html, _ = get(base, "/trabajos?perfil=test&ver=pendientes")

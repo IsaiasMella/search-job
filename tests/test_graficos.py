@@ -133,7 +133,7 @@ def test_la_fecha_de_postulacion_se_lee_en_la_hora_de_aca(sitio):
     resultado = data.aplicadas_en("test", "7d")
     assert resultado["cuantas"] == 1
     # Y cae en la última semana del reparto, no en la siguiente.
-    assert resultado["por_semana"][-1][1] == 1
+    assert resultado["reparto"][-1][1] == 1
 
 
 def test_el_reparto_por_semana_es_lo_que_hace_que_el_total_signifique_algo(sitio):
@@ -144,18 +144,15 @@ def test_el_reparto_por_semana_es_lo_que_hace_que_el_total_signifique_algo(sitio
     _con_historial(tmp, [_aplicada(f"n{i}", ahora) for i in range(9)])
     resultado = data.aplicadas_en("test", "30d")
     assert resultado["cuantas"] == 9
-    semanas = resultado["por_semana"]
+    semanas = resultado["reparto"]
     assert len(semanas) == 5                       # 30 días, redondeado a semanas
     assert semanas[-1][1] == 9                     # todas en la de esta semana
     assert sum(n for _, n in semanas[:-1]) == 0
 
 
-def test_el_contador_va_grande_en_verde_y_solo_en_sin_marcar(sitio):
+def test_el_contador_va_grande_en_verde_en_sin_marcar(sitio):
     """Es lo único de la app que mide el trabajo de la persona y no el del
     sistema, así que es lo más grande de la pantalla.
-
-    Y va sólo en Sin marcar: en Filtradas ya está el marcador de la auditoría,
-    y dos marcadores en la misma pantalla no se leen, compiten.
     """
     base, tmp = sitio
     ahora = datetime.now().astimezone()
@@ -167,9 +164,66 @@ def test_el_contador_va_grande_en_verde_y_solo_en_sin_marcar(sitio):
     assert "trabajos a los que apliqué" in home    # el color nunca va solo
     assert "Último mes" in home                     # el período, a la vista
 
-    for otra in ("aplicadas", "descartadas", "filtradas", "archivadas", "todas"):
+
+def test_el_cartel_de_arriba_habla_de_la_pestania_en_la_que_estas(sitio):
+    """El número de arriba y la lista de abajo tienen que ser lo mismo.
+
+    Parado en Apliqué el cartel decía 11 y abajo había 9 tarjetas, porque sumaba
+    las que se cuentan a mano desde un posteo de LinkedIn. Un cartel más grande
+    que la lista que tiene debajo se lee como un error de la app.
+
+    En Archivadas y Todas no va ningún cartel: no hay una pregunta que contestar
+    ahí arriba. En Filtradas tampoco, porque ya está el marcador de la auditoría
+    y dos marcadores en la misma pantalla no se leen, compiten.
+    """
+    base, tmp = sitio
+    ahora = datetime.now().astimezone()
+    _con_historial(tmp, [_aplicada(f"n{i}", ahora) for i in range(3)])
+
+    _, aplique, _ = get(base, "/trabajos?perfil=test&ver=aplicadas")
+    assert 'class="postulaciones"' in aplique
+    assert '<span class="numero">3</span>' in aplique
+    assert "sólo las de esta lista" in aplique
+    # Y sigue habiendo selector de período: es la misma pregunta, otro recorte.
+    assert "Último mes" in aplique
+
+    for otra in ("filtradas", "archivadas", "todas"):
         assert 'class="postulaciones"' not in get(
             base, f"/trabajos?perfil=test&ver={otra}")[1], otra
+
+
+def test_en_descarte_el_cartel_dice_por_que_y_no_cuantas(sitio):
+    """El total de descartes solo no sirve para nada.
+
+    Lo accionable es el desglose: si la mayoría cae por inglés, eso es una
+    perilla de Mi perfil esperando que la muevan. Y no va en verde, porque el
+    verde acá significa lo que ya hiciste y descartar no es un logro.
+    """
+    ahora = datetime.now().astimezone().isoformat()
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": f"https://e/i{i}", "title": "Con inglés", "aplicado": False,
+         "motivo_clave": "ingles", "fecha_feedback": ahora, "found_at": HOY_ISO}
+        for i in range(4)
+    ] + [
+        {"url": "https://e/p", "title": "Presencial", "aplicado": False,
+         "motivo_clave": "presencial", "fecha_feedback": ahora, "found_at": HOY_ISO},
+        {"url": "https://e/m", "title": "A mano", "aplicado": False,
+         "motivo_descarte": "pide .NET", "fecha_feedback": ahora,
+         "found_at": HOY_ISO},
+    ])
+
+    _, html, _ = get(base, "/trabajos?perfil=test&ver=descartadas")
+
+    assert 'class="postulaciones descartes"' in html
+    assert '<span class="numero">6</span>' in html
+    assert "ofertas que descarté" in html
+    # El desglose, que es lo único accionable de todo esto.
+    assert "Piden inglés" in html
+    assert "Es presencial y no puedo ir" in html
+    # El texto libre no es "otro": es el descarte que dice algo del puesto.
+    assert "Escrito a mano" in html
+    assert "Último mes" in html
 
 
 def test_sin_postulaciones_dice_como_empezar(sitio):
@@ -216,7 +270,10 @@ def test_el_histograma_marca_de_donde_para_arriba_te_avisa(sitio):
     assert avisan == ["60 a 79", "80 a 100"]
 
     _, html, _ = get(base, "/estadisticas?perfil=test")
-    assert "Qué tan bien te encajan las ofertas" in html
+    # El título es corto porque el capítulo de arriba ya da el contexto:
+    # "Qué está entrando, y qué queda afuera".
+    assert "Qué tan bien te encajan" in html
+    assert "Qué está entrando, y qué queda afuera" in html
     assert 'class="columna destacada"' in html
     assert "el sistema te avisa por Telegram" in html
 
@@ -253,3 +310,54 @@ def test_los_tokens_de_datos_existen_y_no_son_valores_sueltos():
         regla = regla[:regla.index("}")]
         assert "var(--data-" in regla, bloque
         assert not re.search(r"#[0-9A-Fa-f]{3,8}\b", regla), bloque
+
+
+def test_una_semana_se_reparte_por_dia_y_no_por_semana(sitio):
+    """Siete días repartidos en semanas daban UNA barra, y una barra sola no
+    compara con nada: la tarjeta quedaba con el número grande y un vacío al
+    lado. Por día son siete barras y contestan lo que se pregunta en una semana,
+    que es qué días mandaste y cuáles se te fueron en blanco."""
+    base, tmp = sitio
+    ahora = datetime.now().astimezone()
+    _con_historial(tmp, [_aplicada(f"n{i}", ahora) for i in range(3)])
+
+    semana = data.aplicadas_en("test", "7d")
+    assert semana["unidad"] == "día"
+    assert len(semana["reparto"]) == 7
+    assert semana["reparto"][-1][1] == 3           # las tres son de hoy
+    assert sum(n for _, n in semana["reparto"]) == 3
+
+    # De 14 días para arriba vuelve a ser por semana: catorce o noventa barras
+    # diarias no se leen, y ahí la pregunta ya es la del ritmo.
+    for periodo, barras in (("14d", 2), ("30d", 5), ("90d", 12), ("todo", 12)):
+        largo = data.aplicadas_en("test", periodo)
+        assert largo["unidad"] == "semana", periodo
+        assert len(largo["reparto"]) == barras, periodo
+
+    # Y nunca una barra sola: no hay período que no se pueda comparar consigo.
+    for clave, _, _ in data.PERIODOS:
+        assert len(data.aplicadas_en("test", clave)["reparto"]) >= 2, clave
+
+
+def test_el_selector_de_periodo_no_se_mueve_de_arriba_a_la_derecha(sitio):
+    """Con la fila flexible cambiaba de lugar según hubiera gráfico o no, así
+    que cambiar de período movía el control que acababas de tocar."""
+    from vacantia.ui.estilos import CSS
+
+    base, tmp = sitio
+    ahora = datetime.now().astimezone()
+
+    tarjeta = CSS[CSS.index(".postulaciones {"):CSS.index(".postulaciones .numero {")]
+    assert 'grid-template-areas: "cuenta periodo"' in tarjeta
+    assert ".postulaciones .periodo { grid-area: periodo;" in CSS
+    # El gráfico y el cartel de "todavía ninguna" comparten celda: los dos van
+    # abajo del selector, nunca en su lugar.
+    assert ".postulaciones .vacio-corto { grid-area: reparto;" in CSS
+
+    # Con datos y sin datos, el selector se dibuja siempre.
+    _, vacio, _ = get(base, "/trabajos?perfil=test&ver=pendientes&apliq=7d")
+    _con_historial(tmp, [_aplicada("n", ahora)])
+    _, lleno, _ = get(base, "/trabajos?perfil=test&ver=pendientes&apliq=7d")
+    for html in (vacio, lleno):
+        assert 'class="periodo"' in html
+        assert 'id="cuando-apliq"' in html

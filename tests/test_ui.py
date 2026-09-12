@@ -606,10 +606,14 @@ def test_no_arranca_dos_busquedas_encimadas(sitio, monkeypatch):
     assert arranco is False
     assert "Ya hay una búsqueda en curso" in mensaje
 
-    # Y mientras tanto el botón está apagado en vez de mentir.
+    # Y mientras tanto la pantalla no ofrece buscar de nuevo: en vez del botón,
+    # el pie de la barra lateral cuenta en qué etapa va.
     base, _ = sitio
     _, html, _ = get(base, "/trabajos?perfil=test")
-    assert "<button type=\"button\" disabled>Buscando ofertas</button>" in html
+    assert "Buscar ahora" not in html
+    assert "Arrancando la búsqueda" in html
+    # Y pregunta seguido, que es lo que hace que se vea avanzar.
+    assert 'hx-trigger="every 2s"' in html
 
 
 def test_linkedin_urls_abre_en_publicaciones(sitio):
@@ -840,9 +844,11 @@ def test_el_vidrio_esmerilado_se_gasta_en_tres_lugares():
     # El cartel de novedades es un toast más y no un cuarto componente. Cuando
     # se definió aparte, con su propio vidrio, el efecto pasó a estar en cuatro
     # lugares y dejó de destacar nada: eso es lo que agarró este test.
-    from vacantia.ui.render import trabajos
-    assert 'class="toast novedades"' in trabajos("ana", [], {}, "pendientes", [],
-                                                 marca="x")
+    # El cartel vive en el shell y no en Trabajos: así buscar desde Métricas
+    # también avisa. Sigue siendo un toast y no un cuarto componente con vidrio
+    # propio, que es lo que este test agarró cuando se definió aparte.
+    from vacantia.ui.render import pagina
+    assert 'class="toast novedades"' in pagina("T", "", "ana", ["ana"], "trabajos")
     # Y la que ya está marcada lo pierde: se distingue de un vistazo lo que
     # queda por hacer de lo que ya está hecho.
     assert ".oferta.marcada" in CSS and "backdrop-filter: none" in CSS
@@ -1285,24 +1291,38 @@ def test_avisa_de_las_ofertas_nuevas_sin_recargar_sola(sitio):
     Pero recargar sola tampoco: si alguien está escribiendo el motivo de un
     descarte, la recarga se lo borra. Avisa con un cartel y decide la persona.
     """
+    import json as _json
+    import re
+
     base, tmp = sitio
     _, html, _ = get(base, "/trabajos?perfil=test")
 
-    assert 'id="novedades"' in html
-    assert "vigilarNovedades('test'" in html
-    assert "location.reload()" in html          # lo dispara el botón, no el timer
+    # El cartel vive escondido en el shell y es el blanco fijo del aviso.
+    assert '<div class="toast novedades" id="novedades" role="status"></div>' in html
 
-    # La marca cambia sólo cuando cambia el historial.
-    import json as _json
-    antes = _json.loads(get(base, "/novedades?perfil=test")[1])
+    # Quien pregunta es el cartel de la corrida, con cómo estaba el historial al
+    # abrir metido en la dirección. Ese par es lo que hace que el aviso diga
+    # "entraron 3" y no "hay 211".
+    pedido = re.search(r'id="corrida" hx-get="([^"]+)"', html).group(1).replace("&amp;", "&")
+    assert "marca=" in pedido and "pend=" in pedido
+
+    # Sin cambios en el historial no hay nada que avisar: el aviso vuelve vacío,
+    # y vacío de verdad. Si volviera escondido pisaría al que la persona está
+    # mirando y el cartel desaparecería solo a los dos segundos.
+    _, quieto, _ = get(base, pedido)
+    assert "novedades" not in quieto
+
+    # Entra una oferta con la pantalla abierta.
     ruta = tmp / "state" / "test" / "job_history.json"
     ruta.write_text(_json.dumps(OFERTAS + [
         {"url": "https://e/3", "title": "Nueva", "aplicado": None,
          "found_at": "2026-09-04T10:00:00+00:00"}]), encoding="utf-8")
-    despues = _json.loads(get(base, "/novedades?perfil=test")[1])
+    _, avisa, _ = get(base, pedido)
 
-    assert despues["marca"] != antes["marca"]
-    assert despues["pendientes"] == antes["pendientes"] + 1
+    assert "Entró 1 oferta nueva" in avisa
+    # `hx-swap-oob` es lo que le deja tocar un cartel que no es el que pidió.
+    assert 'id="novedades" role="status" hx-swap-oob="true"' in avisa
+    assert "location.reload()" in avisa          # lo dispara el botón, no el reloj
 
 
 # --- paginación y orden ----------------------------------------------------
