@@ -182,7 +182,11 @@
       "id": "principal",
       "nombre": "AI Engineer",
       "path": "resume/isaias.md",
-      "palabras_clave": []
+      "palabras_clave": [
+        "AI Engineer",
+        "Generative AI",
+        "Python"
+      ]
     }
   ]
 }
