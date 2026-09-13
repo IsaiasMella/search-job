@@ -1688,7 +1688,10 @@ def test_ningun_estado_neutral_se_pinta_de_rojo(sitio):
     from vacantia.ui.render import CSS
     usos = re.findall(r"\n([^\n{]+)\{[^}]*var\(--color-danger\)", CSS)
     for selector in usos:
-        assert any(p in selector for p in (".mal", ".error", ".aviso.error")), selector
+        # Y en acciones destructivas de verdad, que DESIGN.md también le reserva:
+        # borrar un CV borra su texto y no se puede recuperar.
+        assert any(p in selector for p in (".mal", ".error", ".aviso.error",
+                                           ".borrar-cv", ".peligro")), selector
 
 
 def test_al_marcar_se_ve_cual_se_fue(sitio):

@@ -73,6 +73,11 @@ class Job:
     location_remote: str = ""
     reason: str = ""
     worth_applying: bool | None = None
+    # El id del CV con el que conviene postularse (ver `config.cvs_del_perfil`).
+    # Se guarda el id y no el nombre: renombrar un CV no rompe las ofertas
+    # viejas, y si el CV se borra la pantalla simplemente no muestra la línea.
+    # "" = el perfil tiene un solo CV, o la oferta es anterior a esto.
+    cv_recomendado: str = ""
 
     # --- Campos extraídos del aviso, para los filtros (ver filters.py) ---
     # Ojo: `location`/`region` vienen de companies.json y describen a la

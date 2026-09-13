@@ -14,6 +14,7 @@ directo si a alguien le resulta más cómodo.
 import json
 import os
 import re
+import unicodedata
 from pathlib import Path
 
 from vacantia.log import get_logger
@@ -149,11 +150,121 @@ def _build_llm_config(llm: dict) -> dict:
     }
 
 
+# --- los CV del perfil --------------------------------------------------------
+#
+# Una persona puede postularse con más de un perfil profesional: AI Engineer y
+# Full Stack, o dos variantes de QHSE. Por eso el perfil tiene una lista `cvs`,
+# y cada uno trae su nombre, su archivo y sus propias palabras de búsqueda.
+#
+# **Un perfil viejo, con sólo `cv_path`, sigue andando igual**: se lo lee como un
+# único CV llamado "principal". Nada se migra en disco; la lista se arma al leer.
+
+def id_de_cv(nombre: str) -> str:
+    """El identificador estable de un CV, sacado de su nombre.
+
+    Minúsculas, sin tildes y con guiones: "Full Stack" -> "full-stack". Es lo
+    que se guarda en cada oferta, así que no puede depender de cómo se escribe
+    el nombre que se muestra.
+    """
+    plano = unicodedata.normalize("NFKD", str(nombre or "")).encode("ascii", "ignore")
+    return re.sub(r"[^a-z0-9]+", "-", plano.decode().lower()).strip("-") or "cv"
+
+
+def cvs_del_perfil(profile: dict) -> list[dict]:
+    """Los CV del perfil, sin leer los archivos: [{id, nombre, path, palabras_clave}].
+
+    Siempre devuelve al menos uno. Un perfil sin `cvs` (o con la lista vacía o
+    rota) se lee como un único CV con el `cv_path` de siempre.
+    """
+    salida, vistos = [], set()
+    for crudo in profile.get("cvs") or []:
+        if not isinstance(crudo, dict) or not str(crudo.get("path") or "").strip():
+            continue
+        nombre = str(crudo.get("nombre") or "").strip() or "CV"
+        cv_id = id_de_cv(crudo.get("id") or nombre)
+        if cv_id in vistos:
+            continue
+        vistos.add(cv_id)
+        palabras = crudo.get("palabras_clave") or []
+        salida.append({
+            "id": cv_id,
+            "nombre": nombre,
+            "path": str(crudo["path"]).strip(),
+            "palabras_clave": [str(p).strip() for p in palabras if str(p).strip()],
+        })
+    if salida:
+        return salida
+
+    nombre = str((profile.get("candidate") or {}).get("headline") or "").strip()
+    return [{
+        "id": "principal",
+        "nombre": nombre or "Principal",
+        "path": profile.get("cv_path") or "resume/YOUR_CV.md",
+        "palabras_clave": [],
+    }]
+
+
+def load_resumes(profile: dict) -> list[dict]:
+    """Los CV del perfil con su texto: [{id, nombre, path, palabras_clave, texto}].
+
+    Un CV cuyo archivo no está vuelve con texto vacío y un aviso en el registro:
+    que falte uno no tiene que dejar sin puntuar contra los demás.
+    """
+    salida = []
+    for cv in cvs_del_perfil(profile):
+        ruta = Path(cv["path"])
+        if not ruta.exists():
+            logger.warning(f"No encontré el CV '{cv['nombre']}' en {ruta} — "
+                           "el scoring va a andar a ciegas con ése.")
+            texto = ""
+        else:
+            texto = ruta.read_text(encoding="utf-8")
+            logger.debug(f"CV cargado: {cv['nombre']} {ruta} ({len(texto)} chars)")
+        salida.append({**cv, "texto": texto})
+    return salida
+
+
+def cvs_con_texto(profile: dict) -> list[dict]:
+    """Los CV que tienen algo escrito. Si ninguno tiene, el primero igual.
+
+    "Agregar otro CV" crea uno vacío para que la persona lo complete. Mientras
+    está vacío no puede contar como opción: el perfil pasaría a tener "varios
+    CV", y todas las tarjetas mostrarían una recomendación contra un CV que
+    no dice nada.
+    """
+    cvs = load_resumes(profile)
+    return [cv for cv in cvs if cv["texto"].strip()] or cvs[:1]
+
+
 def load_resume(profile: dict) -> str:
-    cv_path = Path(profile.get("cv_path") or "resume/YOUR_CV.md")
-    if not cv_path.exists():
-        logger.warning(f"No encontré el CV en {cv_path} — el scoring va a andar a ciegas.")
-        return ""
-    text = cv_path.read_text(encoding="utf-8")
-    logger.debug(f"CV cargado: {cv_path} ({len(text)} chars)")
-    return text
+    """El texto del primer CV. Para quien todavía trabaja con uno solo."""
+    return load_resumes(profile)[0]["texto"]
+
+
+def terminos_de_busqueda(profile: dict, propios=None) -> list[str]:
+    """Qué buscar en los portales: los términos de la fuente, más los de cada CV.
+
+    `propios` son los `search_terms` (o `roles`) de la fuente. Si no tiene, se
+    usan las palabras clave del perfil. **A eso se le suman siempre las
+    palabras clave de todos los CV**, y es la razón de que exista este helper:
+    las fuentes con términos propios ignoraban `profile.keywords`, así que
+    cargar un CV de Full Stack no hacía salir a buscar ni una sola oferta de
+    Full Stack.
+
+    Sin duplicados y sin distinguir mayúsculas, respetando el orden: primero lo
+    de la fuente, después lo de cada CV. Las fuentes ya rotan los términos por
+    día con un tope por corrida, así que sumar términos reparte la cobertura
+    entre días y no multiplica los pedidos.
+    """
+    base = propios if propios else (profile.get("keywords") or [])
+    candidatos = list(base)
+    for cv in cvs_del_perfil(profile):
+        candidatos.extend(cv["palabras_clave"])
+
+    salida, vistos = [], set()
+    for termino in candidatos:
+        limpio = str(termino).strip()
+        if limpio and limpio.lower() not in vistos:
+            vistos.add(limpio.lower())
+            salida.append(limpio)
+    return salida

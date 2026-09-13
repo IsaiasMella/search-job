@@ -596,6 +596,7 @@ def _tarjeta(oferta: dict, perfil: str, ver: str, desde: str = "todo",
 {cabecera}
     {f'<p class="stack">{esc(stack)}</p>' if stack else ''}
     {f'<p class="razon">{esc(razon)}</p>' if razon else ''}
+    {linea_de_cv(oferta.get('_cv'), 'Mandá tu CV')}
     <form class="acciones" method="post" action="/feedback">
       {_ocultos(perfil, ver, desde, pagina, url)}
       <button class="primario" name="aplicado" value="si"
@@ -1802,8 +1803,26 @@ def estadisticas(perfil: str, e: dict, desde: str, mensajes,
 
 # --- mensajes para el reclutador -------------------------------------------
 
+def linea_de_cv(cv: dict | None, que: str) -> str:
+    """"Mandá tu CV Full Stack", con la marca de estimado cuando corresponde.
+
+    La usan la tarjeta, Consejo y Mensajes, así las tres pantallas lo dicen
+    igual. Vacía cuando no hay CV que nombrar, que es el caso de un perfil con
+    un solo CV: ahí la línea no dice nada que la persona no sepa.
+
+    Va en texto secundario y **no en índigo**: es información, no se toca, y en
+    este sistema el índigo significa que algo se puede apretar.
+    """
+    if not cv or not cv.get("nombre"):
+        return ""
+    marca = (' <span class="cv-estimado" title="Calculado comparando las palabras '
+             'del aviso con cada CV, sin preguntarle al modelo">estimado</span>'
+             if cv.get("estimado") else "")
+    return f'<p class="cv-recomendado">{que} <b>{esc(cv["nombre"])}</b>{marca}</p>'
+
+
 def mensajes(perfil: str, oferta: dict, textos: dict[str, str], con_llm: bool,
-             avisos_: list[tuple[str, str]]) -> str:
+             avisos_: list[tuple[str, str]], cv_usado: dict | None = None) -> str:
     """Los dos moldes, en cajas de texto para copiar y pegar."""
     titulo = oferta.get("scored_title") or oferta.get("title") or "(sin título)"
     url = oferta.get("url", "")
@@ -1824,6 +1843,7 @@ def mensajes(perfil: str, oferta: dict, textos: dict[str, str], con_llm: bool,
 </form>"""
     return f"""{avisos(avisos_)}
 <h1>Mensaje para {esc(oferta.get('company') or 'quien publicó')}</h1>
+{linea_de_cv(cv_usado, 'Escrito para tu CV')}
 <p class="sub"><span class="dato-linea">{esc(titulo)}</span>
 <a href="{esc(url)}" {ABRIR_EL_AVISO}>Ver el aviso en el portal</a></p>
 <p class="herramientas"><a class="boton" href="/trabajos?perfil={esc(perfil)}">Volver a Trabajos</a></p>
@@ -1836,7 +1856,8 @@ sobre uno mismo, y cerrar con una pregunta fácil de responder.</p>"""
 # --- consejo sobre el CV ----------------------------------------------------
 
 def consejo(perfil: str, oferta: dict, faltantes: list[str], texto: str,
-            con_llm: bool, avisos_: list[tuple[str, str]]) -> str:
+            con_llm: bool, avisos_: list[tuple[str, str]],
+            cv_usado: dict | None = None) -> str:
     """Qué reordenar del CV para este aviso. No lo reescribe."""
     titulo = oferta.get("scored_title") or oferta.get("title") or "(sin título)"
     url = oferta.get("url", "")
@@ -1864,6 +1885,7 @@ escribiste con otra palabra.</p>"""
 
     return f"""{avisos(avisos_)}
 <h1>Consejo para tu CV</h1>
+{linea_de_cv(cv_usado, 'Comparando con tu CV')}
 <p class="sub"><span class="dato-linea">{esc(titulo)}</span>
 <span class="dato-linea">{esc(oferta.get('company') or 'sin empresa')}</span>
 <a href="{esc(url)}" {ABRIR_EL_AVISO}>Ver el aviso en el portal</a></p>

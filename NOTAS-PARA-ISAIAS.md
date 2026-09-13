@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**518 tests pasan.**
+**550 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  518 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  550 passed
 ```
 
 Andando todo: los 3 portales argentinos, Indeed, Get on Board, LinkedIn Jobs,
@@ -17,8 +17,9 @@ Gemini y la pantalla.
 
 | # | Qué | Dónde | Cuánto lleva |
 |---|---|---|---|
-| 1 | **Decidir qué hacés con el inglés.** Hay 90 ofertas ya puntuadas esperando detrás de esa casilla (2.28) | Mi perfil | tuyo |
-| 2 | **Usarlo una semana** y anotar qué falla antes de pasárselo a nadie | — | tuyo |
+| 1 | **Cargar tu CV de Full Stack**, con sus palabras de búsqueda. Hasta que no lo cargues, nada de 2.29 se nota | Mi perfil → Mis CV | tuyo |
+| 2 | **Decidir qué hacés con el inglés.** Hay 90 ofertas ya puntuadas esperando detrás de esa casilla (2.28) | Mi perfil | tuyo |
+| 3 | **Usarlo una semana** y anotar qué falla antes de pasárselo a nadie | — | tuyo |
 
 **Ya está instalado y corriendo solo** (5/9/2026). La tarea `Vacantia - isaias`
 quedó registrada, con la próxima corrida a las 12:00 y los cuatro disparadores:
@@ -1579,6 +1580,79 @@ volumen. Si algún día aprendés inglés y el objetivo pasa a ser el mercado de
 afuera, esta nota es el punto de partida para volver a evaluarlo.
 
 
+## 2.29. Más de un CV, y qué CV mandar en cada oferta
+
+Lo que te diste cuenta hablando con tu viejo: casi todos podemos postularnos a más
+de una clase de puesto. Vos, como AI Engineer y como Full Stack.
+
+### Qué cambió
+
+- **Mi perfil tiene *Mis CV*.** Cada uno con nombre, palabras de búsqueda y texto.
+  *Agregar otro CV* primero guarda lo que tenías escrito y después agrega uno vacío.
+- **Cada CV sale a buscar.** Era lo importante y no se veía: tus fuentes con
+  términos propios (LinkedIn, Indeed, Get on Board) ignoraban las palabras clave
+  del perfil, y **ninguna buscaba Full Stack**. Ahora las palabras de cada CV se
+  suman en todas.
+- **Se puntúa contra el CV que mejor encaja.** Antes una oferta de Full Stack se
+  comparaba con tu CV de AI, salía baja, y el filtro de puntaje mínimo la escondía.
+- **Cada tarjeta dice qué CV mandar**, y Consejo y Mensajes usan ése.
+- **Telegram también lo dice**, cuando hay más de un CV.
+
+### Las ofertas que ya tenías
+
+No se re-puntuaron: eran unas 37 llamadas al modelo. Muestran una recomendación
+**estimada** comparando las palabras del aviso con cada CV, que es lo mismo que
+mira un filtro ATS. Es tosca pero honesta, y por eso la tarjeta dice *estimado*.
+Las ofertas nuevas traen la recomendación del modelo.
+
+### Decisiones que conviene no deshacer
+
+- **Con un solo CV, nada cambia.** El prompt de scoring sale byte a byte igual que
+  antes, y hay un test que lo fija. Tu papá no nota nada.
+- **Un CV vacío no cuenta.** Si contara, apenas apretás *Agregar otro CV* todas
+  las tarjetas pasarían a recomendar contra un CV que no dice nada.
+- **Se guarda el id del CV, no el nombre.** Renombrar no rompe nada, y si sacás un
+  CV, las ofertas que lo recomendaban se vuelven a estimar solas.
+- **Borrar un CV pide confirmación, y después sí borra el archivo.** Al principio
+  sólo lo sacaba del perfil y dejaba el texto, pero así no había forma de
+  deshacerse de un CV mal cargado. La confirmación se abre en el mismo bloque,
+  con el nombre del CV a la vista. El archivo no se borra si lo lee otro CV.
+- **Se ve un CV por vez**, con el desplegable *Estás viendo el CV*. Con cinco o
+  seis uno abajo del otro, Mi perfil era una columna interminable. Los demás
+  siguen en el formulario, escondidos, así lo no guardado no se pierde.
+- **Enter en un campo guarda, y nada más.** Enter aprieta el primer botón del
+  formulario, y ése era *Agregar otro CV*: un Enter en cualquier campo agregaba
+  un CV. Al principio del formulario hay un botón de guardar invisible para
+  eso. No lo saques: con el borrado, el primer botón podría ser el que borra.
+- **Con varios CV, el "qué hago" de tus datos personales no va al modelo.** Dice
+  "AI Engineer: conecto modelos...", o sea que describe uno solo de tus perfiles y
+  sesgaba el puntaje contra el otro. Lo que buscás y lo que no te sirve sí van,
+  porque son tuyos y no de un CV.
+
+### Lo que falta, y es la continuación natural
+
+Registrar **qué CV mandaste** cuando marcás *Apliqué*. Con eso, en unas semanas se
+puede ver cuál te consigue más respuestas, que es la pregunta de fondo.
+
+## 2.30. Las empresas de cada perfil, separadas
+
+**Qué pasó.** Isaías y papá usaban el mismo archivo de empresas. Cuando se guardó
+el perfil de papá, su lista reemplazó a la de Isaías: se perdieron las 10 empresas
+y quedaron 2 entradas mal cargadas, con la dirección pegada en el nombre y sin URL.
+La fuente de empresas dejó de revisar cualquier página, y no avisaba nada.
+
+**Qué se hizo.** Las 10 de Isaías volvieron desde el último commit. Papá pasó a su
+propio archivo, vacío. Sus dos entradas eran estas direcciones, por si las quiere
+volver a cargar bien, una por línea como `Nombre | dirección`:
+
+    https://empleo.adecco.com.ar/#/#/
+    https://careers.techint.com/search/?createNewAlert=false&q=supervisor+QHSE&locationsearch=argentina
+
+**Para que no vuelva a pasar**, dos cosas. Los perfiles nuevos nacen con su propio
+archivo. Y si igual dos perfiles quedan apuntando al mismo, el primero que guarde
+pasa solo a tener el suyo, sin tocar la lista del otro.
+
+
 ---
 
 # 3. LO QUE YA ESTÁ HECHO
@@ -1619,6 +1693,10 @@ Sin detalle, para no volver a discutirlo:
   tope de 1200px que dejaba medio monitor vacío a la derecha (2.27).
 - **Métricas ordenada en capítulos**: los números arriba, qué te piden destacado,
   los desgloses abajo, y el estado del programa aparte al pie (2.27).
+- **Más de un CV por perfil**, cada uno con sus búsquedas, y cada oferta dice cuál
+  mandar (2.29).
+- **Cada perfil con su propio archivo de empresas**: guardar la lista de uno ya no
+  puede pisar la de otro (2.30).
 - **Filtro por antigüedad del aviso**: hoy, 7 días, 30 días, sin filtro. Lee las
   cuatro formas distintas en que los portales escriben la fecha.
 - **Cartel de cuántas ofertas se pierden por no saber inglés**, con cuánto

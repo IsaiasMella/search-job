@@ -134,6 +134,10 @@ Debajo, la lista de ofertas, ordenadas por qué tan bien te quedan. Cada una
 tiene:
 
 - **El puntaje** de 0 a 100, y abajo la razón que escribió el modelo.
+- **Qué CV mandar**, cuando tenés más de uno: *"Mandá tu CV Full Stack"*. Si la
+  oferta es de antes de que cargaras el segundo CV, la recomendación sale de
+  comparar las palabras del aviso con cada CV, sin gastar una llamada al modelo,
+  y la tarjeta lo marca como *estimado*.
 - **Un botón: Apliqué.** Es la acción que venís a hacer, y es el único en color.
   Al marcarla, **la tarjeta se va con una animación** y arriba aparece un cartel
   que la nombra: *"Aplicaste a «Python Senior Developer»"*. Con dos ofertas del
@@ -317,6 +321,23 @@ Ahí no hay ningún botón, a propósito: Métricas es una pantalla de lectura.
 Todo lo tuyo, sin tocar ningún archivo: el CV, qué buscás, dónde, qué idioma,
 de qué sitios traer ofertas, y tus claves.
 
+**Podés cargar más de un CV.** Si te postulás a dos clases de puesto, por
+ejemplo AI Engineer y Full Stack, cargá uno para cada una con *Agregar otro CV*.
+Cada CV tiene su nombre, sus propias palabras de búsqueda y su texto. Cuando hay
+más de uno cambian tres cosas:
+
+- **Cada CV amplía la búsqueda.** Sus palabras se suman en todos los portales,
+  también en los que tienen términos propios.
+- **Cada oferta se puntúa contra el CV que mejor le encaja**, no contra el
+  primero. Una oferta de Full Stack ya no sale baja por compararla con el CV de AI.
+- **Cada tarjeta dice qué CV mandar**, y Consejo y Mensajes trabajan contra ése.
+
+Un CV recién agregado nace vacío y no cuenta hasta que tenga texto. Podés cargar
+los que quieras. Con más de uno, arriba aparece **Estás viendo el CV**, un
+desplegable que muestra uno por vez sin perder lo que todavía no guardaste.
+*Borrar este CV* pide confirmación y después lo borra de verdad, con su texto.
+El último no se puede borrar.
+
 Abajo de todo se crea el perfil de otra persona de la casa.
 
 ### ¿La pantalla muestra lo último, o hay que buscar de nuevo?
@@ -478,6 +499,31 @@ huecos marcados.
   "notifiers": [ { "type": "telegram", "enabled": true } ]
 }
 ```
+
+### Varios CV (`cvs`)
+
+```json
+"cvs": [
+  {"id": "ai-engineer", "nombre": "AI Engineer", "path": "resume/isaias.md",
+   "palabras_clave": ["AI Engineer", "LLM Engineer"]},
+  {"id": "full-stack", "nombre": "Full Stack", "path": "resume/isaias-full-stack.md",
+   "palabras_clave": ["Full Stack", "React", "Next.js"]}
+]
+```
+
+Se edita desde *Mi perfil*. Un perfil sin `cvs` sigue andando con `cv_path`, como
+un único CV. Lo que conviene saber:
+
+- **El `id` es lo que se guarda en cada oferta**, no el nombre: renombrar un CV no
+  rompe las recomendaciones viejas. `cv_path` queda apuntando al primero.
+- **`palabras_clave` se suma a los términos de todas las fuentes**, incluidas las
+  que tienen `search_terms` propios. Las fuentes ya rotan los términos por día con
+  un tope por corrida, así que más términos reparten la cobertura entre días y no
+  multiplican los pedidos.
+- **Con un solo CV con texto, el prompt de scoring es exactamente el de siempre.**
+  Con dos o más, el modelo ve todos, elige con cuál postularse y puntúa contra ése.
+  Del bloque `candidate` se omite `profile`, porque describe a la persona desde uno
+  solo de sus perfiles; `seeking` y `not_suitable` quedan.
 
 ### `candidate`, y por qué `not_suitable` es el campo más importante
 
@@ -769,8 +815,15 @@ Isaías al 12/9/2026.
 
 ## Empresas
 
-`companies.json` alimenta la fuente `careers`. Se edita desde la pantalla. Las
+La lista de empresas alimenta la fuente `careers`. Se edita desde la pantalla. Las
 entradas cuyo nombre empieza con `EJEMPLO` se ignoran.
+
+**Cada perfil tiene su propio archivo**, el que dice `companies_file` en su bloque
+`careers`. Isaías usa `companies.json`; los perfiles nuevos nacen con
+`companies-<nombre>.json`. Compartir el archivo era un bug: guardar la lista de un
+perfil pisaba la del otro, y el 12/9/2026 así se perdieron las 10 empresas de
+Isaías. Si igual quedan dos perfiles apuntando al mismo archivo, el primero que
+guarde pasa solo a tener el suyo, y el otro no se toca.
 
 ```json
 {
@@ -926,7 +979,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  518 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  550 passed
 ```
 
 ---

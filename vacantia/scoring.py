@@ -8,6 +8,8 @@ que venga) y sale la misma lista con score, stack, reason y worth_applying.
 import json
 import time
 
+from vacantia.config import id_de_cv
+from vacantia.consejo import cv_que_mejor_encaja
 from vacantia.llm import chat_with_llm, has_llm_credentials
 from vacantia.log import get_logger
 from vacantia.models import Job
@@ -102,7 +104,102 @@ Set worth_applying=true only if score >= {min_score}.
 Include ALL jobs. Output ONLY the JSON array."""
 
 
-def build_candidate_profile(profile: dict) -> str:
+# --- varios CV ------------------------------------------------------------------
+#
+# Una persona puede postularse con más de un CV (AI Engineer y Full Stack, por
+# ejemplo). Con uno solo el prompt es exactamente el de arriba, sin tocar una
+# letra. Con varios, el CV único se cambia por la lista y se le pide al modelo
+# que diga con cuál conviene postularse y que puntúe contra ÉSE.
+#
+# Puntuar contra el mejor CV es la mitad del valor de todo esto: una oferta de
+# Full Stack puntuada contra el CV de AI salía baja y el filtro de puntaje
+# mínimo la escondía aunque encajara perfecto con el otro CV.
+
+_BLOQUE_CVS = """CANDIDATE CVs — the candidate can apply with ANY of these. They are
+different professional profiles of the SAME person, not different people:
+
+{cvs_text}"""
+
+_CAMPO_CV = '  "cv": "id of the CV to send for THIS job, one of: {ids}",\n'
+
+_REGLA_CV = """CV — pick the CV that fits THIS job best and score the job against THAT CV
+only. A job that fits one CV well is a good job even if it fits the others badly.
+The reason must say why that CV fits. Use only the ids listed above.
+
+"""
+
+
+def _armar_prompt_varios_cv() -> str:
+    """El prompt de siempre, con el CV único cambiado por la lista de CV.
+
+    Se arma a partir de SCORE_PROMPT y no como una copia, así cualquier regla que
+    se ajuste en el prompt de un CV vale también para el de varios. Por eso los
+    tres reemplazos se verifican: si alguien reescribe una de esas líneas, esto
+    tiene que romper fuerte en vez de mandar un prompt sin la lista de CV.
+    """
+    plantilla = SCORE_PROMPT
+    for viejo, nuevo in (
+        ("RESUME SUMMARY:\n{resume_summary}", _BLOQUE_CVS),
+        ('  "score": 0-100,\n', '  "score": 0-100,\n' + _CAMPO_CV),
+        ("Scoring: 80-100", _REGLA_CV + "Scoring: 80-100"),
+    ):
+        if plantilla.count(viejo) != 1:
+            raise RuntimeError(f"SCORE_PROMPT cambió y ya no tiene {viejo!r}")
+        plantilla = plantilla.replace(viejo, nuevo)
+    return plantilla
+
+
+SCORE_PROMPT_VARIOS_CV = _armar_prompt_varios_cv()
+
+
+def _como_cvs(resume) -> list[dict]:
+    """La lista de CV, aunque quien llama pase un texto suelto.
+
+    `score_jobs` y `triage` recibían el CV como un `str`. Ahora reciben la lista
+    de `config.load_resumes`, pero un texto suelto se sigue aceptando: se lo
+    envuelve como un CV único y todo funciona como antes.
+    """
+    if isinstance(resume, str):
+        return [{"id": "principal", "nombre": "Principal", "texto": resume}]
+    cvs = [cv for cv in (resume or []) if isinstance(cv, dict)]
+    # Un CV recién agregado y todavía vacío no es una opción: mandarlo al modelo
+    # armaría el prompt de varios CV con uno que no dice nada.
+    con_texto = [cv for cv in cvs if (cv.get("texto") or "").strip()]
+    return con_texto or cvs[:1] or [{"id": "principal", "nombre": "Principal", "texto": ""}]
+
+
+def _cvs_text(cvs: list[dict]) -> str:
+    return "\n\n".join(
+        f'CV id="{cv["id"]}" ({cv.get("nombre") or cv["id"]}):\n{(cv.get("texto") or "")[:2500]}'
+        for cv in cvs
+    )
+
+
+def _palabras_de(cvs: list[dict]) -> set[str]:
+    """Las palabras de TODOS los CV juntos, para el triaje y la heurística.
+
+    Con las de un solo CV, el triaje dejaba para después justo las ofertas que
+    encajan con el otro, que es lo contrario de lo que se busca.
+    """
+    return {w for cv in cvs for w in (cv.get("texto") or "").lower().split() if len(w) > 3}
+
+
+def _cv_elegido(item: dict, job: Job, cvs: list[dict]) -> str:
+    """El id que devolvió el modelo, validado. Si no sirve, la estimación gratis.
+
+    Se acepta también el nombre en vez del id ("Full Stack" por "full-stack"):
+    el modelo a veces copia lo que está entre paréntesis.
+    """
+    ids = {cv["id"] for cv in cvs}
+    crudo = str(item.get("cv") or "").strip()
+    if crudo in ids:
+        return crudo
+    if id_de_cv(crudo) in ids:
+        return id_de_cv(crudo)
+    return cv_que_mejor_encaja(job, cvs)
+
+
+def build_candidate_profile(profile: dict, varios_cv: bool = False) -> str:
     cand = profile.get("candidate", {})
     lines = [f"- {cand.get('name', 'el candidato')}"]
     for key, label in (
@@ -110,6 +207,12 @@ def build_candidate_profile(profile: dict) -> str:
         ("seeking", "Seeking"),
         ("not_suitable", "NOT suitable"),
     ):
+        # Con varios CV, "profile" sobra y además sesga: dice qué es la persona
+        # desde UNO de sus perfiles ("AI Engineer: conecto modelos...") y el
+        # modelo puntuaba todo contra ése. Cada CV ya habla por sí mismo.
+        # "seeking" y "not_suitable" quedan: son de la persona, no de un CV.
+        if key == "profile" and varios_cv:
+            continue
         val = cand.get(key)
         if val:
             lines.append(f"- {label + ': ' if label else ''}{val}")
@@ -197,13 +300,25 @@ def _parse_scored_array(raw: str) -> list[dict]:
     return salvaged
 
 
-def _score_batch_with_llm(jobs: list[Job], resume: str, profile: dict, min_score: int) -> list[Job]:
-    prompt = SCORE_PROMPT.format(
-        candidate_profile=build_candidate_profile(profile),
-        resume_summary=resume[:2500],
-        jobs_text=_jobs_text(jobs),
-        min_score=min_score,
-    )
+def _score_batch_with_llm(jobs: list[Job], cvs: list[dict], profile: dict,
+                          min_score: int) -> list[Job]:
+    if len(cvs) == 1:
+        # Un solo CV: el prompt de siempre, byte a byte. Nada cambia para quien
+        # no cargó un segundo CV.
+        prompt = SCORE_PROMPT.format(
+            candidate_profile=build_candidate_profile(profile),
+            resume_summary=(cvs[0].get("texto") or "")[:2500],
+            jobs_text=_jobs_text(jobs),
+            min_score=min_score,
+        )
+    else:
+        prompt = SCORE_PROMPT_VARIOS_CV.format(
+            candidate_profile=build_candidate_profile(profile, varios_cv=True),
+            cvs_text=_cvs_text(cvs),
+            ids=", ".join(cv["id"] for cv in cvs),
+            jobs_text=_jobs_text(jobs),
+            min_score=min_score,
+        )
 
     logger.debug(f"  Puntuando {len(jobs)} oferta(s) con LLM (min_score={min_score})...")
     t0 = time.time()
@@ -226,6 +341,8 @@ def _score_batch_with_llm(jobs: list[Job], resume: str, profile: dict, min_score
         job.stack = item.get("stack", "")
         job.location_remote = item.get("location_remote", "") or job.location
         job.reason = item.get("reason", "")
+        if len(cvs) > 1:
+            job.cv_recomendado = _cv_elegido(item, job, cvs)
         job.worth_applying = bool(item.get("worth_applying", job.score >= min_score))
         # Campos de filtrado. Se normalizan acá para que filters.py reciba
         # siempre "" cuando el aviso no dice nada (el LLM a veces manda null,
@@ -263,7 +380,7 @@ def _heuristic_score(job: Job, keywords: list[str], resume_words: set[str]) -> t
     return min(int(round(kw_score + resume_score)), 100), hits
 
 
-def triage(jobs: list[Job], resume: str, profile: dict) -> tuple[list[Job], list[Job]]:
+def triage(jobs: list[Job], resume, profile: dict) -> tuple[list[Job], list[Job]]:
     """Reparte las ofertas nuevas entre "puntuar ahora" y "dejar para después".
 
     Existe para el pico de backfill: cuando cargás 20 empresas nuevas o cambiás
@@ -281,7 +398,7 @@ def triage(jobs: list[Job], resume: str, profile: dict) -> tuple[list[Job], list
 
     limit = int(limit)
     keywords = [k.lower() for k in (profile.get("keywords") or []) if k]
-    resume_words = {w for w in resume.lower().split() if len(w) > 3}
+    resume_words = _palabras_de(_como_cvs(resume))
 
     ranked = sorted(
         jobs, key=lambda j: _heuristic_score(j, keywords, resume_words)[0], reverse=True
@@ -294,14 +411,15 @@ def triage(jobs: list[Job], resume: str, profile: dict) -> tuple[list[Job], list
     return ahora, despues
 
 
-def _score_batch_heuristic(jobs: list[Job], resume: str, profile: dict, min_score: int) -> list[Job]:
+def _score_batch_heuristic(jobs: list[Job], cvs: list[dict], profile: dict,
+                          min_score: int) -> list[Job]:
     """Scoring sin LLM: solapamiento de keywords entre el perfil/CV y la oferta.
 
     No pretende reemplazar al LLM — existe para que el pipeline corra completo
     sin credenciales (primera corrida, CI, debug de fuentes nuevas).
     """
     keywords = [k.lower() for k in (profile.get("keywords") or []) if k]
-    resume_words = {w for w in resume.lower().split() if len(w) > 3}
+    resume_words = _palabras_de(cvs)
 
     for job in jobs:
         job.score, hits = _heuristic_score(job, keywords, resume_words)
@@ -313,15 +431,21 @@ def _score_batch_heuristic(jobs: list[Job], resume: str, profile: dict, min_scor
             f"{': ' + ', '.join(hits[:4]) if hits else ''}"
         )
         job.worth_applying = job.score >= min_score
+        if len(cvs) > 1:
+            job.cv_recomendado = cv_que_mejor_encaja(job, cvs)
         logger.debug(f"    [{job.score:3d}] {job.display_title} — {job.reason[:80]}")
 
     return jobs
 
 
-def score_jobs(jobs: list[Job], resume: str, profile: dict) -> list[Job]:
-    """Puntúa en lotes. Nunca levanta: si el LLM falla, cae a la heurística."""
+def score_jobs(jobs: list[Job], resume, profile: dict) -> list[Job]:
+    """Puntúa en lotes. Nunca levanta: si el LLM falla, cae a la heurística.
+
+    `resume` es la lista de `config.load_resumes`; un texto suelto también sirve.
+    """
     if not jobs:
         return []
+    cvs = _como_cvs(resume)
 
     min_score = int(profile.get("min_score", 60))
     use_llm = has_llm_credentials(profile.get("llm", {}))
@@ -339,11 +463,11 @@ def score_jobs(jobs: list[Job], resume: str, profile: dict) -> list[Job]:
                 logger.debug(f"  Espero {demora:.0f}s entre lotes (límite por minuto)")
                 time.sleep(demora)
             try:
-                out.extend(_score_batch_with_llm(batch, resume, profile, min_score))
+                out.extend(_score_batch_with_llm(batch, cvs, profile, min_score))
                 continue
             except Exception as e:
                 logger.error(f"  Falló el scoring con LLM ({e}) — caigo a la heurística en este lote")
-        out.extend(_score_batch_heuristic(batch, resume, profile, min_score))
+        out.extend(_score_batch_heuristic(batch, cvs, profile, min_score))
 
     return sorted(out, key=lambda j: j.score or 0, reverse=True)
 

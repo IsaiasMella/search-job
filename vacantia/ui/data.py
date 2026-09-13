@@ -15,7 +15,8 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from vacantia.config import PROFILES_DIR, load_profile, load_resume, profile_path
+from vacantia.config import (PROFILES_DIR, cvs_con_texto, cvs_del_perfil, id_de_cv,
+                             load_profile, load_resumes, profile_path)
 from vacantia.fechas import dias_desde, fecha_de
 from vacantia.filters import passes_language
 from vacantia.log import get_logger
@@ -110,6 +111,13 @@ def crear_perfil(nombre: str) -> str:
     data.pop("_comentario", None)   # la nota es del molde, no del perfil nuevo
     data["name"] = nombre
     data["cv_path"] = f"resume/{nombre}.md"
+    # Cada perfil con su propio archivo de empresas. La plantilla trae
+    # `companies.json`, que es el de Isaías: copiado tal cual, el perfil nuevo
+    # compartía ese archivo, y guardar su lista pisaba la del otro. Pasó el
+    # 12/9/2026 con el perfil de papá y se perdieron las 10 empresas de Isaías.
+    for fuente in data.get("sources") or []:
+        if fuente.get("type") == "careers":
+            fuente["companies_file"] = f"companies-{nombre}.json"
     guardar_perfil(nombre, data)
 
     cv = RESUME_DIR / f"{nombre}.md"
@@ -132,6 +140,91 @@ def ruta_cv(perfil: dict) -> Path:
 def leer_cv(perfil: dict) -> str:
     ruta = ruta_cv(perfil)
     return ruta.read_text(encoding="utf-8") if ruta.exists() else ""
+
+
+def fijar_cvs(perfil: dict, cvs: list[dict]) -> None:
+    """Escribe la lista de CV en el perfil (en memoria; guardarlo es aparte).
+
+    `cv_path` sigue apuntando al primero: lo leen el drafter y cualquier cosa
+    vieja que todavía piense en un CV solo, y así no se entera del cambio.
+    """
+    perfil["cvs"] = [
+        {"id": cv["id"], "nombre": cv["nombre"], "path": cv["path"],
+         "palabras_clave": list(cv.get("palabras_clave") or [])}
+        for cv in cvs
+    ]
+    perfil["cv_path"] = perfil["cvs"][0]["path"]
+
+
+def agregar_cv(nombre_perfil: str) -> str:
+    """Suma un CV vacío al perfil, para completarlo en la pantalla. Devuelve su id.
+
+    Nace vacío a propósito y así no cuenta para nada (ver `config.cvs_con_texto`)
+    hasta que tenga texto: agregarlo no cambia ninguna recomendación ni ningún
+    puntaje. El archivo es `resume/<perfil>-<id>.md`; si ya existía uno con ese
+    nombre, no se pisa.
+    """
+    perfil = leer_perfil(nombre_perfil)
+    cvs = cvs_del_perfil(perfil)
+    ids = {cv["id"] for cv in cvs}
+    numero = len(cvs) + 1
+    while id_de_cv(f"CV {numero}") in ids:
+        numero += 1
+    nombre_cv = f"CV {numero}"
+    cv_id = id_de_cv(nombre_cv)
+
+    ruta = RESUME_DIR / f"{nombre_perfil}-{cv_id}.md"
+    if not ruta.exists():
+        RESUME_DIR.mkdir(parents=True, exist_ok=True)
+        ruta.write_text("", encoding="utf-8")
+
+    fijar_cvs(perfil, cvs + [{"id": cv_id, "nombre": nombre_cv,
+                             "path": ruta.as_posix(), "palabras_clave": []}])
+    guardar_perfil(nombre_perfil, perfil)
+    logger.info(f"[ui] CV agregado a {nombre_perfil}: {cv_id} ({ruta})")
+    return cv_id
+
+
+def borrar_cv(nombre_perfil: str, cv_id: str) -> str:
+    """Borra un CV del perfil y su archivo. Devuelve su nombre, o "" si no se pudo.
+
+    **Es definitivo**, y por eso la pantalla pide confirmación antes de llegar
+    acá. No se puede borrar el último: el perfil tiene que quedar con uno.
+
+    El archivo no se borra si lo lee otro CV, de éste o de otro perfil: pasa si
+    alguien apunta dos CV al mismo texto a mano, y borrar uno no puede dejar al
+    otro vacío. Las ofertas que recomendaban el CV borrado se vuelven a estimar
+    solas.
+    """
+    perfil = leer_perfil(nombre_perfil)
+    cvs = cvs_del_perfil(perfil)
+    borrado = next((cv for cv in cvs if cv["id"] == cv_id), None)
+    quedan = [cv for cv in cvs if cv["id"] != cv_id]
+    if borrado is None or not quedan:
+        return ""
+    fijar_cvs(perfil, quedan)
+    guardar_perfil(nombre_perfil, perfil)
+
+    ruta = Path(borrado["path"])
+    if ruta.exists() and not _archivo_de_cv_en_uso(ruta):
+        ruta.unlink()
+        logger.info(f"[ui] CV borrado de {nombre_perfil}: {cv_id} ({ruta})")
+    else:
+        logger.info(f"[ui] CV sacado de {nombre_perfil}: {cv_id} (el archivo lo usa otro CV)")
+    return borrado["nombre"]
+
+
+def _archivo_de_cv_en_uso(ruta: Path) -> bool:
+    """¿Algún CV de algún perfil lee este archivo?"""
+    objetivo = ruta.resolve()
+    for nombre in perfiles():
+        try:
+            otro = leer_perfil(nombre)
+        except (FileNotFoundError, json.JSONDecodeError):
+            continue
+        if any(Path(cv["path"]).resolve() == objetivo for cv in cvs_del_perfil(otro)):
+            return True
+    return False
 
 
 def guardar_cv(perfil: dict, texto: str) -> None:
@@ -215,6 +308,38 @@ def leer_companies(perfil: dict) -> list[dict]:
         logger.warning(f"[ui] {ruta} no es JSON válido — lo muestro vacío")
         return []
     return data if isinstance(data, list) else []
+
+
+def otros_perfiles_con_las_mismas_empresas(nombre_perfil: str, perfil: dict) -> list[str]:
+    """Los demás perfiles que leen y escriben el mismo archivo de empresas."""
+    propia = ruta_companies(perfil).resolve()
+    otros = []
+    for otro in perfiles():
+        if otro == nombre_perfil:
+            continue
+        try:
+            if ruta_companies(leer_perfil(otro)).resolve() == propia:
+                otros.append(otro)
+        except (FileNotFoundError, json.JSONDecodeError):
+            continue
+    return otros
+
+
+def separar_companies(nombre_perfil: str, perfil: dict) -> list[str]:
+    """Si otro perfil usa el mismo archivo de empresas, éste pasa a tener el suyo.
+
+    Devuelve con quiénes lo compartía, o [] si no hizo falta separar. Cambia el
+    perfil en memoria: guardarlo es de quien llama.
+
+    **El que se va es el que guarda, y el otro no se toca.** Así, guardar la
+    lista de un perfil nunca puede pisar la de otro, que es exactamente lo que
+    pasó cuando compartían archivo: se guardó el perfil de papá y la lista de
+    Isaías desapareció.
+    """
+    otros = otros_perfiles_con_las_mismas_empresas(nombre_perfil, perfil)
+    if otros:
+        fuente_o_crear(perfil, "careers")["companies_file"] = f"companies-{nombre_perfil}.json"
+    return otros
 
 
 def companies_a_texto(companies: list[dict]) -> str:
@@ -681,7 +806,52 @@ def ofertas(nombre_perfil: str, ver: str = "pendientes", desde: str = "todo",
     paginas = max(1, -(-len(historial) // POR_PAGINA))   # división para arriba
     pagina = min(max(1, pagina), paginas)
     arranca = (pagina - 1) * POR_PAGINA
-    return historial[arranca : arranca + POR_PAGINA], pagina, paginas
+    return (_con_cv_para_mandar(nombre_perfil, historial[arranca : arranca + POR_PAGINA]),
+            pagina, paginas)
+
+
+def _con_cv_para_mandar(nombre_perfil: str, ofertas: list[dict]) -> list[dict]:
+    """Qué CV mandar a cada oferta de esta página. Viaja pegado en `_cv`.
+
+    `_cv` es {id, nombre, estimado}. Así la tarjeta sólo tiene que dibujarlo:
+    no necesita abrir el perfil ni saber cómo se llama cada CV, igual que con
+    `_recien` y `_motivos_sistema`.
+
+    Las que se puntuaron antes de que el perfil tuviera varios CV no traen
+    recomendación del modelo. No se re-puntúan, que serían decenas de llamadas:
+    se estima gratis por palabras con `consejo.cv_que_mejor_encaja`, y queda
+    marcado como estimado para que la tarjeta lo diga. Lo mismo si recomendaba
+    un CV que después se borró: dejarla sin nada sería tirar un dato que se
+    puede calcular.
+
+    **Sólo la página que se va a dibujar**, 20 como mucho, y **sólo con dos o
+    más CV escritos**: con uno no hay nada que recomendar. No se guarda en el
+    historial: se recalcula en cada carga, así si cambiás un CV la
+    recomendación se acomoda sola.
+    """
+    try:
+        perfil = leer_perfil(nombre_perfil)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return ofertas
+    if len(cvs_del_perfil(perfil)) < 2:
+        return ofertas                  # ni siquiera se leen los archivos
+    cvs = cvs_con_texto(perfil)
+    if len(cvs) < 2:
+        return ofertas
+
+    from vacantia.consejo import cv_que_mejor_encaja
+
+    por_id = {cv["id"]: cv for cv in cvs}
+    salida = []
+    for oferta in ofertas:
+        elegido = oferta.get("cv_recomendado")
+        estimado = elegido not in por_id
+        if estimado:
+            elegido = cv_que_mejor_encaja(Job.from_dict(oferta), cvs)
+        salida.append({**oferta, "_cv": {"id": elegido,
+                                         "nombre": por_id[elegido]["nombre"],
+                                         "estimado": estimado}})
+    return salida
 
 
 def contar_ofertas(nombre_perfil: str, desde: str = "todo") -> dict[str, int]:
@@ -853,6 +1023,31 @@ def como_job(oferta: dict) -> Job:
     return Job.from_dict(oferta)
 
 
+def cv_para_oferta(nombre_perfil: str, oferta: dict, perfil: dict | None = None) -> dict:
+    """El CV con el que conviene postularse a esta oferta.
+
+    {id, nombre, path, palabras_clave, texto, estimado}. El que recomendó el
+    modelo si sigue existiendo y tiene texto; si no, el estimado por palabras;
+    con un solo CV, ése. Es lo que usan Consejo y Mensajes: aconsejar sobre el
+    CV de AI para una oferta de Full Stack sería aconsejar sobre el equivocado.
+
+    `perfil` se pasa cuando quien llama ya lo tiene cargado, para no leerlo dos
+    veces; puede venir con los secretos resueltos o no, los CV son iguales.
+    """
+    cvs = cvs_con_texto(perfil if perfil is not None else leer_perfil(nombre_perfil))
+    if len(cvs) == 1:
+        return {**cvs[0], "estimado": False}
+    por_id = {cv["id"]: cv for cv in cvs}
+    elegido = str(oferta.get("cv_recomendado") or "")
+    if elegido in por_id:
+        return {**por_id[elegido], "estimado": False}
+
+    from vacantia.consejo import cv_que_mejor_encaja
+
+    estimado = cv_que_mejor_encaja(Job.from_dict(oferta), cvs)
+    return {**por_id[estimado], "estimado": True}
+
+
 def mensajes_con_llm(nombre_perfil: str, job: Job) -> tuple[dict[str, str], bool]:
     """Los dos mensajes escritos por el modelo. (textos, los escribió el modelo).
 
@@ -862,7 +1057,7 @@ def mensajes_con_llm(nombre_perfil: str, job: Job) -> tuple[dict[str, str], bool
     from vacantia import mensajes as mensajes_mod
 
     perfil = load_profile(nombre_perfil)
-    cv = load_resume(perfil)
+    cv = cv_para_oferta(nombre_perfil, job.to_dict(), perfil)["texto"]
     textos, escritos = {}, []
     for tipo in mensajes_mod.TIPOS:
         texto, ok = mensajes_mod.generar(job, cv, perfil, tipo)
@@ -902,7 +1097,8 @@ def consejo_con_llm(nombre_perfil: str, job: Job) -> tuple[str, bool]:
     from vacantia import consejo as consejo_mod
 
     perfil = load_profile(nombre_perfil)
-    return consejo_mod.consejo_con_llm(job, load_resume(perfil), perfil)
+    cv = cv_para_oferta(nombre_perfil, job.to_dict(), perfil)["texto"]
+    return consejo_mod.consejo_con_llm(job, cv, perfil)
 
 
 def marca_de_cambio(nombre_perfil: str) -> str:

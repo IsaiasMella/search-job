@@ -62,8 +62,12 @@ class Handler(BaseHTTPRequestHandler):
     def _html(self, texto: str, codigo=200) -> None:
         self._responder(texto.encode("utf-8"), codigo=codigo)
 
-    def _redirigir(self, ruta: str, **params) -> None:
+    def _redirigir(self, ruta: str, ancla: str = "", **params) -> None:
         destino = f"{ruta}?{urlencode(params)}" if params else ruta
+        # La ancla va después del querystring: sin ella, agregar un CV te
+        # devolvía al principio de Mi perfil y el CV nuevo quedaba fuera de vista.
+        if ancla:
+            destino += f"#{ancla}"
         self.send_response(303)
         self.send_header("Location", destino)
         self.send_header("Content-Length", "0")
@@ -281,7 +285,10 @@ class Handler(BaseHTTPRequestHandler):
         else:
             textos = {t: mensajes_mod.molde(job, datos, t) for t in mensajes_mod.TIPOS}
             escrito = False
-        cuerpo = render.mensajes(perfil, oferta, textos, escrito, avisos_)
+        cv_usado = (data.cv_para_oferta(perfil, oferta, datos)
+                    if len(data.cvs_con_texto(datos)) > 1 else None)
+        cuerpo = render.mensajes(perfil, oferta, textos, escrito, avisos_,
+                                 cv_usado=cv_usado)
         self._pagina("Mensajes", cuerpo, perfil, "trabajos")
 
     def _get_consejo(self, perfil: str, params: dict, con_llm: bool = False) -> None:
@@ -297,8 +304,11 @@ class Handler(BaseHTTPRequestHandler):
 
         datos = data.leer_perfil(perfil)
         job = data.como_job(oferta)
-        cv = data.leer_cv(datos)
-        faltantes = consejo_mod.faltan_en_el_cv(job, cv)
+        # Las palabras que faltan se buscan en el CV que conviene mandar para ESTA
+        # oferta, no en el primero: con dos CV, comparar contra el equivocado
+        # marca como faltante justo lo que el otro CV sí tiene.
+        cv_usado = data.cv_para_oferta(perfil, oferta, datos)
+        faltantes = consejo_mod.faltan_en_el_cv(job, cv_usado["texto"])
 
         texto, escrito = "", False
         avisos_: list[tuple[str, str]] = []
@@ -307,11 +317,14 @@ class Handler(BaseHTTPRequestHandler):
             if not escrito:
                 avisos_.append(("error", "No pude usar el modelo — te queda igual "
                                          "la lista de palabras que faltan."))
-        cuerpo = render.consejo(perfil, oferta, faltantes, texto, escrito, avisos_)
+        varios = len(data.cvs_con_texto(datos)) > 1
+        cuerpo = render.consejo(perfil, oferta, faltantes, texto, escrito, avisos_,
+                                cv_usado=cv_usado if varios else None)
         self._pagina("Consejo", cuerpo, perfil, "trabajos")
 
     def _get_datos(self, perfil: str, params: dict) -> None:
-        cuerpo = formulario.render(perfil, data.leer_perfil(perfil), _mensajes(params))
+        cuerpo = formulario.render(perfil, data.leer_perfil(perfil), _mensajes(params),
+                                   cv_elegido=(params.get("cv") or [""])[0])
         self._pagina("Mi perfil", cuerpo, perfil, "datos")
 
     def _estadisticas(self, perfil: str, params: dict) -> None:
@@ -392,7 +405,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._post_feedback(form)
             if ruta == "/datos":
                 mensajes = formulario.aplicar(perfil, form)
-                return self._redirigir("/datos", perfil=perfil, ok=_resumen(mensajes))
+                # Volver al CV que estaba a la vista. Sin esto, guardar te devolvía
+                # siempre al primero y el que estabas editando quedaba escondido.
+                volver = {"cv": form["cv_elegido"]} if form.get("cv_elegido") else {}
+                return self._redirigir("/datos", perfil=perfil, ok=_resumen(mensajes),
+                                       **volver)
             if ruta == "/mensajes":
                 return self._get_mensajes(perfil, {"url": [form.get("url", "")]},
                                           con_llm=True)
@@ -411,6 +428,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._post_archivar(form)
             if ruta == "/archivar-viejas":
                 return self._post_archivar_viejas(form)
+            if ruta == "/cv-nuevo":
+                # Primero se guarda lo que estaba escrito, después se agrega.
+                mensajes = formulario.aplicar(perfil, form)
+                cv_id = data.agregar_cv(perfil)
+                return self._redirigir(
+                    "/datos", ancla=f"cv-{cv_id}", perfil=perfil, cv=cv_id,
+                    ok=f"{_resumen(mensajes)} Agregué un CV vacío: ponele nombre, qué "
+                       "buscar con él y pegá el texto. Mientras esté vacío no cuenta.")
+            if ruta == "/cv-borrar":
+                # Llega sólo desde la confirmación de "Borrar este CV".
+                mensajes = formulario.aplicar(perfil, form)
+                borrado = data.borrar_cv(perfil, form.get("cv_borrar", ""))
+                if borrado:
+                    return self._redirigir(
+                        "/datos", ancla="mis-cv", perfil=perfil,
+                        ok=f"{_resumen(mensajes)} Borré el CV «{borrado}».")
+                return self._redirigir("/datos", ancla="mis-cv", perfil=perfil,
+                                       error="Tiene que quedar al menos un CV.")
             if ruta == "/perfil-nuevo":
                 nuevo = data.crear_perfil(form.get("nombre", ""))
                 return self._redirigir(

@@ -36,6 +36,7 @@ import re
 import time
 from datetime import date
 
+from vacantia.config import terminos_de_busqueda
 from vacantia.config import resolve_secret
 from vacantia.fechas import dias_desde, parse_posted
 from vacantia.log import get_logger
@@ -272,7 +273,7 @@ def build_queries(profile: dict, config: dict) -> list[str]:
     que los últimos no se consultaran nunca. El offset por día del calendario
     los va rotando sin necesidad de guardar estado.
     """
-    roles = config.get("roles") or profile.get("keywords") or DEFAULT_ROLES
+    roles = terminos_de_busqueda(profile, config.get("roles")) or DEFAULT_ROLES
     roles = [str(r).strip() for r in roles if str(r).strip()]
     if not roles:
         return []

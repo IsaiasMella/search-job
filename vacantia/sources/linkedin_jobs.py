@@ -24,6 +24,7 @@ import sys
 import time
 from datetime import date
 
+from vacantia.config import terminos_de_busqueda
 from vacantia.log import get_logger
 from vacantia.models import Job
 from vacantia.sources.base import Source
@@ -111,7 +112,7 @@ def split_location(location: str) -> tuple[str, str, str]:
 
 def build_searches(profile: dict, config: dict) -> list[tuple[str, str]]:
     """Producto (término, ubicación), rotado por día si hay más que `max_searches`."""
-    terms = config.get("search_terms") or profile.get("keywords") or DEFAULT_SEARCH_TERMS
+    terms = terminos_de_busqueda(profile, config.get("search_terms")) or DEFAULT_SEARCH_TERMS
     terms = [str(t).strip() for t in terms if str(t).strip()]
     locations = config.get("locations") or DEFAULT_LOCATIONS
     locations = [str(l).strip() for l in locations if str(l).strip()]

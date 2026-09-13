@@ -11,6 +11,7 @@ import re
 import time
 from pathlib import Path
 
+from vacantia.config import terminos_de_busqueda
 from vacantia.config import resolve_secret
 from vacantia.log import get_logger
 from vacantia.models import Job
@@ -136,7 +137,7 @@ def build_search_query(domain: str, profile: dict) -> str:
     seniority = cand.get("search_seniority") or DEFAULT_SEARCH_SENIORITY
     keywords = cand.get("search_keywords")
     if not keywords:
-        profile_kw = profile.get("keywords") or []
+        profile_kw = terminos_de_busqueda(profile)
         keywords = (
             " OR ".join(f'"{k}"' for k in profile_kw) if profile_kw else DEFAULT_SEARCH_KEYWORDS
         )

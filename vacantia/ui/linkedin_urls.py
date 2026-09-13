@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+from vacantia.config import terminos_de_busqueda
 from vacantia.log import get_logger
 from vacantia.state import STATE_ROOT
 
@@ -58,12 +59,12 @@ PUESTOS_SUGERIDOS = (
 def puestos_de(perfil: dict) -> list[str]:
     """Los puestos que se ofrecen en el constructor.
 
-    Son **las palabras clave del perfil**, las mismas que usa el motor para
-    buscar en los portales. Un solo lugar donde se agregan y se sacan: si el
-    constructor tuviera su propia lista, agregar un puesto habría que hacerlo
-    dos veces y tarde o temprano quedarían distintas.
+    Son **las palabras clave del perfil y las de cada CV**, las mismas que usa
+    el motor para buscar en los portales. Un solo lugar donde se agregan y se
+    sacan: si el constructor tuviera su propia lista, agregar un puesto habría
+    que hacerlo dos veces y tarde o temprano quedarían distintas.
     """
-    crudas = (perfil or {}).get("keywords") or []
+    crudas = terminos_de_busqueda(perfil or {})
     puestos = [str(k).strip() for k in crudas if str(k).strip()]
     return puestos or list(PUESTOS_SUGERIDOS)
 

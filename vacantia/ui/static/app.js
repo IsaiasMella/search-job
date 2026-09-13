@@ -228,3 +228,19 @@ function avisar(texto) {
 // Lo que NO cambió, porque sigue siendo lo correcto: **no recarga sola**. Si
 // alguien está escribiendo el motivo de un descarte, una recarga se lo borra.
 // Avisa, y decide la persona.
+
+// Mis CV, en Mi perfil: se ve un CV por vez y se cambia con el desplegable.
+//
+// Los otros CV no se sacan del formulario, sólo se esconden: así lo que
+// escribiste en uno y todavía no guardaste sigue ahí cuando volvés, y al
+// guardar se mandan todos. El campo escondido `cv_elegido` viaja con el
+// formulario para que, después de guardar, la pantalla vuelva a este mismo CV.
+//
+// Sin JavaScript no hay desplegable y se ven todos, uno abajo del otro.
+function elegirCv(id) {
+  document.querySelectorAll('.mis-cv .grilla.cv').forEach(function (bloque) {
+    bloque.classList.toggle('activo', bloque.id === 'cv-' + id);
+  });
+  var campo = document.querySelector('input[name=cv_elegido]');
+  if (campo) { campo.value = id; }
+}

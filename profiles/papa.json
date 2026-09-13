@@ -1,23 +1,29 @@
 {
   "name": "papa",
   "cv_path": "resume/papa.md",
-  "keywords": [],
+  "keywords": [
+    "QHSE",
+    "Supervisor QHSE",
+    "HSE",
+    "CMASS"
+  ],
   "min_score": 60,
   "top_n": 5,
   "max_new_per_run": 30,
-  "notify_when_empty": true,
+  "notify_when_empty": false,
   "filters": {
     "max_age_days": 30,
     "location": {
       "country": "Argentina",
-      "city": ""
+      "city": []
     },
     "work_modes": [],
     "language": {
-      "allow_english": true,
+      "allow_english": false,
       "max_english_level": "A2",
       "scan_description": true
-    }
+    },
+    "excluir_titulos": []
   },
   "report": {
     "english_pain": false
@@ -30,7 +36,8 @@
     "phone": "",
     "relocation_note": "",
     "search_seniority": "",
-    "search_keywords": ""
+    "search_keywords": "",
+    "headline": ""
   },
   "llm": {
     "provider": "gemini",
@@ -45,15 +52,15 @@
   "sources": [
     {
       "type": "careers",
-      "enabled": false,
-      "companies_file": "companies.json",
+      "enabled": true,
+      "companies_file": "companies-papa.json",
       "api_key": "${TINYFISH_API_KEY}",
       "use_search": true,
       "max_companies": null
     },
     {
       "type": "google_posts",
-      "enabled": false,
+      "enabled": true,
       "provider": "tinyfish",
       "language": "es",
       "roles": [],
@@ -62,7 +69,7 @@
     },
     {
       "type": "linkedin",
-      "enabled": false,
+      "enabled": true,
       "search_terms": [],
       "locations": [
         "Argentina"
@@ -76,7 +83,7 @@
     },
     {
       "type": "rrhh",
-      "enabled": false,
+      "enabled": true,
       "profiles": [],
       "max_profiles": 12,
       "api_key": "${TINYFISH_API_KEY}"
@@ -92,7 +99,7 @@
     },
     {
       "type": "zonajobs",
-      "enabled": false,
+      "enabled": true,
       "search_terms": [],
       "location": "",
       "max_queries": 3,
@@ -101,7 +108,7 @@
     },
     {
       "type": "computrabajo",
-      "enabled": false,
+      "enabled": true,
       "search_terms": [],
       "location": "",
       "max_queries": 3,
@@ -110,6 +117,14 @@
     },
     {
       "type": "dummy",
+      "enabled": false
+    },
+    {
+      "type": "indeed",
+      "enabled": true
+    },
+    {
+      "type": "getonbrd",
       "enabled": false
     }
   ],

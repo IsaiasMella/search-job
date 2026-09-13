@@ -36,6 +36,7 @@ import time
 import unicodedata
 from datetime import date
 
+from vacantia.config import terminos_de_busqueda
 from vacantia.config import resolve_secret
 from vacantia.log import get_logger
 from vacantia.models import Job
@@ -127,7 +128,7 @@ class PortalSource(Source):
         Sin rotación, con `max_queries` chico los últimos términos del perfil no
         se consultarían nunca.
         """
-        crudos = self.config.get("search_terms") or self.profile.get("keywords") or []
+        crudos = terminos_de_busqueda(self.profile, self.config.get("search_terms"))
         terminos = [str(t).strip() for t in crudos if str(t).strip()]
         if not terminos or self.max_queries <= 0 or self.max_queries >= len(terminos):
             return terminos

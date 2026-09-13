@@ -120,6 +120,28 @@ def faltan_en_el_cv(job: Job, cv: str, limite: int = 12) -> list[str]:
     return faltantes
 
 
+def cv_que_mejor_encaja(job: Job, cvs: list[dict]) -> str:
+    """El id del CV al que le faltan menos términos del aviso. Sin llamar al modelo.
+
+    Es la recomendación para las ofertas que se puntuaron antes de que el perfil
+    tuviera varios CV, y el respaldo cuando el modelo no contesta cuál. Mira lo
+    mismo que mira un ATS, qué palabras del aviso no aparecen en el CV, así que
+    es tosca pero honesta: por eso la pantalla la marca como estimada.
+
+    Empate, o aviso sin texto: gana el primero, que es el CV principal.
+    """
+    if not cvs:
+        return ""
+    mejor, menos = cvs[0]["id"], None
+    for cv in cvs:
+        # `limite` alto a propósito: con el tope de 12 de siempre, dos CV a los
+        # que les faltan 15 y 30 términos empataban en 12.
+        faltan = len(faltan_en_el_cv(job, cv.get("texto") or "", limite=40))
+        if menos is None or faltan < menos:
+            mejor, menos = cv["id"], faltan
+    return mejor
+
+
 PROMPT = """Sos alguien con experiencia en selección de personal mirando un aviso y un CV.
 
 NO reescribas el CV. NO inventes experiencia. El CV que te paso funciona: la

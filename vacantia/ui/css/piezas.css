@@ -182,6 +182,87 @@
 .razon { color: var(--color-text-secondary); font-size: var(--text-body-sm);
          margin: 0 0 var(--spacing-md); max-width: var(--content-max-ch); }
 
+/* Qué CV mandar a esta oferta. Sólo aparece cuando el perfil tiene más de un
+   CV. Es información y no un control, así que respeta la regla de dos
+   controles por tarjeta: texto secundario y **nunca índigo**, porque en este
+   sistema el índigo significa que algo se puede apretar. El nombre del CV va
+   un escalón más fuerte porque es el dato; la frase alrededor, no. */
+.cv-recomendado { margin: calc(var(--spacing-md) * -0.5) 0 var(--spacing-md);
+                  color: var(--color-text-secondary); font-size: var(--text-body-sm); }
+.cv-recomendado b { color: var(--color-text-primary); font-weight: var(--weight-medium); }
+/* "estimado": la recomendación salió de comparar palabras y no del modelo.
+   Una etiqueta chica y apagada, con la explicación entera al pasar el mouse:
+   hay que poder distinguirla, pero no tiene que competir con el nombre. */
+.cv-estimado { margin-left: var(--spacing-xs); padding: 0 var(--spacing-xs);
+               border: var(--border-hairline) solid var(--color-border);
+               border-radius: var(--rounded-sm);
+               color: var(--color-text-tertiary); font-size: var(--text-caption);
+               cursor: help; }
+
+/* Mis CV, en Mi perfil. Cada CV es un bloque del mismo formulario, y se separan
+   con una línea y aire, no con tarjetas: son partes de un solo panel. */
+.grilla.cv + .grilla.cv { margin-top: var(--spacing-lg); padding-top: var(--spacing-lg);
+                          border-top: var(--border-hairline) solid var(--color-border-subtle); }
+/* "Agregar otro CV". Estaba como botón fantasma y no se veía: la persona no se
+   enteraba de que podía cargar más de un CV. Va a lo ancho y con borde
+   punteado, que es la forma conocida de "acá se agrega uno más", y en azul.
+
+   **El azul es una excepción a DESIGN.md, pedida a propósito.** Ahí `info` se
+   reserva para el estado del sistema. Pero el índigo es del botón primario de
+   esta pantalla, "Guardar cambios", y dos botones índigo competirían; el verde
+   diría "ya lo hiciste" y el rojo "error". El azul se distingue sin decir
+   ninguna de esas cosas. El par azul sobre su superficie ya lo controla el
+   test de contraste. */
+.agregar-cv { margin: var(--spacing-md) 0 0; }
+button.boton-agregar { width: 100%; border-style: dashed;
+                       border-color: var(--color-info);
+                       background: var(--color-info-surface); color: var(--color-info); }
+button.boton-agregar:hover { border-style: solid; background: var(--color-info-surface);
+                             color: var(--color-text-primary); }
+/* Mis CV se ve de a uno: el desplegable elige cuál. Los demás siguen en el
+   formulario, escondidos, así lo no guardado no se pierde al cambiar. Sin
+   JavaScript, una regla en <noscript> los vuelve a mostrar todos. */
+.mis-cv .grilla.cv:not(.activo) { display: none; }
+.selector-de-cv { display: flex; flex-wrap: wrap; align-items: center;
+                  gap: var(--spacing-sm) var(--spacing-md);
+                  margin: 0 0 var(--spacing-lg); }
+.selector-de-cv label { color: var(--color-text-secondary); font-size: var(--text-body-sm);
+                        font-weight: var(--weight-medium); }
+.selector-de-cv .cuantos { color: var(--color-text-tertiary); font-size: var(--text-caption); }
+
+/* Borrar un CV. El disparador es texto rojo y no un botón lleno: es una acción
+   destructiva y no puede competir con "Guardar cambios". La confirmación se
+   abre en el mismo bloque, con el nombre del CV a la vista, y recién ahí
+   aparece el botón que borra. */
+.borrar-cv { grid-column: 1 / -1; }
+.borrar-cv > summary { display: inline-flex; align-items: center; list-style: none;
+                       min-height: var(--control-height);
+                       padding: var(--spacing-sm) var(--spacing-md);
+                       border-radius: var(--rounded-md); cursor: pointer;
+                       color: var(--color-danger); font-size: var(--text-body-sm);
+                       font-weight: var(--weight-medium); }
+.borrar-cv > summary::-webkit-details-marker { display: none; }
+.borrar-cv > summary:hover { background: var(--color-danger-surface); }
+.borrar-cv[open] > summary { margin-bottom: var(--spacing-sm); }
+.borrar-cv .cuerpo { display: flex; flex-wrap: wrap; align-items: center;
+                     gap: var(--spacing-sm) var(--spacing-md);
+                     padding: var(--spacing-md);
+                     border: var(--border-hairline) solid var(--color-danger);
+                     border-radius: var(--rounded-md);
+                     background: var(--color-danger-surface); }
+.borrar-cv .cuerpo p { flex-basis: 100%; margin: 0; max-width: none;
+                       color: var(--color-text-primary); font-size: var(--text-body-sm); }
+button.peligro { border-color: var(--color-danger); background: transparent;
+                 color: var(--color-danger); }
+button.peligro:hover { border-color: var(--color-danger); background: var(--color-danger);
+                       color: var(--color-background); }
+
+/* El botón invisible que aprieta Enter (ver el formulario de Mi perfil). Fuera
+   de la vista pero no con display:none, que algunos navegadores ignoran al
+   buscar el botón por defecto. */
+.enviar-por-defecto { position: absolute; width: 1px; height: 1px; padding: 0;
+                      border: 0; overflow: hidden; clip-path: inset(50%); }
+
 /* La fila de acciones: la primaria, la alternativa real de ese momento, y el
    menú de tres puntos. Más de dos controles visibles por oferta es un error
    de diseño, así que todo lo demás vive adentro del menú. */

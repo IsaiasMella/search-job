@@ -7,7 +7,7 @@ Source y Notifier. Cambiar de fuente o de canal no toca este archivo.
 import time
 from dataclasses import dataclass, field
 
-from vacantia.config import load_resume
+from vacantia.config import load_resumes
 from vacantia.filters import (
     apply_filters,
     descartar_antes_de_puntuar,
@@ -154,7 +154,8 @@ def run(profile: dict, dry_run: bool = False) -> RunResult:
     logger.info(f"=== vacantia — perfil '{name}' ===")
     logger.info(f"min_score={min_score} | top_n={top_n or 'todos'}")
 
-    resume = load_resume(profile)
+    # Todos los CV del perfil: se puntúa contra el que mejor encaja con cada oferta.
+    cvs = load_resumes(profile)
     state = State(name)
 
     # 1) fuentes → Job
@@ -184,11 +185,11 @@ def run(profile: dict, dry_run: bool = False) -> RunResult:
 
     # 3) triaje: si entraron muchas de golpe (cargaste empresas nuevas, cambiaste
     #    los search_terms), puntúa las más prometedoras y difiere el resto.
-    to_score, deferred = triage(new_jobs, resume, profile)
+    to_score, deferred = triage(new_jobs, cvs, profile)
     result.deferred = len(deferred)
 
     # 4) scoring contra el CV
-    scored = score_jobs(to_score, resume, profile) if to_score else []
+    scored = score_jobs(to_score, cvs, profile) if to_score else []
     result.scored = len(scored)
 
     # 5) filtros de ubicación / modalidad / idioma

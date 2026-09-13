@@ -1,6 +1,6 @@
 """Notificador de Telegram. Adaptado de autopilot-jobhunt/job_hunt/notifier.py."""
 
-from vacantia.config import resolve_secret
+from vacantia.config import cvs_del_perfil, resolve_secret
 from vacantia.log import get_logger
 from vacantia.models import Job
 from vacantia.notifiers.base import Notifier
@@ -37,7 +37,15 @@ def _escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def format_message(jobs: list[Job], header: str) -> str:
+def _nombres_de_cv(profile: dict) -> dict[str, str]:
+    """{id: nombre} de los CV, sólo si hay más de uno. Con uno, la línea sobra."""
+    cvs = cvs_del_perfil(profile or {})
+    return {cv["id"]: cv["nombre"] for cv in cvs} if len(cvs) > 1 else {}
+
+
+def format_message(jobs: list[Job], header: str,
+                   nombres_cv: dict[str, str] | None = None) -> str:
+    nombres = nombres_cv or {}
     lines = [f"<b>{_escape(header)}</b>", f"<i>{len(jobs)} coincidencia(s)</i>\n"]
     for i, job in enumerate(jobs, 1):
         score = job.score if job.score is not None else "?"
@@ -47,6 +55,8 @@ def format_message(jobs: list[Job], header: str) -> str:
             f"📍 {_escape(job.display_location)}\n"
             + (f"🔧 {_escape(job.stack)}\n" if job.stack else "")
             + (f"✅ {_escape(job.reason)}\n" if job.reason else "")
+            + (f"📄 CV: {_escape(nombres[job.cv_recomendado])}\n"
+               if job.cv_recomendado in nombres else "")
             + f'<a href="{_escape(job.url)}">Ver oferta</a>\n'
         )
     return "\n".join(lines)
@@ -105,7 +115,7 @@ class TelegramNotifier(Notifier):
             cuerpo = f"<b>{_escape(header)}</b>\nSin novedades hoy."
             return send_telegram(self.token, self.chat_id, cuerpo + footer)
 
-        chunks = _split_chunks(format_message(jobs, header))
+        chunks = _split_chunks(format_message(jobs, header, _nombres_de_cv(self.profile)))
         chunks[-1] += footer  # las notas van al final del último mensaje
         ok = True
         for chunk in chunks:

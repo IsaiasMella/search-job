@@ -123,7 +123,74 @@ def _lista(valor) -> str:
     return str(valor or "")
 
 
-def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
+def _selector_de_cv(cvs: list[dict], elegido: str) -> str:
+    """El desplegable para cambiar de CV. Con un solo CV, sólo el campo escondido.
+
+    Se ve un CV por vez porque con cinco o seis, uno abajo del otro con su texto
+    entero, la pantalla era una columna interminable y no se encontraba nada.
+
+    `cv_elegido` viaja con el formulario: así, después de guardar, agregar o
+    borrar, la pantalla vuelve al CV que estabas mirando y no siempre al primero.
+    El desplegable no tiene `name` a propósito, para no mandarse dos veces.
+    """
+    oculto = f'<input type="hidden" name="cv_elegido" value="{esc(elegido)}">'
+    if len(cvs) < 2:
+        return oculto
+    opciones = "".join(
+        f'<option value="{esc(cv["id"])}"{" selected" if cv["id"] == elegido else ""}>'
+        f'{esc(cv["nombre"])}</option>'
+        for cv in cvs
+    )
+    return f"""<div class="selector-de-cv">
+  <label for="cv-elegido">Estás viendo el CV</label>
+  <select id="cv-elegido" onchange="elegirCv(this.value)">{opciones}</select>
+  <span class="cuantos">{len(cvs)} cargados</span>
+  {oculto}
+</div>"""
+
+
+def _bloque_de_cv(cv: dict, cuantos: int, activo: bool = False) -> str:
+    """Un CV: cómo se llama, qué buscar con él, y el texto.
+
+    Los botones de agregar y borrar van **adentro del formulario grande** y no
+    en uno propio, con `formaction`. Es a propósito: un formulario no puede ir
+    adentro de otro, y si fueran aparte, apretar "Agregar otro CV" perdería todo
+    lo que estabas escribiendo sin guardar. Así primero se guarda y después se
+    agrega o se borra.
+
+    **Borrar pide confirmación** y es definitivo: se va el CV y su texto. La
+    confirmación se abre adentro del mismo bloque, con un `<details>`, en vez de
+    un cartel del navegador: el cartel tapa la pantalla y no deja ver qué CV se
+    está por borrar, que es justo lo que hay que mirar antes de confirmar.
+
+    Con un solo CV no hay botón de borrar: tiene que quedar al menos uno.
+    """
+    prefijo = f"cv_{cv['id']}_"
+    borrar = "" if cuantos < 2 else f"""<details class="borrar-cv">
+    <summary>Borrar este CV</summary>
+    <div class="cuerpo">
+      <p>Se borra <b>{esc(cv['nombre'])}</b> con todo su texto, y no se puede recuperar.</p>
+      <button class="peligro" type="submit" formaction="/cv-borrar" name="cv_borrar"
+              value="{esc(cv['id'])}">Sí, borrar definitivamente</button>
+      <button class="fantasma" type="button"
+              onclick="this.closest('details').open = false">Cancelar</button>
+    </div>
+  </details>"""
+    clase = "grilla cv activo" if activo else "grilla cv"
+    return f"""<div class="{clase}" id="cv-{esc(cv['id'])}">
+  {_campo(prefijo + "nombre", "Nombre de este CV", cv["nombre"], placeholder="Full Stack",
+          ayuda="Es el que aparece en cada oferta: “Mandá tu CV Full Stack”.")}
+  {_campo(prefijo + "palabras", "Qué buscar con este CV", _lista(cv["palabras_clave"]),
+          placeholder="Full Stack, React, Next.js",
+          ayuda="Separadas por coma. Se suman a las palabras clave en todos los portales.")}
+  {_area(prefijo + "texto", "El CV", cv["texto"], 14,
+         ayuda="Texto plano o Markdown. Cuanto más concreto, mejor puntúa.")}
+  {borrar}
+</div>"""
+
+
+def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]],
+           cv_elegido: str = "") -> str:
     filtros = perfil.get("filters") or {}
     loc = filtros.get("location") or {}
     idioma = filtros.get("language") or {}
@@ -131,6 +198,11 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
     if isinstance(modos, str):
         modos = [modos]
     cand = perfil.get("candidate") or {}
+    cvs = data.load_resumes(perfil)
+    # El CV que se muestra. Si piden uno que no existe (lo acaban de borrar, o
+    # la dirección es vieja), el primero.
+    ids = [cv["id"] for cv in cvs]
+    elegido = cv_elegido if cv_elegido in ids else ids[0]
     env = data.leer_env()
     rrhh = data.fuente_o_crear(perfil, "rrhh") if _tiene(perfil, "rrhh") else {}
     activas = {s.get("type"): s.get("enabled", True) for s in perfil.get("sources") or []}
@@ -150,6 +222,11 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
 <h1>Mi perfil de {esc(nombre)}</h1>
 <form class="datos" method="post" action="/datos">
 <input type="hidden" name="perfil" value="{esc(nombre)}">
+<!-- El botón que aprieta Enter. Apretar Enter en un campo manda el formulario
+     con el PRIMER botón de envío que haya, y ése era "Agregar otro CV": un Enter
+     en cualquier campo agregaba un CV. Con el borrado habría sido peor. Éste va
+     primero, no se ve, y hace lo mismo que "Guardar cambios". -->
+<button type="submit" class="enviar-por-defecto" tabindex="-1" aria-hidden="true">Guardar cambios</button>
 
 <h2>Qué busco</h2>
 <div class="grilla">
@@ -225,11 +302,18 @@ def render(nombre: str, perfil: dict, mensajes: list[tuple[str, str]]) -> str:
   </div>
 </div>
 
-<h2>Mi CV</h2>
-<div class="grilla">
-  {_area("cv", "Se le pasa entero al que puntúa las ofertas", data.leer_cv(perfil), 16,
-         ayuda="Texto plano o Markdown. Cuanto más concreto, mejor puntúa.")}
+<h2 id="mis-cv">Mis CV</h2>
+<p class="ayuda">Cargá un CV por cada clase de puesto a la que te podés postular, los
+que quieras. Cada oferta te va a decir con cuál conviene mandarte, y cada CV suma
+sus propias búsquedas.</p>
+{_selector_de_cv(cvs, elegido)}
+<div class="mis-cv">
+{"".join(_bloque_de_cv(cv, len(cvs), cv["id"] == elegido) for cv in cvs)}
 </div>
+<noscript><style>.mis-cv .grilla.cv:not(.activo) {{ display: grid; }}
+.selector-de-cv {{ display: none; }}</style></noscript>
+<div class="agregar-cv"><button class="boton-agregar" type="submit" formaction="/cv-nuevo">
+  <span aria-hidden="true">+</span> Agregar otro CV</button></div>
 
 <h2>De dónde traer ofertas</h2>
 <div class="grilla">
@@ -371,15 +455,43 @@ def aplicar(nombre: str, form: dict) -> list[tuple[str, str]]:
     if "chat_id" in form:
         data.guardar_chat_id(perfil, form.get("chat_id", ""))
 
+    # Los CV. La lista sale del perfil, que es donde están los ids; del formulario
+    # sólo se toma lo que se puede editar. Un CV que no vino en el formulario
+    # queda como estaba.
+    cvs = data.cvs_del_perfil(perfil)
+    textos: dict[str, str] = {}
+    for cv in cvs:
+        prefijo = f"cv_{cv['id']}_"
+        if f"{prefijo}nombre" in form:
+            cv["nombre"] = form.get(f"{prefijo}nombre", "").strip() or cv["nombre"]
+        if f"{prefijo}palabras" in form:
+            cv["palabras_clave"] = _lista_desde(form.get(f"{prefijo}palabras", ""))
+        if f"{prefijo}texto" in form:
+            textos[cv["path"]] = form.get(f"{prefijo}texto", "")
+    # El formulario de antes mandaba un solo campo `cv`. Si llega, va al primero.
+    if "cv" in form and cvs[0]["path"] not in textos:
+        textos[cvs[0]["path"]] = form.get("cv", "")
+    data.fijar_cvs(perfil, cvs)
+
     data.guardar_perfil(nombre, perfil)
     mensajes.append(("ok", "Datos guardados."))
 
-    if "cv" in form:
-        data.guardar_cv(perfil, form.get("cv", ""))
+    for ruta, texto in textos.items():
+        data.guardar_cv({"cv_path": ruta}, texto)
 
     if "empresas" in form:
         previas = data.leer_companies(perfil)
         nuevas = data.texto_a_companies(form.get("empresas", ""), previas)
+        # Antes de guardar: si otro perfil usa el mismo archivo, éste pasa a
+        # tener el suyo. Las `previas` se leyeron antes a propósito, del archivo
+        # compartido, para no perder los campos que la pantalla no muestra.
+        otros = data.separar_companies(nombre, perfil)
+        if otros:
+            data.guardar_perfil(nombre, perfil)
+            mensajes.append((
+                "ok", f"Tus empresas ahora se guardan aparte de las de "
+                      f"{', '.join(otros)}: compartían la misma lista y guardar "
+                      f"una pisaba la otra."))
         data.guardar_companies(perfil, nuevas)
         sin_url = [c["name"] for c in nuevas if not c.get("careers_url")]
         if sin_url:

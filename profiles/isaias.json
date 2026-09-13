@@ -176,5 +176,13 @@
       "type": "console",
       "enabled": true
     }
+  ],
+  "cvs": [
+    {
+      "id": "principal",
+      "nombre": "AI Engineer",
+      "path": "resume/isaias.md",
+      "palabras_clave": []
+    }
   ]
 }
