@@ -117,6 +117,10 @@ if ($borrarDatos -eq "BORRAR TODO") {
     foreach ($p in $Perfiles) {
         [void](Borrar (Join-Path $RaizProyecto "profiles\$p.json") "perfil de $p")
         [void](Borrar (Join-Path $RaizProyecto "resume\$p.md") "CV de $p")
+        # Los otros CV del perfil (resume\<perfil>-<id>.md) y su lista de empresas.
+        Get-ChildItem (Join-Path $RaizProyecto "resume") -Filter "$p-*.md" -ErrorAction SilentlyContinue |
+            ForEach-Object { [void](Borrar $_.FullName "CV $($_.Name)") }
+        [void](Borrar (Join-Path $RaizProyecto "companies-$p.json") "empresas de $p")
     }
     [void](Borrar (Join-Path $RaizProyecto "state") "las ofertas guardadas")
     [void](Borrar (Join-Path $RaizProyecto "output") "los documentos generados")

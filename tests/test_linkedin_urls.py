@@ -473,4 +473,124 @@ def test_lo_aplicado_desde_linkedin_suma_al_contador_grande(sitio):
 
     # Y la pantalla dice de dónde salió, para que el total no suba solo.
     _, html, _ = get(base, "/trabajos?perfil=test&ver=pendientes")
-    assert "desde un posteo de LinkedIn" in html
+    assert "anotadas en LinkedIn URLs" in html
+
+
+# --- la pestaña Jobs --------------------------------------------------------
+
+
+def test_jobs_arma_el_link_1_de_la_estrategia_letra_por_letra():
+    """El "money link" de `estrategia-links-linkedin-pestana-jobs.md`: AI Engineer,
+    Argentina, última hora, remoto e híbrido, Senior, lo más nuevo primero."""
+    texto = L.armar_boolean_jobs(["AI Engineer"])
+    url = L.armar_url_jobs(texto, "argentina", ["3", "2"], ["4"], "1h", "recientes")
+    assert url == ("https://www.linkedin.com/jobs/search/?keywords=%22AI%20Engineer%22"
+                   "&geoId=100446943&f_TPR=r3600&f_WT=2%2C3&f_E=4&sortBy=DD")
+
+
+def test_jobs_poca_competencia_y_solicitud_sencilla():
+    url = L.armar_url_jobs('"AI Engineer"', cuando="24h", pocos_candidatos=True,
+                           sencilla=True)
+    q = parse_qs(urlparse(url).query)
+    assert q["f_TPR"] == ["r86400"]
+    assert q["f_JIYN"] == ["true"] and q["f_AL"] == ["true"]
+    # Sin tildar, no van: un parámetro en false no es lo mismo que no filtrar.
+    assert "f_JIYN" not in L.armar_url_jobs('"AI Engineer"')
+    assert "f_AL" not in L.armar_url_jobs('"AI Engineer"')
+
+
+def test_jobs_el_boolean_suma_el_stack_y_saca_los_junior_de_a_uno():
+    texto = L.armar_boolean_jobs(["AI Engineer", "LLM Engineer"], "Python, RAG ,",
+                                 L.EXCLUIR_JOBS)
+    assert texto == ('("AI Engineer" OR "LLM Engineer") AND (Python OR RAG)'
+                     " NOT Junior NOT Jr NOT Ssr NOT Semisenior NOT Trainee")
+    assert L.armar_boolean_jobs([], "Python") == ""       # sin puesto no hay búsqueda
+    assert L.armar_url_jobs("") == ""
+
+
+def test_jobs_los_valores_inventados_no_llegan_a_la_url():
+    """Vienen de la dirección de la pantalla: un `f_WT=9` no filtra nada pero
+    hace creer que sí."""
+    url = L.armar_url_jobs('"AI"', "marte", ["9"], ["x"], "nunca", "cualquiera")
+    assert url == "https://www.linkedin.com/jobs/search/?keywords=%22AI%22"
+    # Cualquier lugar es no mandar geoId.
+    assert "geoId" not in L.armar_url_jobs('"AI"', "mundo")
+
+
+def test_jobs_nombre_sugerido():
+    assert (L.nombre_sugerido_jobs(["AI Engineer"], "1h", pocos_candidatos=True)
+            == "AI Engineer, última hora, menos de 10 candidatos")
+
+
+def test_cada_pestania_ve_sus_favoritos(sitio):
+    """Van al mismo archivo y se separan por la dirección: los guardados antes
+    de que existiera Jobs siguen en Publicaciones sin migrar nada."""
+    posteo = L.armar_url('"AI Engineer" AND buscamos')
+    aviso = L.armar_url_jobs('"AI Engineer"', cuando="1h")
+    assert L.guardar_favorito("test", "Posteos", posteo) == "guardada"
+    assert L.guardar_favorito("test", "Avisos", aviso) == "guardada"
+
+    assert [f["nombre"] for f in L.favoritos("test", "publicaciones")] == ["Posteos"]
+    assert [f["nombre"] for f in L.favoritos("test", "jobs")] == ["Avisos"]
+    assert len(L.favoritos("test")) == 2
+
+
+def test_cada_pestania_tiene_su_anotador_y_las_dos_suman_a_trabajos(sitio):
+    from vacantia.ui import data
+
+    base, _ = sitio
+    antes = data.aplicadas_en("test", "30d")["cuantas"]
+
+    post(base, "/linkedin-apliques", {"perfil": "test", "tab": "jobs", "suma": "1"})
+    post(base, "/linkedin-apliques", {"perfil": "test", "tab": "jobs", "suma": "1"})
+    assert L.pendientes("test", "jobs") == 2
+    assert L.pendientes("test") == 0                  # Publicaciones no se enteró
+
+    _, html, _ = post(base, "/linkedin-apliques",
+                      {"perfil": "test", "tab": "jobs", "confirmar": "1"})
+    assert "desde búsquedas de empleos" in html
+    assert len(L.postulaciones("test", "jobs")) == 2
+    assert L.postulaciones("test", "publicaciones") == []
+
+    post(base, "/linkedin-apliques", {"perfil": "test", "suma": "1"})
+    post(base, "/linkedin-apliques", {"perfil": "test", "confirmar": "1"})
+    assert len(L.postulaciones("test")) == 3          # sin tipo, las dos
+    assert data.aplicadas_en("test", "30d")["cuantas"] == antes + 3
+
+
+def test_la_pestania_jobs_es_igual_a_publicaciones(sitio):
+    """Mismo taller: constructor, dirección entera, guardar, favoritos y anotador."""
+    base, _ = sitio
+    _, html, _ = get(base, "/linkedin?perfil=test&tab=jobs&puesto=Python"
+                           "&tambien=FastAPI&donde=argentina&modalidad=2&nivel=4"
+                           "&sin_junior=1&cuando=1h&orden=recientes&pocos=1")
+    assert 'class="lado controles"' in html and 'class="lado resultado"' in html
+    assert 'class="datos armador"' in html
+    assert 'class="url-generada"' in html and "jobs/search/" in html
+    assert "f_JIYN=true" in html and "f_TPR=r3600" in html
+    assert "Abrir en LinkedIn" in html and "Guardar en favoritos" in html
+    assert "Apliqué desde acá" in html and 'class="stepper"' in html
+    assert "Tus búsquedas guardadas" in html
+    # Lo elegido vuelve marcado, para retocarlo sin rehacerlo.
+    assert 'value="Python" checked' in html
+    assert 'name="modalidad" value="2" checked' in html
+    assert 'name="nivel" value="4" checked' in html
+    assert 'name="pocos" value="1" checked' in html
+    assert 'value="FastAPI"' in html
+    # Lo que no se entiende con el rótulo lleva el signo de pregunta.
+    assert html.count('class="ayuda-al-lado abajo"') >= 5
+    # Y el anotador vuelve a Jobs con la búsqueda armada.
+    assert "tab%3Djobs" in html and "pocos%3D1" in html
+
+
+def test_guardar_desde_jobs_vuelve_a_jobs(sitio):
+    base, _ = sitio
+    url = L.armar_url_jobs('"Python"', cuando="1h")
+    _, html, destino = post(base, "/linkedin-favorito",
+                            {"perfil": "test", "tab": "jobs", "url": url,
+                             "nombre": "Python última hora"})
+    assert "tab=jobs" in destino
+    assert "Python última hora" in html
+
+    _, publicaciones, _ = get(base, "/linkedin?perfil=test")
+    assert "Python última hora" not in publicaciones

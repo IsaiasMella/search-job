@@ -97,10 +97,11 @@ class Handler(BaseHTTPRequestHandler):
         self._html(render.pagina(titulo, cuerpo, perfil, data.perfiles(), tab,
                                  estado=data.estado_del_sistema(perfil)), codigo)
 
-    def _sin_perfiles(self) -> None:
-        """Instalación recién estrenada: no hay a quién mostrarle nada."""
-        cuerpo = formulario.render_sin_perfiles()
-        self._html(render.pagina("Empezar", cuerpo, "", [], "datos"))
+    def _sin_perfiles(self, params: dict) -> None:
+        """Instalación recién estrenada, o se borró el último perfil: no hay a
+        quién mostrarle nada. Los carteles sí, que dicen qué se borró."""
+        cuerpo = formulario.render_sin_perfiles(_mensajes(params))
+        self._html(render.pagina("Empezar", cuerpo, "", [], "configuracion"))
 
     # --- GET ------------------------------------------------------------
 
@@ -118,13 +119,15 @@ class Handler(BaseHTTPRequestHandler):
 
         perfil = self._perfil_pedido(params)
         if perfil is None:
-            return self._sin_perfiles()
+            return self._sin_perfiles(params)
 
         try:
             if ruta == "/trabajos":
                 return self._get_trabajos(perfil, params)
             if ruta == "/datos":
                 return self._get_datos(perfil, params)
+            if ruta == "/configuracion":
+                return self._get_configuracion(perfil, params)
             if ruta == "/mensajes":
                 return self._get_mensajes(perfil, params)
             if ruta == "/consejo":
@@ -323,9 +326,14 @@ class Handler(BaseHTTPRequestHandler):
         self._pagina("Consejo", cuerpo, perfil, "trabajos")
 
     def _get_datos(self, perfil: str, params: dict) -> None:
-        cuerpo = formulario.render(perfil, data.leer_perfil(perfil), _mensajes(params),
-                                   cv_elegido=(params.get("cv") or [""])[0])
+        cuerpo = formulario.render_datos(perfil, data.leer_perfil(perfil), _mensajes(params),
+                                         cv_elegido=(params.get("cv") or [""])[0])
         self._pagina("Mi perfil", cuerpo, perfil, "datos")
+
+    def _get_configuracion(self, perfil: str, params: dict) -> None:
+        cuerpo = formulario.render_configuracion(perfil, data.leer_perfil(perfil),
+                                                 _mensajes(params))
+        self._pagina("Configuración", cuerpo, perfil, "configuracion")
 
     def _estadisticas(self, perfil: str, params: dict) -> None:
         """Los contadores que antes competían con la lista por el mismo lugar."""
@@ -351,7 +359,53 @@ class Handler(BaseHTTPRequestHandler):
         """
         from vacantia.ui import linkedin_urls
 
-        tab = (params.get("tab") or ["publicaciones"])[0]
+        tab = linkedin_urls.tipo_de((params.get("tab") or ["publicaciones"])[0])
+        if tab == "jobs":
+            elegido, url = self._armar_jobs(params)
+        else:
+            elegido, url = self._armar_publicaciones(params)
+
+        cuerpo = render.linkedin(
+            perfil, tab, _mensajes(params), elegido=elegido, url=url,
+            guardados=linkedin_urls.favoritos(perfil, tab),
+            # Los puestos salen de las palabras clave del perfil: un solo lugar
+            # donde se agregan y se sacan, y no dos que se desincronizan.
+            puestos=linkedin_urls.puestos_de(data.leer_perfil(perfil)),
+            apliques={"pendientes": linkedin_urls.pendientes(perfil, tab),
+                      "confirmadas": len(linkedin_urls.postulaciones(perfil, tab))})
+        self._pagina("LinkedIn URLs", cuerpo, perfil, "linkedin")
+
+    @staticmethod
+    def _armar_jobs(params: dict) -> tuple[dict, str]:
+        """Lo elegido en el constructor de Jobs, y la dirección que sale."""
+        from vacantia.ui import linkedin_urls
+
+        elegido = {
+            "puestos": params.get("puesto") or [],
+            "tambien": (params.get("tambien") or [""])[0].strip(),
+            "sin_junior": bool(params.get("sin_junior")),
+            "donde": (params.get("donde") or ["argentina"])[0],
+            "modalidades": params.get("modalidad") or [],
+            "niveles": params.get("nivel") or [],
+            "cuando": (params.get("cuando") or ["24h"])[0],
+            "orden": (params.get("orden") or ["recientes"])[0],
+            "pocos": bool(params.get("pocos")),
+            "sencilla": bool(params.get("sencilla")),
+        }
+        if not elegido["puestos"]:
+            return elegido, ""
+        fuera = linkedin_urls.EXCLUIR_JOBS if elegido["sin_junior"] else ()
+        texto = linkedin_urls.armar_boolean_jobs(elegido["puestos"], elegido["tambien"],
+                                                 fuera)
+        return elegido, linkedin_urls.armar_url_jobs(
+            texto, elegido["donde"], elegido["modalidades"], elegido["niveles"],
+            elegido["cuando"], elegido["orden"], elegido["pocos"], elegido["sencilla"])
+
+    @staticmethod
+    def _armar_publicaciones(params: dict) -> tuple[dict, str]:
+        """Lo elegido en el constructor de Publicaciones, y la dirección que sale."""
+        from vacantia.ui import linkedin_urls
+
         idioma = (params.get("idioma") or ["es"])[0]
         gatillos = {
             "es": linkedin_urls.GATILLOS_ES,
@@ -382,16 +436,7 @@ class Handler(BaseHTTPRequestHandler):
                 elegido["puestos"], gatillos, elegido["lugares"], fuera)
             elegido["pedidos"] = {"gatillos": len(gatillos), "excluir": len(fuera)}
             elegido["entraron"] = entraron
-
-        cuerpo = render.linkedin(
-            perfil, tab, _mensajes(params), elegido=elegido, url=url,
-            guardados=linkedin_urls.favoritos(perfil),
-            # Los puestos salen de las palabras clave del perfil: un solo lugar
-            # donde se agregan y se sacan, y no dos que se desincronizan.
-            puestos=linkedin_urls.puestos_de(data.leer_perfil(perfil)),
-            apliques={"pendientes": linkedin_urls.pendientes(perfil),
-                      "confirmadas": len(linkedin_urls.postulaciones(perfil))})
-        self._pagina("LinkedIn URLs", cuerpo, perfil, "linkedin")
+        return elegido, url
 
     # --- POST -----------------------------------------------------------
 
@@ -404,12 +449,16 @@ class Handler(BaseHTTPRequestHandler):
             if ruta == "/feedback":
                 return self._post_feedback(form)
             if ruta == "/datos":
-                mensajes = formulario.aplicar(perfil, form)
+                mensajes = formulario.aplicar_datos(perfil, form)
                 # Volver al CV que estaba a la vista. Sin esto, guardar te devolvía
                 # siempre al primero y el que estabas editando quedaba escondido.
                 volver = {"cv": form["cv_elegido"]} if form.get("cv_elegido") else {}
                 return self._redirigir("/datos", perfil=perfil, ok=_resumen(mensajes),
                                        **volver)
+            if ruta == "/configuracion":
+                mensajes = formulario.aplicar_configuracion(perfil, form)
+                return self._redirigir("/configuracion", perfil=perfil,
+                                       ok=_resumen(mensajes))
             if ruta == "/mensajes":
                 return self._get_mensajes(perfil, {"url": [form.get("url", "")]},
                                           con_llm=True)
@@ -430,7 +479,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._post_archivar_viejas(form)
             if ruta == "/cv-nuevo":
                 # Primero se guarda lo que estaba escrito, después se agrega.
-                mensajes = formulario.aplicar(perfil, form)
+                mensajes = formulario.aplicar_datos(perfil, form)
                 cv_id = data.agregar_cv(perfil)
                 return self._redirigir(
                     "/datos", ancla=f"cv-{cv_id}", perfil=perfil, cv=cv_id,
@@ -438,7 +487,7 @@ class Handler(BaseHTTPRequestHandler):
                        "buscar con él y pegá el texto. Mientras esté vacío no cuenta.")
             if ruta == "/cv-borrar":
                 # Llega sólo desde la confirmación de "Borrar este CV".
-                mensajes = formulario.aplicar(perfil, form)
+                mensajes = formulario.aplicar_datos(perfil, form)
                 borrado = data.borrar_cv(perfil, form.get("cv_borrar", ""))
                 if borrado:
                     return self._redirigir(
@@ -452,13 +501,41 @@ class Handler(BaseHTTPRequestHandler):
                     "/datos", perfil=nuevo,
                     ok=f"Perfil '{nuevo}' creado. Completá el CV y los datos, y guardá.",
                 )
+            if ruta == "/perfil-borrar":
+                return self._post_borrar_perfil(form)
         except (ValueError, FileNotFoundError) as e:
-            return self._redirigir("/datos", perfil=perfil, error=str(e))
+            return self._redirigir(_pantalla_del_post(ruta), perfil=perfil, error=str(e))
         except Exception as e:
             logger.exception("[ui] Error procesando POST %s", self.path)
-            return self._redirigir("/datos", perfil=perfil, error=f"Algo falló: {e}")
+            return self._redirigir(_pantalla_del_post(ruta), perfil=perfil,
+                                   error=f"Algo falló: {e}")
 
         self._html("<h1>404</h1>", 404)
+
+    def _post_borrar_perfil(self, form: dict) -> None:
+        """Llega sólo desde la confirmación de "Borrar este perfil".
+
+        El nombre sale del botón que se apretó y no del campo escondido: es el
+        que estaba escrito en la confirmación que la persona leyó.
+
+        Se vuelve a Configuración del primer perfil que quede, porque desde ahí
+        se borró. Si no queda ninguno, la misma dirección sin perfil cae en la
+        bienvenida.
+        """
+        nombre = form.get("perfil_borrar", "")
+        tarea = data.borrar_perfil(nombre)
+        avisos_ = {"ok": f"Borré el perfil «{nombre}» con todo."}
+        if tarea == "no-estaba":
+            avisos_["ok"] += " No tenía búsqueda programada en esta computadora."
+        elif tarea == "fallo":
+            avisos_["error"] = (
+                f"No pude sacar su búsqueda programada. Abrí el Programador de "
+                f"tareas de Windows y borrá «{data.TAREA_PROGRAMADA.format(nombre)}» "
+                f"a mano: si queda, va a intentar buscar para un perfil que ya no existe.")
+        quedan = data.perfiles()
+        if quedan:
+            return self._redirigir("/configuracion", perfil=quedan[0], **avisos_)
+        return self._redirigir("/configuracion", **avisos_)
 
     def _post_buscar(self, form: dict) -> None:
         """Buscar ahora, sin esperar al horario programado.
@@ -498,7 +575,7 @@ class Handler(BaseHTTPRequestHandler):
 
         perfil = form.get("perfil", "")
         url = form.get("url", "").strip()
-        volver = {"perfil": perfil, "tab": "publicaciones"}
+        volver = {"perfil": perfil, "tab": linkedin_urls.tipo_de(form.get("tab", ""))}
 
         if form.get("borrar"):
             if not linkedin_urls.borrar_favorito(perfil, url):
@@ -510,7 +587,7 @@ class Handler(BaseHTTPRequestHandler):
         if paso == "invalida":
             return self._redirigir("/linkedin", **volver,
                                    error="Esa dirección no es una búsqueda de "
-                                         "publicaciones de LinkedIn.")
+                                         "LinkedIn, ni de publicaciones ni de empleos.")
         if paso == "repetida":
             # No es un error de la persona: la búsqueda ya está donde la fue a
             # buscar. Se dice con qué nombre, que es el dato que falta para
@@ -525,7 +602,10 @@ class Handler(BaseHTTPRequestHandler):
     #: vuelve del navegador y termina en un header `Location`: se rearma desde
     #: cero con las claves conocidas en vez de reenviarlo tal cual.
     _CLAVES_DEL_ARMADOR = ("perfil", "tab", "puesto", "lugar", "idioma",
-                           "sin_junior", "cuando", "orden", "de_quien")
+                           "sin_junior", "cuando", "orden", "de_quien",
+                           # las de Jobs
+                           "tambien", "donde", "modalidad", "nivel", "pocos",
+                           "sencilla")
 
     def _post_linkedin_apliques(self, form: dict, camino: str) -> None:
         """Sumar o restar una postulación hecha desde un posteo de LinkedIn.
@@ -545,23 +625,27 @@ class Handler(BaseHTTPRequestHandler):
         from vacantia.ui import linkedin_urls
 
         perfil = form.get("perfil", "")
+        # Cada pestaña tiene su anotador. La pestaña llega en el campo escondido
+        # del constructor, que viaja con el POST de los botones.
+        tipo = linkedin_urls.tipo_de(form.get("tab", ""))
         aviso = None
         if form.get("confirmar"):
-            cuantas = linkedin_urls.confirmar_pendientes(perfil)
+            cuantas = linkedin_urls.confirmar_pendientes(perfil, tipo)
             if cuantas:
-                total = len(linkedin_urls.postulaciones(perfil))
+                total = len(linkedin_urls.postulaciones(perfil, tipo))
                 una = "postulación" if cuantas == 1 else "postulaciones"
+                desde = "búsquedas de empleos" if tipo == "jobs" else "posteos"
                 aviso = (f"Sumaste {cuantas} {una} al contador de Trabajos. "
-                         f"Van {total} desde posteos de LinkedIn.")
+                         f"Van {total} desde {desde} de LinkedIn.")
         elif form.get("menos"):
-            linkedin_urls.restar_pendiente(perfil)
+            linkedin_urls.restar_pendiente(perfil, tipo)
         else:
-            linkedin_urls.sumar_pendiente(perfil)
+            linkedin_urls.sumar_pendiente(perfil, tipo)
 
         crudo = parse_qs(urlparse(camino).query).get("volver", [""])[0]
         vuelta = [(k, v) for k, vs in parse_qs(crudo).items()
                   if k in self._CLAVES_DEL_ARMADOR for v in vs]
-        vuelta = vuelta or [("perfil", perfil), ("tab", "publicaciones")]
+        vuelta = vuelta or [("perfil", perfil), ("tab", tipo)]
         # Confirmar es el único de los tres que deja rastro: el más y el menos
         # se ven en el número mismo, y avisar lo que ya se ve es ruido.
         if aviso:
@@ -711,6 +795,18 @@ def _mensajes(params: dict) -> list[tuple[str, str]]:
             if texto:
                 salida.append((clase, texto))
     return salida
+
+
+def _pantalla_del_post(ruta: str) -> str:
+    """Adónde vuelve un POST que falló: a la pantalla del formulario que lo mandó.
+
+    Crear y borrar perfiles viven en Configuración. Volver a Mi perfil con el
+    error de un nombre inválido mostraba el cartel lejos del campo que había que
+    corregir.
+    """
+    if ruta in ("/configuracion", "/perfil-nuevo", "/perfil-borrar"):
+        return "/configuracion"
+    return "/datos"
 
 
 def _resumen(mensajes: list[tuple[str, str]]) -> str:

@@ -73,7 +73,8 @@ contraseña y nadie más la puede ver.
 
 A la izquierda, fija, la barra de navegación: arriba el perfil (cada persona de
 la casa tiene el suyo), después **Trabajos** y **LinkedIn URLs**, y abajo,
-separadas, **Métricas** y **Mi perfil**.
+separadas, **Métricas** y **Mi perfil**. **Configuración** va al pie de todo,
+abajo del botón *Buscar ahora*: es lo que se carga una vez.
 
 Al pie de esa barra, siempre a la vista, **el estado del sistema**: cuándo buscó
 por última vez, cuándo vuelve a buscar y de cuántos días de antigüedad trae
@@ -249,8 +250,16 @@ Los puestos tildables **son tus palabras clave de Mi perfil**, no una lista
 aparte: lo que agregues o saques allá aparece o desaparece acá. Ojo con el otro
 efecto, que las mismas palabras son las que el buscador usa contra los portales.
 
-La pestaña **Jobs** queda para más adelante: eso ya lo cubre el buscador
-automático.
+La pestaña **Jobs** es la misma pantalla para los avisos de Empleos. El buscador
+automático también los trae, pero tarde y sin los filtros que más rinden. Tildás
+los puestos, qué más tiene que decir el aviso (tu stack), dónde, modalidad,
+nivel, qué dejar afuera y de cuándo (desde la última hora), y dos atajos de poca
+competencia: **menos de 10 candidatos** y **solicitud sencilla**. Lo que no se
+entiende con leer el rótulo tiene el signo de pregunta. Tiene sus propios
+favoritos y su propio anotador; lo confirmado en las dos pestañas suma al mismo
+contador de Trabajos. Sale de `estrategia-links-linkedin-pestana-jobs.md`, y la
+rutina de ese documento está en el signo de pregunta de *Tus búsquedas
+guardadas*.
 
 ### Métricas
 
@@ -318,8 +327,15 @@ Ahí no hay ningún botón, a propósito: Métricas es una pantalla de lectura.
 
 ### Mi perfil
 
-Todo lo tuyo, sin tocar ningún archivo: el CV, qué buscás, dónde, qué idioma,
-de qué sitios traer ofertas, y tus claves.
+Lo que cambia mientras buscás, sin tocar ningún archivo: tus CV, las palabras
+clave y los puestos que no querés, dónde y en qué idioma, las empresas y los
+reclutadores que seguís, y tus datos personales.
+
+Lo que se explica una sola vez está en el **signo de pregunta** al lado del
+nombre del campo: pasale el mouse o llegá con Tab. Abajo de las URLs de
+reclutadores quedan a la vista tres ejemplos de qué página sirve y cuál no. Y si
+cargaste empresas o reclutadores pero esa fuente está apagada, lo dice ahí mismo,
+con el link a Configuración para prenderla.
 
 **Podés cargar más de un CV.** Si te postulás a dos clases de puesto, por
 ejemplo AI Engineer y Full Stack, cargá uno para cada una con *Agregar otro CV*.
@@ -338,7 +354,29 @@ desplegable que muestra uno por vez sin perder lo que todavía no guardaste.
 *Borrar este CV* pide confirmación y después lo borra de verdad, con su texto.
 El último no se puede borrar.
 
-Abajo de todo se crea el perfil de otra persona de la casa.
+### Configuración
+
+Lo que se carga una vez y no se vuelve a mirar, en tres partes:
+
+- **Cómo me avisa:** tu chat de Telegram, el puntaje mínimo, cuántas ofertas por
+  aviso, y si te avisa aunque no haya nada.
+- **Qué busca:** de qué sitios traer ofertas, en dos listas (*Portales de empleo*
+  y *Lo que seguís*), de cuántos días para atrás y cuántas nuevas por búsqueda.
+  Al lado de *Páginas de empleo de las empresas que sigo* y de *Perfiles de
+  reclutadores* dice cuántas tenés cargadas, con el link para cargarlas. Si
+  prendés Bumeran y Zonajobs juntos, avisa que te van a llegar duplicados.
+- **Claves:** las de la computadora, compartidas entre todos los perfiles.
+
+**Cada pantalla guarda sólo lo suyo.** Guardar Configuración no toca tus CV ni
+tus palabras, y guardar Mi perfil no apaga ninguna fuente.
+
+Abajo de todo se crea el perfil de otra persona de la casa, y se borra el
+perfil que estás mirando. **Borrar pide confirmación** y se lleva todo: el
+perfil, sus CV, su lista de empresas, las ofertas guardadas, lo que marcaste y
+su búsqueda programada. No se puede recuperar. Lo que comparte con otro perfil
+(un CV, la lista de empresas) se queda. Si Windows no deja sacar la búsqueda
+programada, la pantalla te dice cómo se llama para borrarla a mano desde el
+Programador de tareas.
 
 ### ¿La pantalla muestra lo último, o hay que buscar de nuevo?
 
@@ -402,7 +440,7 @@ Lo que suele aparecer:
 
 # PARTE 2 — CÓMO SE CONFIGURA
 
-Todo lo de acá se puede hacer desde la pantalla, en *Mi perfil*. Lo que sigue es
+Todo lo de acá se puede hacer desde la pantalla, en *Mi perfil* y *Configuración*. Lo que sigue es
 el detalle de qué hace cada cosa y qué pasa por debajo.
 
 ## Cómo funciona por dentro
@@ -651,7 +689,7 @@ bloques de fuente, quedaba desincronizada sin que nadie se enterara.
 La resuelve `Source._resolver_antiguedad`, en este orden:
 
 1. `max_age_days` en el bloque de la fuente — el escape para el caso puntual.
-2. `filters.max_age_days` del perfil — **la que se configura**, desde *Mi perfil*.
+2. `filters.max_age_days` del perfil — **la que se configura**, desde *Configuración*.
 3. `max_age_days_default` de la clase (`rrhh` usa 30; el resto, 7).
 
 `0` apaga la ventana. Se compara contra `None` y no por verdadero/falso, porque
@@ -921,7 +959,7 @@ vacantia/
 ├── ui/
 │   ├── server.py     el servidor y las rutas
 │   ├── data.py       todo lo que toca disco
-│   ├── formulario.py la pestaña Mi perfil
+│   ├── formulario.py las pestañas Mi perfil y Configuración
 │   ├── render.py     el HTML
 │   ├── estilos.py    junta los .css de abajo y arma las @font-face
 │   ├── css/          el CSS, en archivos de verdad
@@ -979,7 +1017,7 @@ Los notificadores funcionan igual con `Notifier` y `NOTIFIER_REGISTRY`.
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  550 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  559 passed
 ```
 
 ---

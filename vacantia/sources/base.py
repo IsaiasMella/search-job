@@ -35,7 +35,7 @@ class Source(ABC):
         1. `max_age_days` en el bloque de la fuente, si está. Es el escape para
            el caso puntual, no lo que se espera que se toque.
         2. `filters.max_age_days` del perfil: **ésta es la que se configura**,
-           una vez, desde *Mis datos*.
+           una vez, desde *Configuración*.
         3. El default de la fuente.
 
         `0` en cualquiera de los dos primeros apaga la ventana a propósito, y

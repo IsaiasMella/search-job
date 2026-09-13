@@ -274,6 +274,146 @@ def nombre_sugerido(puestos=(), cuando: str = "24h", gatillos_en: bool = False) 
     return f"{que}, {cuando_txt.lower()}{idioma}" if cuando_txt else f"{que}{idioma}"
 
 
+# --- la pestaña Jobs ----------------------------------------------------------
+#
+# El buscador automático ya trae avisos de LinkedIn Jobs, pero tarde y sin los
+# filtros que más rinden: publicado hace una hora, menos de diez candidatos,
+# solicitud sencilla. Esos sólo los ve la persona logueada. Es lo que propone
+# `estrategia-links-linkedin-pestana-jobs.md`: abrir dos o tres veces por día
+# las búsquedas más frescas y aplicar antes que se llenen.
+#
+# Parámetros, verificados en agosto de 2026 según ese documento:
+#
+#     geoId=100446943   Argentina
+#     f_TPR=r3600       publicado hace menos de N segundos, con "r" adelante
+#     f_WT=2,3          modalidad: 1 presencial, 2 remoto, 3 híbrido
+#     f_E=4             nivel: 4 es "Intermedio" (Mid-Senior), 5 director
+#     f_JIYN=true       menos de 10 candidatos
+#     f_AL=true         solicitud sencilla (postulación en un clic)
+#     sortBy=DD         lo más nuevo primero; R es por relevancia
+
+BASE_JOBS = "https://www.linkedin.com/jobs/search/"
+
+#: (clave, etiqueta, geoId). Sin geoId LinkedIn busca en todo el mundo.
+DONDE_JOBS = (
+    ("argentina", "Argentina", "100446943"),
+    ("mundo", "Cualquier lugar", ""),
+)
+
+#: (valor de f_WT, etiqueta).
+MODALIDADES = (("2", "Remoto"), ("3", "Híbrido"), ("1", "Presencial"))
+
+#: (valor de f_E, etiqueta). Las etiquetas son las que usa LinkedIn en español,
+#: para que lo que se tilda acá se reconozca en el filtro de allá.
+NIVELES = (
+    ("1", "Prácticas"), ("2", "Sin experiencia"), ("3", "Algo de responsabilidad"),
+    ("4", "Intermedio"), ("5", "Director"), ("6", "Ejecutivo"),
+)
+
+#: (clave, etiqueta, valor de f_TPR).
+CUANDO_JOBS = (
+    ("1h", "Última hora", "r3600"),
+    ("2h", "Últimas 2 horas", "r7200"),
+    ("24h", "Últimas 24 horas", "r86400"),
+    ("semana", "Última semana", "r604800"),
+    ("mes", "Último mes", "r2592000"),
+)
+
+ORDEN_JOBS = (
+    ("recientes", "Lo más reciente primero", "DD"),
+    ("relevancia", "Lo que LinkedIn cree más relevante", "R"),
+)
+
+#: `f_E=4` no es "sólo Senior", es "Mid-Senior", y se cuelan semi seniors. Por
+#: eso el documento de estrategia saca estas palabras del título.
+EXCLUIR_JOBS = ("Junior", "Jr", "Ssr", "Semisenior", "Trainee")
+
+
+def _lista_de_texto(texto) -> list[str]:
+    """"Python, RAG , ,OpenAI" -> ["Python", "RAG", "OpenAI"]."""
+    if isinstance(texto, (list, tuple)):
+        texto = ",".join(str(t) for t in texto)
+    return [t.strip() for t in str(texto or "").split(",") if t.strip()]
+
+
+def armar_boolean_jobs(puestos=(), tambien=(), excluir=()) -> str:
+    """`("AI Engineer" OR "LLM Engineer") AND (Python OR RAG) NOT Junior NOT Jr`.
+
+    Sin gatillos ni lugares, que en Jobs no hacen falta: todo lo que aparece ya
+    es un aviso, y el lugar va en su propio parámetro.
+
+    **Un NOT por término**, igual que en Publicaciones. El documento de
+    estrategia usa `NOT (Junior OR Jr)`, pero en el buscador de publicaciones
+    esa forma devolvió cero resultados, y un NOT por término es la sintaxis que
+    LinkedIn respeta en los dos lados.
+
+    No hay tope de largo como en Publicaciones: ese corte se midió en el
+    buscador de posteos, y el documento usa en Jobs búsquedas de 130 letras que
+    traen avisos.
+    """
+    bloques = [g for g in (_grupo(puestos), _grupo(_lista_de_texto(tambien))) if g]
+    if not puestos or not bloques:
+        return ""
+    texto = " AND ".join(bloques)
+    for t in excluir or ():
+        if f := _frase(t):
+            texto += f" NOT {f}"
+    return texto
+
+
+def armar_url_jobs(texto: str, donde: str = "argentina", modalidades=(),
+                   niveles=(), cuando: str = "24h", orden: str = "recientes",
+                   pocos_candidatos: bool = False, sencilla: bool = False) -> str:
+    """La dirección de LinkedIn Jobs. "" si no hay texto de búsqueda.
+
+    Los valores que no son de las listas de arriba se ignoran en vez de
+    pasarse: vienen de la dirección de la pantalla, y un `f_WT=9` no filtra
+    nada pero hace creer que sí.
+    """
+    texto = str(texto or "").strip()
+    if not texto:
+        return ""
+
+    partes = [f"keywords={quote(texto, safe='')}"]
+    if geo := dict((c, g) for c, _, g in DONDE_JOBS).get(donde, ""):
+        partes.append(f"geoId={geo}")
+    if valor := dict((c, v) for c, _, v in CUANDO_JOBS).get(cuando):
+        partes.append(f"f_TPR={valor}")
+    if elegidas := [m for m, _ in MODALIDADES if m in {str(x) for x in modalidades or ()}]:
+        partes.append(f"f_WT={quote(','.join(sorted(elegidas)), safe='')}")
+    if elegidos := [n for n, _ in NIVELES if n in {str(x) for x in niveles or ()}]:
+        partes.append(f"f_E={quote(','.join(elegidos), safe='')}")
+    if pocos_candidatos:
+        partes.append("f_JIYN=true")
+    if sencilla:
+        partes.append("f_AL=true")
+    if valor := dict((c, v) for c, _, v in ORDEN_JOBS).get(orden):
+        partes.append(f"sortBy={valor}")
+    return BASE_JOBS + "?" + "&".join(partes)
+
+
+def nombre_sugerido_jobs(puestos=(), cuando: str = "24h",
+                         pocos_candidatos: bool = False, sencilla: bool = False) -> str:
+    """"AI Engineer, última hora, menos de 10 candidatos"."""
+    partes = [(list(puestos or []) or ["Empleos"])[0]]
+    if cuando_txt := dict((c, e) for c, e, _ in CUANDO_JOBS).get(cuando, ""):
+        partes.append(cuando_txt.lower())
+    if pocos_candidatos:
+        partes.append("menos de 10 candidatos")
+    if sencilla:
+        partes.append("solicitud sencilla")
+    return ", ".join(partes)
+
+
+#: Las pestañas, con el principio de dirección que distingue sus favoritos.
+TIPOS = {"publicaciones": BASE, "jobs": BASE_JOBS}
+
+
+def tipo_de(tab: str) -> str:
+    """La pestaña, o Publicaciones si viene cualquier otra cosa."""
+    return tab if tab in TIPOS else "publicaciones"
+
+
 # --- favoritos --------------------------------------------------------------
 #
 # Van en `state/<perfil>/` y no en el perfil porque crecen con el uso y no son
@@ -285,8 +425,21 @@ def _archivo(nombre_perfil: str) -> Path:
     return STATE_ROOT / nombre_perfil / "linkedin_favoritos.json"
 
 
-def favoritos(nombre_perfil: str) -> list[dict]:
-    """Los guardados, del más nuevo al más viejo. [] si no hay o está roto."""
+def favoritos(nombre_perfil: str, tipo: str | None = None) -> list[dict]:
+    """Los guardados, del más nuevo al más viejo. [] si no hay o está roto.
+
+    Con `tipo`, sólo los de esa pestaña. Van todos al mismo archivo y se
+    distinguen por la dirección, que ya dice de cuál son: así los que se
+    guardaron antes de que existiera Jobs no necesitan ninguna migración.
+    """
+    todos = _favoritos_de_todas(nombre_perfil)
+    if tipo is None:
+        return todos
+    base = TIPOS[tipo_de(tipo)]
+    return [f for f in todos if str(f.get("url", "")).startswith(base)]
+
+
+def _favoritos_de_todas(nombre_perfil: str) -> list[dict]:
     ruta = _archivo(nombre_perfil)
     if not ruta.exists():
         return []
@@ -333,7 +486,7 @@ def guardar_favorito(nombre_perfil: str, nombre: str, url: str) -> str:
     pidió tocar. Para renombrarla, se saca y se guarda de nuevo.
     """
     url = str(url or "").strip()
-    if not url.startswith(BASE):
+    if not any(url.startswith(base) for base in TIPOS.values()):
         return "invalida"
     if guardada_como(nombre_perfil, url):
         return "repetida"
@@ -381,14 +534,27 @@ def borrar_favorito(nombre_perfil: str, url: str) -> bool:
 # número pelado no se podría contestar "¿cuántas mandé esta semana?".
 
 
-def _archivo_apliques(nombre_perfil: str) -> Path:
-    return STATE_ROOT / nombre_perfil / "linkedin_postulaciones.json"
+#
+# **Cada pestaña tiene su anotador.** Si fuera uno solo, lo que anotaste desde
+# Publicaciones aparecería sumado al abrir Jobs, y el número dejaría de decir
+# "lo de esta tanda". Las confirmadas de las dos suman al mismo contador de
+# Trabajos, que es el mismo trabajo. El archivo de Publicaciones conserva su
+# nombre de siempre, para que lo anotado antes de Jobs no se pierda.
+
+_ARCHIVOS_DE_APLIQUES = {
+    "publicaciones": "linkedin_postulaciones.json",
+    "jobs": "linkedin_jobs_postulaciones.json",
+}
 
 
-def _leer_apliques(nombre_perfil: str) -> dict:
+def _archivo_apliques(nombre_perfil: str, tipo: str = "publicaciones") -> Path:
+    return STATE_ROOT / nombre_perfil / _ARCHIVOS_DE_APLIQUES[tipo_de(tipo)]
+
+
+def _leer_apliques(nombre_perfil: str, tipo: str = "publicaciones") -> dict:
     """{pendientes, hechas}. Tolera el formato viejo, que era sólo la lista."""
     vacio = {"pendientes": 0, "hechas": []}
-    ruta = _archivo_apliques(nombre_perfil)
+    ruta = _archivo_apliques(nombre_perfil, tipo)
     if not ruta.exists():
         return vacio
     try:
@@ -411,46 +577,49 @@ def _leer_apliques(nombre_perfil: str) -> dict:
     }
 
 
-def _escribir_apliques(nombre_perfil: str, datos: dict) -> None:
+def _escribir_apliques(nombre_perfil: str, datos: dict,
+                       tipo: str = "publicaciones") -> None:
     from vacantia.ui.data import _escribir_atomico
 
-    ruta = _archivo_apliques(nombre_perfil)
+    ruta = _archivo_apliques(nombre_perfil, tipo)
     ruta.parent.mkdir(parents=True, exist_ok=True)
     _escribir_atomico(ruta, json.dumps(datos, indent=2, ensure_ascii=False) + "\n")
 
 
-def postulaciones(nombre_perfil: str) -> list[str]:
+def postulaciones(nombre_perfil: str, tipo: str | None = None) -> list[str]:
     """Las marcas de tiempo de lo **confirmado**, de la más vieja a la más nueva.
 
     Es lo único que suma al contador de Trabajos. Lo que está en el anotador
-    todavía no pasó por la mano de nadie.
+    todavía no pasó por la mano de nadie. Sin `tipo`, las de las dos pestañas.
     """
-    return _leer_apliques(nombre_perfil)["hechas"]
+    if tipo is None:
+        return sorted(m for t in TIPOS for m in _leer_apliques(nombre_perfil, t)["hechas"])
+    return _leer_apliques(nombre_perfil, tipo)["hechas"]
 
 
-def pendientes(nombre_perfil: str) -> int:
-    """Lo que hay en el anotador, sin confirmar."""
-    return _leer_apliques(nombre_perfil)["pendientes"]
+def pendientes(nombre_perfil: str, tipo: str = "publicaciones") -> int:
+    """Lo que hay en el anotador de esa pestaña, sin confirmar."""
+    return _leer_apliques(nombre_perfil, tipo)["pendientes"]
 
 
-def sumar_pendiente(nombre_perfil: str) -> int:
-    datos = _leer_apliques(nombre_perfil)
+def sumar_pendiente(nombre_perfil: str, tipo: str = "publicaciones") -> int:
+    datos = _leer_apliques(nombre_perfil, tipo)
     datos["pendientes"] += 1
-    _escribir_apliques(nombre_perfil, datos)
+    _escribir_apliques(nombre_perfil, datos, tipo)
     return datos["pendientes"]
 
 
-def restar_pendiente(nombre_perfil: str) -> int:
+def restar_pendiente(nombre_perfil: str, tipo: str = "publicaciones") -> int:
     """Uno menos. En cero no hace nada: un anotador en negativo no significa nada."""
-    datos = _leer_apliques(nombre_perfil)
+    datos = _leer_apliques(nombre_perfil, tipo)
     if datos["pendientes"] <= 0:
         return 0
     datos["pendientes"] -= 1
-    _escribir_apliques(nombre_perfil, datos)
+    _escribir_apliques(nombre_perfil, datos, tipo)
     return datos["pendientes"]
 
 
-def confirmar_pendientes(nombre_perfil: str) -> int:
+def confirmar_pendientes(nombre_perfil: str, tipo: str = "publicaciones") -> int:
     """Pasa el anotador a confirmadas y lo deja en cero. Devuelve cuántas pasaron.
 
     La marca de tiempo es la de ahora y no la del momento exacto de cada envío,
@@ -458,14 +627,14 @@ def confirmar_pendientes(nombre_perfil: str) -> int:
     el mismo, y pedir la hora de cada una sería pedir un formulario para algo
     que se resuelve con un botón.
     """
-    datos = _leer_apliques(nombre_perfil)
+    datos = _leer_apliques(nombre_perfil, tipo)
     cuantas = datos["pendientes"]
     if not cuantas:
         return 0
     ahora = datetime.now(timezone.utc).isoformat()
     datos["hechas"] = sorted(datos["hechas"] + [ahora] * cuantas)
     datos["pendientes"] = 0
-    _escribir_apliques(nombre_perfil, datos)
-    logger.info(f"[ui] {cuantas} postulaciones por LinkedIn confirmadas: "
-                f"van {len(datos['hechas'])}")
+    _escribir_apliques(nombre_perfil, datos, tipo)
+    logger.info(f"[ui] {cuantas} postulaciones por LinkedIn ({tipo_de(tipo)}) "
+                f"confirmadas: van {len(datos['hechas'])}")
     return cuantas

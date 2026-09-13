@@ -1,4 +1,4 @@
-"""La pantalla local: dos pestañas, Trabajos y Mis datos.
+"""La pantalla local: Trabajos, LinkedIn URLs, Métricas, Mi perfil y Configuración.
 
     python -m vacantia.ui
 

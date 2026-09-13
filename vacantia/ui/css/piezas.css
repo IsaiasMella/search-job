@@ -404,7 +404,7 @@ button.peligro:hover { border-color: var(--color-danger); background: var(--colo
                            margin-right: var(--spacing-sm); }
 
 /* --- callout. Agrupa una explicación corta con su salida al lado. --- */
-.callout, .pista {
+.callout {
   max-width: var(--content-max-ch);
   margin: 0 0 var(--spacing-md); padding: var(--spacing-md);
   border: var(--border-hairline) solid var(--color-border);
@@ -415,23 +415,14 @@ button.peligro:hover { border-color: var(--color-danger); background: var(--colo
 .callout.atencion { background: var(--color-warning-surface);
                     border-color: var(--color-warning);
                     color: var(--color-text-primary); }
-.callout p, .pista p { max-width: none; }
-.callout p + p, .pista p + p { margin-top: var(--spacing-sm); }
+.callout p { max-width: none; }
+.callout p + p { margin-top: var(--spacing-sm); }
 .callout .salida { display: inline-block; margin-top: var(--spacing-sm); }
-.pista b { display: block; margin-bottom: var(--spacing-xs);
-           color: var(--color-text-primary); font-weight: var(--weight-semibold); }
-.pista li b, .pista p b { display: inline; margin: 0; }
-.pista ul { margin: var(--spacing-sm) 0 0; padding-left: var(--spacing-lg); }
-.pista li { margin: var(--spacing-xs) 0; }
-.pista code, code {
+code {
   padding: 1px var(--spacing-xs); border-radius: var(--rounded-sm);
   border: var(--border-hairline) solid var(--color-border-subtle);
   background: var(--color-background);
   font-family: var(--font-mono); font-size: var(--text-mono); }
-/* Marcan un ejemplo correcto y uno equivocado. El rojo acá sí es un error:
-   es el valor que no hay que pegar. */
-.pista .bien { color: var(--color-success); font-weight: var(--weight-semibold); }
-.pista .mal { color: var(--color-danger); font-weight: var(--weight-semibold); }
 
 /* --- archivar de a muchas: mantenimiento, todo en fantasma --- */
 .encajonar { display: flex; align-items: center; flex-wrap: wrap;
@@ -579,10 +570,80 @@ form.datos h2:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
 .checks label { display: flex; align-items: center; gap: var(--spacing-sm);
                 min-height: var(--control-height-sm); cursor: pointer;
                 font-size: var(--text-body-sm); color: var(--color-text-primary); }
-.tilde { display: flex; flex-direction: column; gap: 2px; }
-.tilde .nota { padding-left: var(--spacing-lg); max-width: var(--content-max-ch);
-               color: var(--color-text-tertiary); font-size: var(--text-caption);
-               line-height: var(--leading-snug); }
+/* La línea de intro de una sección va pegada a su título: es parte de él. */
+form.datos h2:has(+ .intro) { margin-bottom: var(--spacing-xs); }
+.ayuda.intro { margin-bottom: var(--spacing-md); }
+
+/* En los formularios de datos el globo del signo de pregunta es más ancho que
+   en el constructor de LinkedIn: acá explica un campo entero, no un tilde. */
+form.datos:not(.armador) .ayuda-al-lado .globo { max-width: 40ch; }
+
+/* Lo que avisa que algo cargado no se usa. Un tono más claro que la ayuda: es
+   la única línea de ayuda que pide hacer algo. */
+.ayuda.apagada { color: var(--color-text-secondary); }
+
+/* Qué página pegar: tres ejemplos en renglones alineados, sin recuadro. Antes
+   era un recuadro con viñetas, colores y tres párrafos que pesaba más que el
+   campo. "Sirve" en neutro: el verde es lo que ya hiciste. "No sirve" en rojo,
+   porque es exactamente el valor equivocado. */
+.ejemplos { list-style: none; margin: var(--spacing-xs) 0 0; padding: 0;
+            display: grid; grid-template-columns: max-content max-content minmax(0, 1fr);
+            gap: var(--spacing-xs) var(--spacing-md); align-items: baseline;
+            color: var(--color-text-tertiary); font-size: var(--text-caption);
+            line-height: var(--leading-snug); }
+.ejemplos li { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid;
+               align-items: baseline; }
+/* Las direcciones en mono y nada más: con el recuadro de `code` eran tres
+   cajas encimadas en tres renglones, y volvían a pesar lo que pesaba el recuadro. */
+.ejemplos code { padding: 0; border: 0; background: none;
+                 color: var(--color-text-secondary); }
+.ejemplos .bien { color: var(--color-text-secondary); font-weight: var(--weight-medium); }
+.ejemplos .mal { color: var(--color-danger); font-weight: var(--weight-medium); }
+@media (max-width: 640px) {
+  .ejemplos { grid-template-columns: max-content minmax(0, 1fr); }
+  .ejemplos li > span:last-child { grid-column: 2; }
+}
+
+/* --- de dónde traer ofertas ---
+   Dos listas, una por clase de fuente, con un tilde por renglón. Sueltas en una
+   fila que se acomodaba sola, cada tilde caía a una altura distinta según lo
+   largo del nombre y de la nota, y no se leían como lista. */
+.grupos-fuentes { display: grid; gap: var(--spacing-lg) var(--spacing-xl);
+                  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+                  margin-bottom: var(--spacing-lg); }
+.fuentes { min-width: 0; margin: 0; padding: 0; border: 0; }
+.fuentes legend { padding: 0; margin-bottom: var(--spacing-sm);
+                  color: var(--color-text-secondary); font-size: var(--text-body-sm);
+                  font-weight: var(--weight-medium); }
+.fuentes ul { list-style: none; margin: 0; padding: 0;
+              border-top: var(--border-hairline) solid var(--color-border-subtle); }
+.fuentes li { display: flex; align-items: center; justify-content: space-between;
+              gap: var(--spacing-sm); min-height: var(--control-height);
+              border-bottom: var(--border-hairline) solid var(--color-border-subtle); }
+.fuentes label { display: flex; align-items: center; gap: var(--spacing-sm);
+                 min-height: var(--control-height); cursor: pointer;
+                 font-size: var(--text-body-sm); color: var(--color-text-primary); }
+/* `.cargadas` y no `.dato`: ése es la tarjeta de métrica, con borde y relleno. */
+.fuentes .cargadas { flex: 0 0 auto; font-size: var(--text-caption); white-space: nowrap; }
+.grupos-fuentes + .ayuda { margin: calc(var(--spacing-md) * -1) 0 var(--spacing-lg); }
+
+/* --- crear y borrar perfiles ---
+   Mantenimiento: en un panel aparte del formulario grande y sin barra de
+   guardar propia. Crear era un panel entero, con barra, para un solo campo. */
+.perfiles { padding: var(--spacing-lg);
+            border: var(--border-hairline) solid var(--color-border-subtle);
+            border-radius: var(--rounded-lg); background: var(--color-surface); }
+.perfiles form + form { margin-top: var(--spacing-lg); padding-top: var(--spacing-lg);
+                        border-top: var(--border-hairline) solid var(--color-border-subtle); }
+.crear-perfil > label { display: block; margin-bottom: var(--spacing-xs);
+                        color: var(--color-text-secondary); font-size: var(--text-body-sm);
+                        font-weight: var(--weight-medium); }
+.en-linea { display: flex; flex-wrap: wrap; gap: var(--spacing-sm); max-width: 32rem; }
+.en-linea input { flex: 1 1 12rem; width: auto; }
+.crear-perfil .ayuda { margin-top: var(--spacing-xs); }
+/* El texto rojo del disparador arranca alineado con el rótulo de arriba, no
+   con el relleno de su propio hover. */
+.perfiles .borrar-cv > summary { margin-left: calc(var(--spacing-md) * -1); }
 
 /* La barra de guardar se pega abajo: el formulario es largo y el botón quedaba
    fuera de pantalla, así que se guardaba a ciegas o no se guardaba. */
@@ -622,7 +683,7 @@ pre.consejo { margin: 0; white-space: pre-wrap;
   .acciones { flex-direction: column; align-items: stretch; }
   .acciones .menu { margin-left: 0; }
   .menu .panel { right: auto; left: 0; }
-  form.datos { padding: var(--spacing-md); }
+  form.datos, .perfiles { padding: var(--spacing-md); }
   .guardar { margin: var(--spacing-md) calc(var(--spacing-md) * -1) calc(var(--spacing-md) * -1);
              padding: var(--spacing-md); }
   .guardar button { width: 100%; }

@@ -170,6 +170,24 @@ main:has(> .taller) {
 .ayuda-al-lado:hover .globo, .ayuda-al-lado:focus-visible .globo,
 .ayuda-al-lado:focus-within .globo { display: block; }
 
+/* Los del constructor abren hacia abajo y hacia la derecha. Están arriba y a la
+   izquierda de una columna que scrollea, y la columna recorta lo que se sale:
+   abiertos como el del anotador, quedaban cortados por el borde. */
+.ayuda-al-lado.abajo .globo { top: calc(100% + var(--spacing-xs)); bottom: auto;
+                              left: 0; right: auto; }
+
+/* El rótulo y su signo en una fila. El signo va afuera del <label>: adentro,
+   tocarlo marcaría la tilde. */
+.rotulo-con-ayuda, .tilde-con-ayuda, .titulo-con-ayuda {
+  display: flex; align-items: center; gap: var(--spacing-xs);
+}
+.rotulo-con-ayuda > label { color: var(--color-text-secondary);
+                            font-size: var(--text-body-sm);
+                            font-weight: var(--weight-medium); }
+.titulo-con-ayuda { gap: var(--spacing-sm); }
+.taller > .lado > .titulo-con-ayuda { margin: var(--spacing-lg) 0 var(--spacing-sm); }
+.titulo-con-ayuda > h2 { margin: 0; }
+
 /* --- abajo del ancho del taller vuelve a ser una sola columna ---
    Dos columnas de media pantalla adentro de una pantalla chica no son dos
    columnas, son dos rendijas. Y con la lateral arriba, 100dvh se pasa. */

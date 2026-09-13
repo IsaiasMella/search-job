@@ -116,22 +116,14 @@
     {
       "type": "indeed",
       "enabled": false,
-      "search_terms": [
-        "AI Engineer",
-        "Python",
-        "Backend Python"
-      ],
+      "search_terms": [],
       "results_wanted": 20,
       "max_queries": 2
     },
     {
       "type": "getonbrd",
       "enabled": false,
-      "search_terms": [
-        "AI Engineer",
-        "Python",
-        "Backend"
-      ],
+      "search_terms": [],
       "country_code": "AR",
       "results_wanted": 30,
       "max_queries": 2

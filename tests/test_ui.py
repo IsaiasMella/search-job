@@ -161,16 +161,19 @@ def test_guardar_escribe_el_perfil_el_cv_y_las_empresas(sitio):
     post(base, "/datos", {
         "perfil": "test",
         "keywords": "Python, SQL",
-        "min_score": "70", "top_n": "8", "max_new_per_run": "30",
         "pais": "Argentina", "ciudad": "Bahía Blanca, Punta Alta",
         "modo_remote": "1", "modo_hybrid": "1",
         "max_english_level": "B1",
-        "notify_when_empty": "1",
         "cv": "# CV nuevo\nPython.",
         "empresas": "ACME | https://acme.com/jobs | acme.com\nGlobant | https://globant.com/jobs |",
         "rrhh": "https://linkedin.com/in/recluta1\n",
-        "fuente_careers": "1", "fuente_linkedin": "1",
         "cand_name": "Test", "cand_profile": "", "cand_seeking": "", "cand_not_suitable": "",
+    })
+    post(base, "/configuracion", {
+        "perfil": "test",
+        "min_score": "70", "top_n": "8", "max_new_per_run": "30",
+        "notify_when_empty": "1",
+        "fuente_careers": "1", "fuente_linkedin": "1",
     })
 
     perfil = json.loads((tmp / "profiles" / "test.json").read_text(encoding="utf-8"))
@@ -197,8 +200,8 @@ def test_guardar_escribe_el_perfil_el_cv_y_las_empresas(sitio):
 def test_guardar_no_pisa_las_claves_con_vacio(sitio):
     base, tmp = sitio
     (tmp / ".env").write_text("TELEGRAM_TOKEN=abc123\n", encoding="utf-8")
-    post(base, "/datos", {"perfil": "test", "keywords": "Python",
-                          "TELEGRAM_TOKEN": "", "GEMINI_API_KEY": "nueva"})
+    post(base, "/configuracion", {"perfil": "test",
+                                  "TELEGRAM_TOKEN": "", "GEMINI_API_KEY": "nueva"})
     env = (tmp / ".env").read_text(encoding="utf-8")
     assert "TELEGRAM_TOKEN=abc123" in env      # no se borró
     assert "GEMINI_API_KEY=nueva" in env       # se agregó
@@ -290,8 +293,8 @@ def test_cada_perfil_guarda_su_propio_chat_de_telegram(sitio):
     """Dos personas en la misma compu tienen que recibir sus propias ofertas."""
     base, tmp = sitio
     post(base, "/perfil-nuevo", {"nombre": "novio"})
-    post(base, "/datos", {"perfil": "test", "keywords": "Python", "chat_id": "111"})
-    post(base, "/datos", {"perfil": "novio", "keywords": "Java", "chat_id": "222"})
+    post(base, "/configuracion", {"perfil": "test", "chat_id": "111"})
+    post(base, "/configuracion", {"perfil": "novio", "chat_id": "222"})
 
     def chat_de(nombre):
         perfil = json.loads((tmp / "profiles" / f"{nombre}.json").read_text(encoding="utf-8"))
@@ -303,7 +306,7 @@ def test_cada_perfil_guarda_su_propio_chat_de_telegram(sitio):
 
 def test_sin_chat_propio_se_usa_el_compartido_del_env(sitio):
     base, tmp = sitio
-    post(base, "/datos", {"perfil": "test", "keywords": "Python", "chat_id": "  "})
+    post(base, "/configuracion", {"perfil": "test", "chat_id": "  "})
     perfil = json.loads((tmp / "profiles" / "test.json").read_text(encoding="utf-8"))
     telegram = {n["type"]: n for n in perfil["notifiers"]}["telegram"]
     assert telegram["chat_id"] == "${TELEGRAM_CHAT_ID}"
@@ -311,16 +314,16 @@ def test_sin_chat_propio_se_usa_el_compartido_del_env(sitio):
 
 def test_el_chat_propio_se_muestra_en_el_formulario(sitio):
     base, _ = sitio
-    post(base, "/datos", {"perfil": "test", "keywords": "Python", "chat_id": "98765"})
-    _, html, _ = get(base, "/datos?perfil=test")
+    post(base, "/configuracion", {"perfil": "test", "chat_id": "98765"})
+    _, html, _ = get(base, "/configuracion?perfil=test")
     assert "98765" in html
 
 
 def test_la_clave_del_bot_sigue_siendo_compartida(sitio):
     """El token del bot es de la computadora; el chat, de cada uno."""
     base, tmp = sitio
-    post(base, "/datos", {"perfil": "test", "keywords": "Python",
-                          "TELEGRAM_TOKEN": "123:abc", "chat_id": "111"})
+    post(base, "/configuracion", {"perfil": "test",
+                                  "TELEGRAM_TOKEN": "123:abc", "chat_id": "111"})
     assert "TELEGRAM_TOKEN=123:abc" in (tmp / ".env").read_text(encoding="utf-8")
     perfil = json.loads((tmp / "profiles" / "test.json").read_text(encoding="utf-8"))
     assert "123:abc" not in json.dumps(perfil)      # nunca en el perfil
@@ -359,7 +362,7 @@ def test_avisa_que_bumeran_y_zonajobs_comparten_los_avisos(tmp_path, monkeypatch
     """
     from vacantia.ui import formulario
 
-    html = formulario.render("ana", {"keywords": ["Python"]}, [])
+    html = formulario.render_configuracion("ana", {"keywords": ["Python"]}, [])
     assert "Misma base de avisos que Bumeran" in html
     assert "Misma base de avisos que Zonajobs" in html
 
@@ -370,18 +373,30 @@ def test_el_tilde_y_el_campo_de_reclutadores_no_se_llaman_igual():
     Uno es el interruptor de la fuente y el otro el cuadro donde van las URLs,
     con "Empresas que sigo" en el medio. Con el mismo nombre, no se encontraba
     dónde pegarlas.
+
+    Desde que Mi perfil y Configuración son dos pantallas, además viven en
+    lugares distintos: el tilde en Configuración y las URLs en Mi perfil.
     """
     from vacantia.ui import formulario
 
-    html = formulario.render("ana", {"keywords": ["Python"]}, [])
+    perfil = {"keywords": ["Python"]}
+    configuracion = formulario.render_configuracion("ana", perfil, [])
+    mi_perfil = formulario.render_datos("ana", perfil, [])
 
     # El tilde conserva el nombre de la fuente...
-    assert "> Perfiles de reclutadores que sigo</label>" in html
+    assert "> Perfiles de reclutadores que sigo</label>" in configuracion
     # ...y el cuadro de texto pasa a decir qué va adentro.
-    assert '<label for="rrhh">Las URLs de esos reclutadores</label>' in html
-    assert '<label for="rrhh">Perfiles de reclutadores que sigo</label>' not in html
-    # Y el recuadro nombra al tilde, para que se vea que van juntos.
-    assert "arriba tiene que estar tildado" in html
+    assert '<label for="rrhh">Las URLs de esos reclutadores</label>' in mi_perfil
+    assert '<label for="rrhh">Perfiles de reclutadores que sigo</label>' not in mi_perfil
+    # Con la fuente apagada, Mi perfil nombra al tilde y lleva a donde se prende,
+    # para que se vea que van juntos aunque no estén uno al lado del otro...
+    assert "prendas <b>Perfiles de reclutadores que sigo</b> en" in mi_perfil
+    assert '<a href="/configuracion?perfil=ana">Configuración</a>' in mi_perfil
+    # ...y con la fuente prendida no lo recuerda: un aviso que está siempre deja
+    # de leerse.
+    prendida = formulario.render_datos(
+        "ana", {"sources": [{"type": "rrhh", "enabled": True}]}, [])
+    assert "prendas <b>Perfiles de reclutadores que sigo</b>" not in prendida
 
 
 def test_el_recuadro_explica_que_pagina_pegar_y_cual_no():
@@ -389,15 +404,20 @@ def test_el_recuadro_explica_que_pagina_pegar_y_cual_no():
 
     Y de la home de una consultora tampoco: va la página que lista las
     búsquedas. Es lo que nadie se acuerda, y cuando se equivoca la fuente
-    devuelve 0 sin decir por qué. Va en un recuadro aparte, no en la ayuda
-    gris, porque hay que poder encontrarlo de nuevo cada vez.
+    devuelve 0 sin decir por qué.
+
+    Los ejemplos van siempre a la vista, abajo del cuadro, porque hay que poder
+    encontrarlos de nuevo cada vez. Eran un recuadro de catorce renglones que
+    pesaba más que el campo; ahora son tres renglones, y el porqué va detrás del
+    signo de pregunta, que se lee una vez.
     """
     from vacantia.ui import formulario
 
-    html = formulario.render("ana", {"keywords": ["Python"]}, [])
+    html = formulario.render_datos("ana", {"keywords": ["Python"]}, [])
 
-    assert 'class="pista"' in html
-    assert "El perfil de LinkedIn de la persona" in html   # ahora sí anda, por el rodeo
+    assert 'class="ejemplos"' in html
+    assert "<code>linkedin.com/in/nombre-apellido</code><span>el perfil de la persona" in html
+    assert '<span class="mal">No sirve</span><code>consultora.com.ar</code>' in html
     assert "Búsquedas activas" in html              # lo que sí hay que pegar
     assert "0 publicación(es)" in html              # el síntoma de haberla errado
     # Y como ejemplo dentro del cuadro vacío, que se ve sin leer nada.
@@ -418,7 +438,8 @@ def _paginas_para_auditar():
         "vacio": render.trabajos("ana", [], {}, "descartadas", []),
         "mensajes": render.mensajes("ana", oferta, {"dm": "a", "mail": "b"}, False, []),
         "consejo": render.consejo("ana", oferta, ["sql"], "texto", True, []),
-        "datos": formulario.render("ana", perfil, []),
+        "datos": formulario.render_datos("ana", perfil, []),
+        "configuracion": formulario.render_configuracion("ana", perfil, []),
     }
 
 
@@ -631,7 +652,8 @@ def test_linkedin_urls_abre_en_publicaciones(sitio):
     assert defecto.index(">Publicaciones<") < defecto.index(">Jobs<")
 
     _, jobs, _ = get(base, "/linkedin?perfil=test&tab=jobs")
-    assert "LinkedIn Jobs" in jobs
+    assert 'class="pestania activa" href="/linkedin?perfil=test&tab=jobs"' in jobs
+    assert '<input type="hidden" name="tab" value="jobs">' in jobs
 
     # Una pestaña inventada cae en Publicaciones y no rompe.
     _, rara, _ = get(base, "/linkedin?perfil=test&tab=cualquiera")
@@ -709,8 +731,9 @@ def test_las_pestanias_son_navegacion_y_no_un_filtro():
 
     html = linkedin("ana", "jobs", [])
     assert '<nav class="pestanias"' in html
-    assert html.index('class="pestanias"') < html.index('class="vacio"')
-    assert "<button" not in html
+    assert html.index('class="pestanias"') < html.index('class="taller"')
+    nav = html[html.index('<nav class="pestanias"'):html.index("</nav>")]
+    assert "<button" not in nav and nav.count("<a ") == 2
 
 
 def test_como_viene_funcionando_reemplaza_la_ventana_negra(sitio):
@@ -973,7 +996,7 @@ def test_la_navegacion_agrupa_por_lo_que_la_persona_hace():
     # aparecen antes en los comentarios de la hoja de estilos.
     lateral = html[html.index("<aside"):html.index("</aside>")]
     assert lateral.index(">Buscar<") < lateral.index(">Trabajos<") < lateral.index(">Métricas<")
-    assert "Mi perfil" in lateral
+    assert lateral.index(">Métricas<") < lateral.index(">Mi perfil<") < lateral.index(">Configuración<")
     assert 'aria-current="page"' in lateral       # dónde estoy parado
 
 
@@ -1280,7 +1303,7 @@ def test_como_me_presento_es_un_campo_aparte_del_perfil_largo():
     """
     from vacantia.ui import formulario
 
-    html = formulario.render("ana", {"candidate": {"headline": "AI Engineer"}}, [])
+    html = formulario.render_datos("ana", {"candidate": {"headline": "AI Engineer"}}, [])
     assert '<label for="cand_headline">Cómo me presento</label>' in html
     assert 'value="AI Engineer"' in html
 

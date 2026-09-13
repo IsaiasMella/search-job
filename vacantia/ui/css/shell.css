@@ -84,6 +84,16 @@
 .estado p { margin: 0 0 var(--spacing-xs); }
 .estado p:last-child { margin-bottom: 0; }
 .estado .valor { color: var(--color-text-secondary); }
+/* Aire entre "Trae avisos de los últimos N días" y Buscar ahora. Suma el margen
+   del párrafo porque los dos márgenes se funden en uno: sin sumarlo, el botón
+   bajaba 6px y no los 10 que se pidieron. */
+.estado .corrida { margin-top: calc(var(--spacing-xs) + var(--estado-aire-boton)); }
+
+/* Configuración, abajo de todo. Sin estado del sistema (la bienvenida) igual se
+   va al pie: el margen automático lo empuja. Con estado, ése ya lo empujó, y dos
+   márgenes automáticos se repartirían el hueco y subirían el estado. */
+.lateral > .al-pie { margin-top: auto; }
+.lateral > .estado + .al-pie { margin-top: var(--spacing-sm); }
 
 /* --- el cartel de la corrida ------------------------------------------------
 
@@ -150,6 +160,8 @@ main > h2:first-child { margin-top: 0; }
               justify-content: center;
               padding: var(--spacing-sm); }
   .separador { display: none; }
+  /* En la fila de íconos, Configuración va con los demás y no abajo del estado. */
+  .lateral > .al-pie, .lateral > .estado + .al-pie { order: 8; margin-top: 0; }
   .perfil-sel { flex-direction: row; align-items: center; margin-left: auto;
                 padding: 0; }
   .estado { order: 9; flex-basis: 100%; margin-top: 0;

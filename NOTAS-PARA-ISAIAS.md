@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**550 tests pasan.**
+**581 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  550 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  581 passed
 ```
 
 Andando todo: los 3 portales argentinos, Indeed, Get on Board, LinkedIn Jobs,
@@ -1652,6 +1652,243 @@ volver a cargar bien, una por línea como `Nombre | dirección`:
 archivo. Y si igual dos perfiles quedan apuntando al mismo, el primero que guarde
 pasa solo a tener el suyo, sin tocar la lista del otro.
 
+## 2.31. LinkedIn URLs: la pestaña Jobs
+
+Es `estrategia-links-linkedin-pestana-jobs.md` hecho pantalla, con la misma forma
+que Publicaciones: constructor a la izquierda, dirección, favoritos y anotador a
+la derecha y abajo.
+
+**Qué se puede elegir y qué parámetro arma:**
+
+    Puestos + Que además diga + Qué dejar afuera  ->  keywords
+    Dónde (Argentina / Cualquier lugar)           ->  geoId=100446943 o nada
+    Modalidad                                     ->  f_WT (1 presencial, 2 remoto, 3 híbrido)
+    Nivel                                         ->  f_E (4 es "Intermedio", el Mid-Senior)
+    Publicado hace (1h, 2h, 24h, semana, mes)     ->  f_TPR=r3600 ...
+    Ordenar por                                   ->  sortBy=DD o R
+    Menos de 10 candidatos                        ->  f_JIYN=true
+    Solicitud sencilla                            ->  f_AL=true
+
+El link 1 del documento sale letra por letra igual, y hay un test que lo fija.
+
+**Decisiones que conviene no deshacer:**
+
+- **Un NOT por término** (`NOT Junior NOT Jr`), y no `NOT (Junior OR Jr)` como dice
+  el documento. En Publicaciones la forma agrupada devolvía cero. En Jobs se probó
+  el 13/9/2026: `"AI Engineer" NOT Junior NOT Jr NOT Ssr NOT Semisenior NOT Trainee`,
+  Argentina, última semana, trajo 18 avisos.
+- **Sin tope de largo.** El corte de 110 letras se midió en el buscador de posteos;
+  en Jobs no se recorta nada.
+- **Favoritos en el mismo archivo**, separados por cómo empieza la dirección. Los
+  guardados antes siguen en Publicaciones sin migrar.
+- **Un anotador por pestaña** (`linkedin_jobs_postulaciones.json` aparte). Lo
+  confirmado de las dos suma al contador de Trabajos, que ahora dice "N anotadas en
+  LinkedIn URLs". El signo de pregunta de Jobs avisa que, si el aviso ya está en
+  Trabajos, se marca ahí y no acá, para no contarlo dos veces.
+- **Los signos de pregunta del constructor abren hacia abajo y a la derecha.** La
+  columna scrollea y recorta lo que se sale; abiertos como el del anotador, los
+  cortaba.
+
+**Ojo:** al abrir la búsqueda, LinkedIn mostró un aviso de que va a retirar de a
+poco la búsqueda de empleo clásica desde septiembre. Si un día los links dejan de
+filtrar, es por eso: hay que rehacer los filtros a mano allá y actualizar
+`vacantia/ui/linkedin_urls.py`.
+
+## 2.32. Preparar la copia de un familiar
+
+Cada familiar recibe una **copia independiente**: su carpeta, su repo de GitHub y
+su propio Claude Code. No queda ningún vínculo con tu repo: no le llegan tus
+actualizaciones y a vos no te llega nada de ellos.
+
+### Qué tan listo está
+
+| | Hoy | Qué lo lleva al 100 % |
+|---|---|---|
+| Instalar el programa en su compu | **80 %** | Usarlo tu semana de prueba. Un botón **Borrar perfil**, para no tener que borrar a mano los perfiles ajenos (prompt listo en el plan). |
+| Que use su Claude Code sin romper nada | **85 %** | Probar las barandas en la primera copia de verdad: que `git push --force` quede bloqueado y que `git push` pida confirmación. |
+
+### Lo que se armó
+
+- **`scripts/copia-familiar/`**, que en tu repo son archivos sueltos y no te
+  cambian nada:
+  - **`CLAUDE.md`:** reemplaza al tuyo en la copia. Le dice a su Claude que habla
+    con alguien que no programa, que avise antes de tocar algo, y cómo guardar
+    los cambios.
+  - **`settings.json`:** va a `.claude/settings.json`. Es lo único que **bloquea
+    de verdad**. Prohíbe:
+    - borrar historial (`push --force`, `reset --hard`, `clean`, `branch -D`);
+    - leer o editar `.env`;
+    - editar `state/` y `scripts/`.
+
+    Subir y unir cambios pide confirmación.
+  - **`preparar.ps1`:** lo deja todo listo.
+    - **Si la carpeta sigue conectada a tu repo, se niega** y no toca nada. Así
+      no lo podés correr por error en tu carpeta de trabajo.
+- **`.claude/rules/`**, compartido: los comandos y la arquitectura
+  (`proyecto.md`), más reglas que se cargan al tocar la pantalla, las fuentes o
+  los tests. Viaja con la copia y lo usan los dos Claude. Tu `CLAUDE.md` quedó
+  corto, con tu forma de trabajar.
+- **Arreglos para que la copia no arrastre cosas tuyas:**
+  - la plantilla de perfil ya no trae "AI Engineer" en Indeed y Get on Board;
+  - el test de empresas ya no lee tu `companies.json`;
+  - `.env.example` habla de Gemini;
+  - desinstalar con "BORRAR TODO" también borra los CV extra y la lista de
+    empresas.
+
+### Cómo guarda los cambios su Claude
+
+Ella no maneja nada de esto:
+
+```
+main              ← la versión que anda
+  └ cambio/xxx    ← cada pedido. Si los tests pasan, se une a main y se sube a su GitHub.
+```
+
+Nunca trabaja directo sobre `main`. Para deshacer un cambio ya unido usa
+`git revert`, que agrega un commit que lo anula sin borrar historial.
+
+### Paso a paso
+
+**CONFIGURACIÓN de la máquina.** Lo hacés vos, una vez:
+
+1. **Cuenta de GitHub** para la persona.
+2. **Git y GitHub CLI.** En su compu: `winget install Git.Git GitHub.cli`.
+3. **Claude Code.** Instalarlo e iniciar sesión con **su** cuenta de Claude.
+4. **Bajar el programa.** El ZIP desde GitHub, o clonar y **borrar la carpeta
+   `.git`**. Antes subí a GitHub lo último tuyo: lo que no esté subido no viene.
+5. **Preparar la copia:**
+   `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\copia-familiar\preparar.ps1`.
+   Pide nombre y mail si git no los tiene, y al final muestra los dos comandos
+   para subirla a su GitHub:
+   - `gh auth login --web`: abre el navegador, sin claves SSH;
+   - `gh repo create vacantia --private --source . --push`.
+6. **Perfiles.** En `profiles\`, borrá los que no son de ella y renombrá el que
+   sirva de base. Por ejemplo, `isaias.json` → `hermana.json`, y cambiale
+   adentro `"name"` y `cv_path`. **Antes de instalar:** `instalar.bat` programa
+   una búsqueda automática por cada perfil que encuentra.
+7. **Instalar.** `instalar.bat`.
+8. **Claves.** `abrir.bat` → Configuración → *Claves*: Gemini, TinyFish y el token
+   de Telegram. Son **las de ella**: lo que se gasta sale de su cuenta.
+
+**PERFIL de la persona.** Lo que se adapta, todo desde Mi perfil:
+
+- Palabras clave y *Puestos que NO quiero*.
+- Sus CV, con el nombre y las palabras de búsqueda de cada uno.
+- Dónde, modalidades e inglés.
+- Empresas que sigue. Tu lista sirve de base: Globant, Accenture y demás también
+  buscan gente de marketing.
+- Reclutadores.
+- Datos personales, sobre todo *Qué NO me sirve*, que es lo que más afina el
+  puntaje.
+- *Mi Telegram*, que ahora está en Configuración: su chat.
+
+### Cómo se usa su Claude
+
+Abre una terminal en la carpeta, escribe `claude` y le pide lo que quiere en
+castellano: *"quiero que me traiga también avisos de Bahía Blanca"*, *"no
+entiendo por qué este aviso tiene 40"*. Su Claude explica qué va a hacer, espera
+el OK, lo hace en una rama, corre los tests y recién ahí lo une.
+
+Si algo salió mal: *"volvé atrás el último cambio"*.
+
+## 2.33. Mi perfil y Configuración, separadas; y borrar un perfil
+
+Mi perfil mezclaba en una sola columna lo que tocás todas las semanas con lo que
+se carga una vez y no se vuelve a mirar. Lo de todos los días quedaba enterrado
+entre claves de API.
+
+### Qué cambió
+
+- **La barra lateral tiene Configuración** (`/configuracion`), al pie, abajo de
+  *Buscar ahora* (ver 2.34).
+- **Mi perfil** (`/datos`): Mis CV, palabras clave, puestos que NO querés, dónde,
+  inglés, empresas y URLs de reclutadores, y datos personales.
+- **Configuración**: claves, chat de Telegram, fuentes, puntaje mínimo, `top_n`,
+  `max_new_per_run`, `max_age_days`, *avisarme aunque no haya ofertas*, crear un
+  perfil y **borrar el perfil**.
+- **El JSON del perfil no cambió.** Sólo cambió qué pantalla edita qué campo.
+- **Borrar este perfil**, al pie de Configuración, con la misma confirmación en el
+  lugar que *Borrar este CV*. Se lleva `profiles/<nombre>.json`, sus CV,
+  `companies-<nombre>.json`, `state/<nombre>/` y la tarea `Vacantia - <nombre>`.
+
+### Decisiones que conviene no deshacer
+
+- **Cada pantalla guarda sólo sus campos** (`aplicar_datos` y
+  `aplicar_configuracion`). Un tilde sin marcar no viaja en el formulario, así que
+  "no vino" se lee como "apagado". Eso vale sólo en la pantalla que dibuja el
+  tilde: si Mi perfil leyera las fuentes, guardarlo las apagaría todas. Los tests
+  de `tests/test_configuracion.py` mandan el formulario tal como lo manda el
+  navegador y controlan que la otra mitad del perfil quede igual.
+- **Los campos de texto de Mi perfil se cambian sólo si vinieron.** Un pedido
+  viejo o incompleto no vacía tus palabras ni tus datos.
+- **Pegar URLs de reclutadores no prende la fuente.** Si no existía, se crea
+  apagada: prenderla es de Configuración. Lo mismo al separar la lista de empresas.
+- **"Crear perfil" dejó de ser primario.** Queda un solo primario por pantalla,
+  *Guardar cambios*.
+- **Lo compartido no se borra:** un CV que lee otro perfil, o una lista de empresas
+  que usa otro. Tampoco un `companies.json` que no lleva el nombre del perfil,
+  aunque sólo lo use él. `example` nunca.
+- **El estado se borra primero.** Es lo único que puede fallar a mitad de camino
+  (un archivo abierto por una búsqueda en curso), y si falla el perfil sigue entero.
+- **La tarea programada se consulta antes de sacarla.** Un perfil creado desde la
+  pantalla no tiene tarea hasta reinstalar, y avisar "no pude sacarla" mandaría a
+  buscar un problema que no existe. Si existe y no se deja sacar, el perfil se
+  borra igual y el cartel dice el nombre de la tarea para sacarla a mano.
+- **Después de borrar** vuelve a Configuración del primer perfil que quede. Si no
+  queda ninguno, a la bienvenida, que ahora también muestra los carteles.
+
+### Dos cosas de `DESIGN.md` que no toqué
+
+No lo edito sin que lo pidas, pero quedó desactualizado en dos lugares:
+
+- La estructura de navegación dice `Métricas · Mi perfil`, sin Configuración.
+- *Modales* dice que la confirmación de borrar un perfil es un modal. Se hizo en el
+  lugar, como pediste y como dice `.claude/rules/pantalla.md`.
+
+## 2.34. Mi perfil y Configuración, con menos ruido
+
+Las dos pantallas se leían como un manual: explicaciones sueltas abajo de cada
+campo, un recuadro de catorce renglones para las URLs de reclutadores y los
+tildes de fuentes desparramados.
+
+### Qué cambió
+
+- **Barra lateral:** *Configuración* bajó al pie, abajo de *Buscar ahora*, y entre
+  "Trae avisos de los últimos N días" y el botón hay 10px más de aire. El valor
+  es el token `--estado-aire-boton`, que se sale de la escala de 4 a propósito.
+- **Las explicaciones largas van en el signo de pregunta.** Se fueron todos los
+  "Cómo funciona esto" y queda una línea corta de ayuda por campo.
+- **"Qué página pegar" son tres renglones:** *Sirve* / *Sirve* / *No sirve*, con la
+  dirección de ejemplo y qué es. El porqué está en el signo de pregunta.
+- **El aviso de "tiene que estar tildado"** aparece sólo si la fuente está apagada,
+  con el link a Configuración. Visible siempre, ya no se leía.
+- **Mi perfil:** Dónde e Idioma quedaron en una sola sección.
+- **Configuración se ordena por lo que te preguntás**, no por dónde se guarda:
+  - *Cómo me avisa*: chat, puntaje mínimo, ofertas por aviso, avisar sin ofertas.
+  - *Qué busca*: fuentes, antigüedad, tope por corrida.
+  - *Claves*.
+- **Fuentes en dos listas**, *Portales de empleo* y *Lo que seguís*, con un tilde
+  por renglón y la nota en el signo de pregunta.
+  - Al lado de empresas y reclutadores dice cuántas hay cargadas, con el link para
+    cargarlas: prender una fuente con la lista vacía devuelve cero sin avisar.
+  - Con Bumeran y Zonajobs prendidos juntos, avisa que llegan duplicados.
+- **Crear y borrar perfiles** van en un panel chico aparte: el nombre y el botón en
+  una fila, y abajo el borrado.
+
+### Decisiones que conviene no deshacer
+
+- **"Sirve" va en gris y "No sirve" en rojo.** En este sistema el verde es lo que ya
+  hiciste; el rojo sí corresponde, porque es exactamente el valor equivocado.
+- **La clase es `.cargadas` y no `.dato`.** `.dato` es la tarjeta de métrica, con
+  borde y relleno, y con ese nombre el número salía adentro de una caja.
+- **Una fuente nueva que no esté en `GRUPOS_DE_FUENTES` cae en *Portales*.** Para
+  agregar una fuente sigue alcanzando con sumarla a `FUENTES`.
+
+### Lo que el skill de diseño sugería y no se hizo
+
+Cambiar Inter por otra fuente, agregar grano o ruido al fondo y animaciones de
+entrada. `DESIGN.md` fija Inter y prohíbe lo otro: manda el sistema de la app.
+
 
 ---
 
@@ -1659,8 +1896,8 @@ pasa solo a tener el suyo, sin tocar la lista del otro.
 
 Sin detalle, para no volver a discutirlo:
 
-- **La pantalla local** (`abrir.bat`): barra lateral con Trabajos, Métricas y Mi
-  perfil, y el estado del sistema fijo al pie. Oscura, navegable con teclado,
+- **La pantalla local** (`abrir.bat`): barra lateral con Trabajos, Métricas, Mi
+  perfil y Configuración, y el estado del sistema fijo al pie. Oscura, navegable con teclado,
   usable en celular.
 - **Marcar ofertas**, con motivo obligatorio al descartar. Al
   marcarla se va de *Sin marcar* con una animación, y el cartel de arriba la
@@ -1706,7 +1943,7 @@ Sin detalle, para no volver a discutirlo:
   seguís. Los tres portales argentinos verificados contra los sitios.
 - **Seguir a un reclutador de LinkedIn** aunque LinkedIn no deje leer su perfil:
   se buscan sus publicaciones en Google y se leen ésas (2.7).
-- **Antigüedad máxima, una sola perilla en Mi perfil**, que heredan todas las
+- **Antigüedad máxima, una sola perilla en Configuración**, que heredan todas las
   fuentes. Los tres portales ahora sí reportan cuándo se publicó el aviso, que
   antes no lo hacían nunca (2.8).
 - **Las recién publicadas van arriba de todo**, separadas con un rótulo, sin
@@ -1801,7 +2038,7 @@ vacantia/
 ├── ui/
 │   ├── server.py     el servidor y las rutas
 │   ├── data.py       todo lo que toca disco
-│   ├── formulario.py la pestaña Mi perfil
+│   ├── formulario.py las pestañas Mi perfil y Configuración
 │   ├── render.py     el HTML
 │   ├── estilos.py    junta los .css de abajo y arma las @font-face
 │   ├── css/          el CSS, en archivos de verdad

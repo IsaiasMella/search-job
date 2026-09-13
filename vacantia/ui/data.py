@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -21,7 +22,7 @@ from vacantia.fechas import dias_desde, fecha_de
 from vacantia.filters import passes_language
 from vacantia.log import get_logger
 from vacantia.models import Job
-from vacantia.state import State
+from vacantia.state import STATE_ROOT, State
 
 logger = get_logger()
 
@@ -129,6 +130,96 @@ def crear_perfil(nombre: str) -> str:
             cv.write_text("# PEGAR CV ACÁ\n", encoding="utf-8")
         logger.info(f"[ui] CV en blanco creado: {cv}")
     return nombre
+
+
+#: Cómo se llama la búsqueda programada de cada perfil. La registra
+#: `scripts/instalar.ps1` con este mismo nombre.
+TAREA_PROGRAMADA = "Vacantia - {}"
+
+
+def borrar_perfil(nombre: str) -> str:
+    """Borra un perfil con todo lo suyo. Devuelve qué pasó con su tarea programada.
+
+    **Es definitivo**, y por eso la pantalla pide confirmación antes de llegar
+    acá. Se va:
+
+    * `profiles/<nombre>.json`. `example` nunca: es el molde de los nuevos.
+    * Sus CV, salvo el archivo que lea otro perfil.
+    * `companies-<nombre>.json`, salvo que lo use otro perfil. Un archivo con
+      otro nombre, como el `companies.json` de antes de separar las listas, no
+      se toca: aunque este perfil lo use, no es suyo.
+    * `state/<nombre>/`: las ofertas guardadas, lo que marcaste, los favoritos.
+    * Su búsqueda programada de Windows. Si no está o no se deja sacar, lo demás
+      se borra igual y la pantalla lo avisa: una tarea huérfana falla sola al
+      no encontrar el perfil, que es mucho menos grave que un perfil a medio
+      borrar.
+
+    Devuelve "sacada", "no-estaba" o "fallo".
+    """
+    if nombre == "example":
+        raise ValueError("'example' es el molde de los perfiles nuevos: no se borra.")
+    if nombre not in perfiles():
+        raise ValueError(f"No existe el perfil '{nombre}'.")
+    try:
+        perfil = leer_perfil(nombre)
+    except json.JSONDecodeError:
+        perfil = {}             # roto, pero igual se tiene que poder borrar
+    cvs = cvs_del_perfil(perfil) if perfil else []
+    empresas = ruta_companies(perfil)
+    empresas_compartidas = otros_perfiles_con_las_mismas_empresas(nombre, perfil)
+
+    # Primero el estado, que es lo único que puede fallar a mitad de camino: un
+    # archivo abierto por una búsqueda en curso. Si falla acá, el perfil sigue
+    # entero y se puede volver a intentar.
+    estado = STATE_ROOT / nombre
+    if estado.is_dir():
+        shutil.rmtree(estado)
+
+    # El perfil antes que los CV: `_archivo_de_cv_en_uso` recorre todos los
+    # perfiles, y con éste todavía en disco cada CV suyo figuraría en uso.
+    profile_path(nombre).unlink()
+    for cv in cvs:
+        ruta = Path(cv["path"])
+        if (ruta.is_file() and ruta.resolve() != PLANTILLA_CV.resolve()
+                and not _archivo_de_cv_en_uso(ruta)):
+            ruta.unlink()
+
+    if (empresas.name == f"companies-{nombre}.json" and empresas.is_file()
+            and not empresas_compartidas):
+        empresas.unlink()
+
+    logger.info(f"[ui] Perfil borrado: {nombre}")
+    return _sacar_tarea_programada(nombre)
+
+
+def _sacar_tarea_programada(nombre: str) -> str:
+    """Saca la búsqueda programada de un perfil. "sacada", "no-estaba" o "fallo".
+
+    Primero pregunta si está. Un perfil creado desde la pantalla no tiene tarea
+    hasta que se vuelve a correr la instalación, y decirle "no pude sacarla" a
+    quien nunca la tuvo lo manda a buscar un problema que no existe.
+
+    `schtasks` viene con Windows. Las tareas se registran con el usuario común,
+    así que sacarlas no pide permisos de administrador.
+    """
+    tarea = TAREA_PROGRAMADA.format(nombre)
+    opciones = {"capture_output": True, "text": True, "errors": "replace", "timeout": 15,
+                "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+    try:
+        consulta = subprocess.run(["schtasks", "/Query", "/TN", tarea], **opciones)
+        if consulta.returncode != 0:
+            logger.info(f"[ui] {tarea} no estaba programada")
+            return "no-estaba"
+        borrado = subprocess.run(["schtasks", "/Delete", "/TN", tarea, "/F"], **opciones)
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.warning(f"[ui] No pude sacar la tarea {tarea}: {e}")
+        return "fallo"
+    if borrado.returncode != 0:
+        logger.warning(f"[ui] No pude sacar la tarea {tarea}: "
+                       f"{(borrado.stderr or borrado.stdout or '').strip()}")
+        return "fallo"
+    logger.info(f"[ui] Tarea sacada: {tarea}")
+    return "sacada"
 
 
 # --- CV ---------------------------------------------------------------------
@@ -338,7 +429,10 @@ def separar_companies(nombre_perfil: str, perfil: dict) -> list[str]:
     """
     otros = otros_perfiles_con_las_mismas_empresas(nombre_perfil, perfil)
     if otros:
-        fuente_o_crear(perfil, "careers")["companies_file"] = f"companies-{nombre_perfil}.json"
+        # Si el bloque no existía, nace apagado: separar la lista no puede
+        # prender una fuente. Prenderla es de Configuración.
+        fuente_o_crear(perfil, "careers", {"enabled": False})["companies_file"] = (
+            f"companies-{nombre_perfil}.json")
     return otros
 
 
@@ -589,7 +683,7 @@ def motivos_del_sistema(oferta: dict, filtros: dict) -> list[tuple[str, str]]:
     explícitamente y el modelo lo hizo igual.
 
     **Se calcula al leer, no se guarda.** Es a propósito: el nivel de inglés y
-    las ciudades se cambian desde *Mis datos*, y una oferta rechazada hoy por
+    las ciudades se cambian desde *Mi perfil*, y una oferta rechazada hoy por
     pedir B2 tiene que volver a aparecer sola el día que subas tu nivel. Un
     campo guardado congelaría la decisión que se tomó con la configuración de
     aquel día.

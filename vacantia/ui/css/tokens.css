@@ -164,6 +164,9 @@
   --table-max:         560px;  /* dos columnas: texto y número */
   --metric-min:        160px;  /* mínimo de una tarjeta de métrica */
   --textarea-min:      180px;
+  /* Aire entre la ventana de días y Buscar ahora, al pie de la barra lateral.
+     Se sale de la escala de 4 a propósito: lo pidió Isaías a ojo, 10px más. */
+  --estado-aire-boton: 10px;
 
   /* --- iconografía (Lucide, dibujada a mano en el HTML) --- */
   --icon-stroke: 1.5;
