@@ -37,6 +37,24 @@ def _escribir_perfil(tmp, perfil, nombre="test"):
     (tmp / "profiles" / f"{nombre}.json").write_text(json.dumps(perfil), encoding="utf-8")
 
 
+def test_cada_clave_dice_donde_se_consigue(sitio):
+    """"Sin cargar" sin decir dónde se consigue era un callejón sin salida.
+
+    Los links abren en otra pestaña para no perder lo que ya estaba escrito en
+    el formulario. El número de chat de Telegram es lo que nadie sabe de dónde
+    sale, así que también lleva el suyo.
+    """
+    base, _ = sitio
+    html = get(base, "/configuracion?perfil=test")[1]
+    for url in ("https://t.me/BotFather", "https://aistudio.google.com/apikey",
+                "https://agent.tinyfish.ai", "https://openrouter.ai/keys",
+                "https://t.me/userinfobot"):
+        assert f'href="{url}" target="_blank" rel="noopener noreferrer"' in html, url
+    assert "Conseguila en" in html or "Se saca en" in html
+    # El paso a paso del token del bot, en el signo de pregunta.
+    assert "/newbot" in html
+
+
 class _Formulario(HTMLParser):
     """Los campos que mandaría el navegador al apretar "Guardar cambios".
 

@@ -1,0 +1,171 @@
+/* ===========================================================================
+   EL PANEL DE "BUSCANDO TRABAJO".
+
+   Arriba del contenido, en todas las pantallas, y sólo mientras la búsqueda
+   corre. Vacío no ocupa nada: `:empty` lo saca del layout, así que la lista de
+   trabajos no queda empujada hacia abajo por un hueco invisible.
+
+   **Es la excepción a "nada que se mueva solo", y por qué.** El cartel del pie
+   de la barra lateral no lleva ni una animación, y eso sigue siendo correcto:
+   vive al costado de lo que se está leyendo, y algo que se mueve en el borde
+   del campo visual te obliga a mirarlo. Este panel está adelante, en la columna
+   que la persona ya está mirando, y dura lo que dura la búsqueda y ni un
+   segundo más. Isaías lo pidió con estas palabras: "algo que me avise que se
+   está buscando trabajo; ese texto ahí no es muy visual que digamos". Arrancar
+   una búsqueda y que no pase nada visible se siente igual que apretar un botón
+   roto.
+
+   El azul es el de estado del sistema, el mismo de "Filtradas", y no el índigo:
+   en este panel no hay nada para tocar, y el índigo significa "esto se toca".
+   =========================================================================== */
+
+.buscando:empty { display: none; }
+
+.buscando {
+  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  border: var(--border-regular) solid var(--color-border);
+  border-radius: var(--rounded-lg);
+  background: var(--color-info-surface);
+  box-shadow: var(--elevation-raised);
+}
+
+/* --- la cabecera: el anillo, el título y hace cuánto ---------------------- */
+
+.buscando .cabecera {
+  display: flex; align-items: center; gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+.buscando .cabecera h2 {
+  margin: 0; flex: 1 1 auto;
+  font-size: var(--text-h2); line-height: var(--leading-title);
+  letter-spacing: var(--tracking-h2); font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+.buscando .cabecera .hace {
+  flex: 0 0 auto;
+  color: var(--color-text-tertiary); font-size: var(--text-body-sm);
+}
+
+/* El anillo que gira. Gira el `svg` entero y no el arco de adentro: el origen
+   de una rotación dentro de un SVG se mide en unidades del dibujo y no en el
+   centro del elemento, y ahí es donde esto se descentra en un navegador y en
+   otro no. Rotando el elemento, el centro es el centro y se terminó. */
+.buscando .cabecera svg {
+  flex: 0 0 auto;
+  width: var(--spacing-lg); height: var(--spacing-lg);
+  color: var(--color-info);
+  animation: buscando-gira 1.1s linear infinite;
+}
+/* El arco, más grueso que el resto de la iconografía: es lo único de la
+   pantalla que tiene que leerse como movimiento y no como dibujo. */
+.buscando .cabecera .arco { stroke-width: 2.5; }
+/* El círculo de atrás, tenue: es lo que hace que se lea como un anillo con un
+   arco encima y no como un gajo suelto. */
+.buscando .cabecera .aro { opacity: 0.25; }
+
+@keyframes buscando-gira { to { transform: rotate(360deg); } }
+
+/* --- qué está haciendo ---------------------------------------------------- */
+
+.buscando .que {
+  margin: 0 0 var(--spacing-sm);
+  font-size: var(--text-body-lg); line-height: var(--leading-snug);
+  color: var(--color-text-primary);
+}
+
+/* --- la barra ------------------------------------------------------------- */
+
+.buscando .avance {
+  display: flex; align-items: center; gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+.buscando .avance .detalle {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary); font-size: var(--text-body-sm);
+  font-variant-numeric: tabular-nums;
+}
+.buscando .barra {
+  flex: 1 1 auto; height: 8px; overflow: hidden;
+  border-radius: var(--rounded-full);
+  background: var(--data-track);
+}
+.buscando .barra > span {
+  display: block; height: 100%; border-radius: inherit;
+  background: var(--color-info);
+  transition: width var(--duration-normal) var(--ease-standard);
+}
+
+/* Sin total no hay porcentaje que mostrar: no se sabe cuántas fuentes van a
+   contestar ni cuántas ofertas van a entrar. La barra se llena entera y lo que
+   se mueve es un resplandor que la barre de punta a punta: no promete nada, y
+   un porcentaje inventado clavado en 40% durante dos minutos es peor que no
+   tener ninguno.
+
+   **El resplandor nunca se va de la barra, y eso es el punto.** La primera
+   versión era un bloque que entraba por la izquierda y salía por la derecha, y
+   medio ciclo la barra quedaba vacía: en una barra de mil píxeles eso se veía
+   como una astilla en un rincón, o sea exactamente igual a una barra rota. Con
+   `background-position` de 0% a 100% el resplandor se mueve *adentro* de la
+   barra y siempre se ve entero. */
+.buscando .barra.indefinida > span {
+  width: 100%;
+  background-color: var(--data-track);
+  background-image: linear-gradient(90deg, transparent, var(--color-info), transparent);
+  background-size: 45% 100%;
+  background-repeat: no-repeat;
+  animation: buscando-recorre 1.6s var(--ease-standard) infinite alternate;
+}
+@keyframes buscando-recorre {
+  from { background-position: 0% 0; }
+  to   { background-position: 100% 0; }
+}
+
+/* --- los tramos ----------------------------------------------------------- */
+
+.buscando .tramos {
+  display: flex; flex-wrap: wrap; gap: var(--spacing-sm) var(--spacing-lg);
+  margin: 0 0 var(--spacing-md); padding: 0; list-style: none;
+}
+.buscando .tramos li {
+  display: flex; align-items: center; gap: var(--spacing-xs);
+  font-size: var(--text-body-sm); color: var(--color-text-tertiary);
+}
+/* El tramo cumplido va en secundario y no en verde: el verde de esta app
+   significa "esto lo hiciste vos", y las etapas del motor no las hizo nadie. El
+   tilde ya dice que pasó. */
+.buscando .tramos li.hecho { color: var(--color-text-secondary); }
+.buscando .tramos li.activo {
+  color: var(--color-text-primary); font-weight: var(--weight-medium);
+}
+.buscando .tramos svg { width: var(--icon-sm); height: var(--icon-sm); }
+
+/* El punto ocupa el mismo ancho que el tilde (16px de ícono) para que los
+   nombres de los tramos queden alineados en la fila, pasen o no. */
+.buscando .punto {
+  flex: 0 0 auto; width: 10px; height: 10px; margin: 0 3px;
+  border-radius: var(--rounded-full);
+  border: var(--border-regular) solid var(--color-border);
+}
+.buscando .tramos li.activo .punto {
+  background: var(--color-info); border-color: var(--color-info);
+}
+
+/* --- el renglón que baja la ansiedad -------------------------------------- */
+
+.buscando .tranquilo {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-body-sm); line-height: var(--leading-snug);
+}
+
+/* Con el movimiento apagado queda todo igual, pero quieto: el anillo completo y
+   la barra sin porcentaje llena hasta el final. Lo que informa es el texto, y
+   el texto no se mueve. */
+@media (prefers-reduced-motion: reduce) {
+  .buscando .cabecera svg { animation: none; }
+  .buscando .barra.indefinida > span {
+    animation: none;
+    background-image: none; background-color: var(--color-info);
+  }
+}

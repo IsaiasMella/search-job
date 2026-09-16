@@ -59,7 +59,8 @@ CSS_DIR = Path(__file__).parent / "css"
 #:
 #: **El orden importa de verdad**: una regla de `piezas` que pise a una de
 #: `controles` depende de estar después. No los reordenes por prolijidad.
-ORDEN = ("tokens", "base", "shell", "controles", "piezas", "graficos", "linkedin")
+ORDEN = ("tokens", "base", "shell", "controles", "piezas", "buscando",
+         "graficos", "linkedin")
 
 
 def _font_faces() -> str:

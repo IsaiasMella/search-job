@@ -271,11 +271,12 @@ def salud() -> dict:
 # y se traducen a una oración en castellano, que es lo que muestra el cartel de
 # la barra lateral mientras la búsqueda corre.
 #
-# **No hay barra de progreso con porcentaje, y es a propósito.** No se sabe de
-# antemano cuántas fuentes van a contestar ni cuántas ofertas van a entrar, así
-# que cualquier porcentaje sería inventado. Lo que sí se sabe con exactitud es
-# en qué etapa está y, durante el puntaje, cuántas lleva de cuántas. Eso se
-# muestra, y nada más.
+# **Nunca hay un porcentaje inventado, y es a propósito.** No se sabe de
+# antemano cuántas fuentes van a contestar ni cuántas ofertas van a entrar. Lo
+# que sí se sabe con exactitud es en qué etapa está y, durante el puntaje,
+# cuántas lleva de cuántas. Eso se muestra, y nada más: la barra del panel sólo
+# se llena de a poco durante el puntaje, y en las demás etapas es una barra sin
+# porcentaje, que dice "esto sigue andando" sin prometer cuánto falta.
 
 #: Los hitos del motor, en el orden del pipeline. El progreso es siempre el hito
 #: más avanzado que ya apareció en el registro de esta corrida.
@@ -315,11 +316,32 @@ def _lineas_de_esta_corrida() -> list[str]:
         return []
 
 
+#: Las etapas, en el orden del pipeline, con el nombre corto que muestra el
+#: panel de "Buscando trabajo".
+#:
+#: **El identificador va aparte de la oración a propósito.** La oración cambia
+#: con la fuente y con el número de ofertas ("Buscando en Getonbrd", "Revisando
+#: 125 ofertas"); el identificador no cambia nunca, y es lo que le permite al
+#: panel saber qué tramo ya pasó sin tener que adivinarlo del texto.
+#:
+#: `arranque` y `cierre` no tienen nombre corto: no son tramos de la barra, son
+#: el antes y el después. Con `arranque` la barra está entera por delante, y con
+#: `cierre` entera cumplida.
+ETAPAS = (
+    ("fuentes", "Portales"),
+    ("revisando", "Revisión"),
+    ("puntuando", "Puntaje"),
+    ("filtrando", "Filtros"),
+)
+
+
 def progreso() -> dict:
     """En qué anda la búsqueda ahora. Siempre las mismas claves.
 
     * `corriendo`: si hay un proceso vivo arrancado desde la pantalla.
     * `paso`: la oración que se muestra, ya en castellano.
+    * `etapa`: el identificador de esa etapa, uno de `ETAPAS` más `arranque` y
+      `cierre`. Es lo que dibuja la barra de tramos.
     * `hechas` / `total`: sólo durante el puntaje, que es la etapa larga.
     * `perfil`: cuál se está procesando, que con `--all` va cambiando.
     * `segundos`: cuánto hace que arrancó.
@@ -328,6 +350,7 @@ def progreso() -> dict:
     estado = {
         "corriendo": corriendo,
         "paso": "",
+        "etapa": "",
         "perfil": "",
         "hechas": 0,
         "total": 0,
@@ -336,7 +359,7 @@ def progreso() -> dict:
     if not corriendo:
         return estado
 
-    paso = "Arrancando la búsqueda"
+    paso, etapa = "Arrancando la búsqueda", "arranque"
     perfil = fuente = ""
     recolectadas = puntuar = puntuadas = 0
 
@@ -348,30 +371,30 @@ def progreso() -> dict:
             # anterior se reinicia o el cartel mezcla dos corridas en una.
             perfil, fuente = m.group(1), ""
             recolectadas = puntuar = puntuadas = 0
-            paso = "Arrancando la búsqueda"
+            paso, etapa = "Arrancando la búsqueda", "arranque"
         elif m := _FUENTE_EMPIEZA.search(linea):
             fuente = m.group(1)
-            paso = f"Buscando en {fuente}"
+            paso, etapa = f"Buscando en {fuente}", "fuentes"
         elif _FUENTE_TERMINA.search(linea):
             # La fuente terminó y todavía no empezó la próxima. Queda el texto
             # de la anterior: decir "esperando" por medio segundo es peor.
             pass
         elif m := _RECOLECTADO.search(linea):
             recolectadas = int(m.group(1))
-            paso = f"Revisando {recolectadas} ofertas"
+            paso, etapa = f"Revisando {recolectadas} ofertas", "revisando"
         elif m := _A_PUNTUAR.search(linea):
             puntuar, puntuadas = int(m.group(1)), 0
-            paso = "Puntuando contra tu CV"
+            paso, etapa = "Puntuando contra tu CV", "puntuando"
         elif _YA_PUNTUADA.match(linea):
             puntuadas += 1
         elif _FILTRADAS.search(linea):
-            paso = "Aplicando tus filtros"
+            paso, etapa = "Aplicando tus filtros", "filtrando"
         elif _CIERRE in linea:
-            paso = "Terminando"
+            paso, etapa = "Terminando", "cierre"
 
     if puntuar:
         # Ojo con `min`: si el motor reintenta un lote, las líneas de puntaje se
         # repiten y sin el tope se ve "Puntuando 84 de 78".
         estado["hechas"], estado["total"] = min(puntuadas, puntuar), puntuar
-    estado["paso"], estado["perfil"] = paso, perfil
+    estado["paso"], estado["etapa"], estado["perfil"] = paso, etapa, perfil
     return estado

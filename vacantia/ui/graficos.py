@@ -37,8 +37,16 @@ def vale_un_grafico(filas) -> bool:
     return len(utiles) >= MINIMO_PARA_GRAFICAR
 
 
+def _porcentaje(valor: int, de: int) -> str:
+    """Qué parte es, redondeada. Una que existe nunca dice 0%."""
+    if not de:
+        return ""
+    parte = round(100 * valor / de)
+    return "<1%" if valor and not parte else f"{parte}%"
+
+
 def barras(filas: list[tuple[str, int]], unidad: str = "ofertas",
-           maximo: int | None = None) -> str:
+           maximo: int | None = None, total: int | None = None) -> str:
     """Barras horizontales, una por categoría, ordenadas de mayor a menor.
 
     Horizontales y no verticales porque las etiquetas son frases enteras
@@ -49,27 +57,37 @@ def barras(filas: list[tuple[str, int]], unidad: str = "ofertas",
     estimar la altura contra una grilla obliga a un trabajo que el número
     resuelve gratis, y el largo de la barra sigue estando para comparar de un
     vistazo.
+
+    **Con `total`, la barra entera es ese total** y no la fila más grande, y al
+    lado del número va qué parte es. Sin eso, en Por qué descartaste vos "Piden
+    inglés" salía siempre llena y "51" no decía de cuántas: 9 que no son ofertas
+    no es nada sobre 200 y es muchísimo sobre 60, y el gráfico dibujaba igual
+    los dos casos.
     """
     filas = [(k, int(v)) for k, v in (filas or []) if v]
     if not filas:
         return ""
     filas.sort(key=lambda kv: -kv[1])
-    tope = maximo or max(v for _, v in filas)
-    total = sum(v for _, v in filas)
+    tope = total or maximo or max(v for _, v in filas)
+    de = total or sum(v for _, v in filas)
 
     barras_html = []
     for etiqueta, valor in filas:
         ancho = max(1.0, 100.0 * valor / tope) if tope else 0.0
-        parte = f"{round(100 * valor / total)}% de {total}" if total else ""
+        parte = f"{_porcentaje(valor, de)} de {de}" if de else ""
+        columna_parte = (f'<span class="barra-parte">{_esc(_porcentaje(valor, de))}</span>'
+                         if total else "")
         barras_html.append(
             f'<div class="barra-fila">'
             f'<span class="barra-nombre">{_esc(etiqueta)}</span>'
             f'<span class="barra-riel" title="{_esc(f"{valor} {unidad}, {parte}")}">'
             f'<span class="barra-relleno" style="--ancho:{ancho:.1f}%"></span></span>'
             f'<span class="barra-valor">{valor}</span>'
+            f"{columna_parte}"
             f"</div>"
         )
-    return f'<div class="barras">{"".join(barras_html)}</div>'
+    clase = "barras con-parte" if total else "barras"
+    return f'<div class="{clase}">{"".join(barras_html)}</div>'
 
 
 def columnas(datos: list[dict], unidad: str = "ofertas") -> str:

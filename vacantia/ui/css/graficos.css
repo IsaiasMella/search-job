@@ -130,8 +130,35 @@ h2.seccion { margin: var(--spacing-2xl) 0 var(--spacing-lg);
         border: var(--border-hairline) solid var(--color-border);
         border-radius: var(--rounded-lg);
         background: var(--color-surface); }
-.foco > h2 { margin: 0 0 var(--spacing-xs); }
 .foco > :last-child { margin-bottom: 0; }
+
+/* La cabecera de cada bloque: título y para qué sirve a la izquierda, y del
+   otro lado el total en grande. Sin el total a la vista, "Python 161" no decía
+   de cuántas; escrito como una frase más ("De las 219 ofertas analizadas") se
+   perdía entre la explicación y el gráfico. Mismo tamaño que las tarjetas de
+   arriba: es el mismo tipo de dato. */
+.panel-cabeza { display: flex; justify-content: space-between;
+                align-items: flex-start; gap: var(--spacing-lg); }
+.panel-cabeza > div:first-child { flex: 1 1 auto; min-width: 0; }
+.panel-cabeza h2 { margin: 0 0 var(--spacing-xs); }
+.panel-total { flex: 0 0 auto; text-align: right; }
+.panel-total .numero { display: block;
+                       font-size: var(--text-display); font-weight: var(--weight-semibold);
+                       line-height: var(--leading-tight);
+                       letter-spacing: var(--tracking-display);
+                       font-variant-numeric: tabular-nums;
+                       color: var(--color-text-primary); }
+.panel-total .que { display: block; margin-top: var(--spacing-xs);
+                    color: var(--color-text-tertiary); font-size: var(--text-body-sm);
+                    white-space: nowrap; }
+.panel-total .de-donde { display: block; color: var(--color-text-tertiary);
+                         font-size: var(--text-caption); white-space: nowrap; }
+/* Angosto, el total baja abajo del título: al lado le dejaba a la explicación
+   dos palabras por renglón. */
+@media (max-width: 640px) {
+  .panel-cabeza { flex-direction: column; gap: 0; }
+  .panel-total { text-align: left; margin-bottom: var(--spacing-md); }
+}
 /* Con la tarjeta entera de ancho, quince barras en una columna son una torre
    que no se abarca de un vistazo. En dos columnas se leen como una lista.
    
@@ -165,7 +192,7 @@ h2.seccion { margin: var(--spacing-2xl) 0 var(--spacing-lg);
 .panel { break-inside: avoid; margin-bottom: var(--spacing-xl);
          padding-top: var(--spacing-md);
          border-top: var(--border-hairline) solid var(--color-border-subtle); }
-.panel > h2 { margin: 0 0 var(--spacing-xs); font-size: var(--text-h3); }
+.panel .panel-cabeza h2 { font-size: var(--text-h3); }
 .panel > :last-child { margin-bottom: 0; }
 .panel .barras:last-child, .panel .columnas:last-child { margin-bottom: 0; }
 
@@ -175,6 +202,9 @@ h2.seccion { margin: var(--spacing-2xl) 0 var(--spacing-lg);
 .salud { margin-top: var(--spacing-2xl); padding-top: var(--spacing-lg);
          border-top: var(--border-hairline) solid var(--color-border); }
 .salud > h2 { margin: 0 0 var(--spacing-xs); }
+/* Catorce días no entran en el ancho de lectura: con 72ch cada columna quedaba
+   más angosta que su propia fecha y los nombres se montaban. */
+.salud .columnas { height: 120px; max-width: none; }
 
 /* --- barras horizontales. La etiqueta a la izquierda, la barra en el medio y
        el valor a la derecha en mono: el largo sirve para comparar de un
@@ -194,6 +224,12 @@ h2.seccion { margin: var(--spacing-2xl) 0 var(--spacing-lg);
                font-variant-numeric: tabular-nums;
                color: var(--color-text-secondary); text-align: right;
                min-width: 3ch; }
+/* Con la parte al lado, la barra entera es el total y no la fila más grande:
+   "51" solo no decía de cuántas. 4ch es lo que ocupa "100%". */
+.barras.con-parte .barra-fila { grid-template-columns: minmax(0, 14rem) 1fr auto 4ch; }
+.barra-parte { font-family: var(--font-mono); font-size: var(--text-mono);
+               font-variant-numeric: tabular-nums;
+               color: var(--color-text-tertiary); text-align: right; }
 
 /* --- barras verticales. Para cuando el eje tiene un orden propio que no se
        puede reordenar por tamaño: los tramos de puntaje van de 0 a 100 y las

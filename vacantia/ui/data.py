@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import unicodedata
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -582,11 +583,23 @@ def _entra_por_fecha(oferta: dict, desde: str, hoy=None) -> bool:
 # pero deja de ser el camino principal.
 
 #: (clave, etiqueta, qué significa). El orden es el del desplegable.
+#:
+#: Los tres del medio se sumaron el 13/9/2026, cuando Métricas empezó a mostrar
+#: lo escrito a mano: eran 16 descartes de Isaías tipeados de siete formas
+#: ("No es una oferta laboral", "No era una oferta", "No rea mi puesto", "Me
+#: pide tecnologias con las que no trabajo"...). Lo mismo que había pasado con
+#: el inglés: si se repite, va a la lista.
 MOTIVOS = (
     ("ingles", "Piden inglés",
      "Suma al contador de ofertas que se pierden por el idioma."),
     ("presencial", "Es presencial y no puedo ir",
      "El aviso exige estar en un lugar al que no vas."),
+    ("no_es_oferta", "No es una oferta de trabajo",
+     "Un posteo que habla de otra cosa y no busca a nadie."),
+    ("no_mi_puesto", "No era mi puesto",
+     "Es un trabajo de otra cosa, aunque haya coincidido con la búsqueda."),
+    ("tecnologias", "Pide tecnologías con las que no trabajo",
+     "El puesto es de lo tuyo, pero con otras herramientas."),
     ("especial", "Caso especial (que no aprenda de esto)",
      "Se guarda el descarte, pero no cuenta como preferencia tuya."),
 )
@@ -604,6 +617,10 @@ MOTIVOS = (
 #: aplican solos y mejor: meterlas al prompt como ejemplos negativos sería
 #: enseñarle dos veces lo mismo, y por el lado impreciso. Y "razón especial" lo
 #: pediste explícitamente.
+#:
+#: Los otros tres SÍ enseñan: "no era mi puesto" y "otras tecnologías" dicen
+#: qué no te sirve, y "no es una oferta" es justo lo que el puntaje tendría que
+#: aprender a mandar al cero.
 MOTIVOS_QUE_NO_ENSENIAN = frozenset({"ingles", "presencial", "especial"})
 
 _ETIQUETAS_MOTIVO = dict((clave, etiqueta) for clave, etiqueta, _ in MOTIVOS)
@@ -611,9 +628,20 @@ _ETIQUETAS_MOTIVO = dict((clave, etiqueta) for clave, etiqueta, _ in MOTIVOS)
 #: Para los descartes viejos, escritos a mano antes de que existiera el
 #: desplegable. Sin esto, los 46 "estaba en ingles" que ya tenía Isaías no
 #: sumarían al contador de inglés y el número arrancaría mintiendo.
+#:
+#: Los patrones de los motivos nuevos salen de las redacciones reales, errores
+#: de tipeo incluidos ("No rea mi puesto"), y son angostos a propósito: "no es
+#: una oferta" y no "no es", porque una frase mal clasificada desaparece de la
+#: lista de lo escrito a mano y ya no hay forma de verla.
 _MOTIVO_VIEJO = (
     ("ingles", re.compile(r"\bingl[eé]s\b|\bingles\b", re.I)),
     ("presencial", re.compile(r"\bpresencial\b|\bh[ií]brid", re.I)),
+    ("no_es_oferta", re.compile(r"\bno\s+(?:es|era)\s+(?:una?\s+)?(?:oferta|empleo)\b",
+                                re.I)),
+    ("no_mi_puesto", re.compile(r"\bno\s+(?:es|era|rea)\s+mi\s+puesto\b", re.I)),
+    ("tecnologias", re.compile(
+        r"\bno\s+trabajo\s+con\s+(?:esas?\s+)?tecnolog"
+        r"|\btecnolog[ií]as?\s+con\s+(?:las?\s+)?que\s+no\s+trabajo\b", re.I)),
     ("especial", re.compile(r"^[-–—\s]*$")),
 )
 
@@ -634,6 +662,46 @@ def clave_de_motivo(oferta: dict) -> str:
         if patron.search(texto):
             return clave
     return ""
+
+
+#: Cómo se muestra un descarte sin motivo elegido ni escrito. El formulario ya
+#: no deja guardarlo así, pero en el historial viejo los hay.
+SIN_ESCRIBIR = "(no escribiste nada)"
+
+
+def escritos_a_mano(descartadas) -> list[tuple[str, int]]:
+    """Las frases de la barra "Escrito a mano", agrupadas y de más a menos.
+
+    La barra sola decía cuántas y no qué eran. Isaías sospechaba que se estaban
+    colando posteos de LinkedIn que no son ofertas, y eso no se podía confirmar
+    sin leer lo que había escrito en cada descarte.
+
+    Se agrupa ignorando mayúsculas, tildes, espacios de más y el punto final:
+    "No es una oferta" y "no es una oferta." son la misma frase tipeada dos
+    veces, y separadas ninguna parece repetirse. Más allá de eso no se
+    interpreta nada: dos frases distintas que dicen lo mismo quedan en dos
+    filas, porque adivinar sinónimos es la clase de cosa que termina contando mal.
+    Cuando una idea se repite con varias redacciones, su lugar es el desplegable:
+    así entraron "No es una oferta de trabajo" y los otros dos.
+
+    Las que salieron del desplegable no van, aunque además tengan algo escrito:
+    ya tienen su propia barra y acá se contarían dos veces. De cada frase se
+    muestra la versión más reciente, y a igual cantidad va primero la última.
+    """
+    grupos: dict[str, list] = {}
+    for h in sorted(descartadas, key=lambda h: h.get("fecha_feedback") or "",
+                    reverse=True):
+        if clave_de_motivo(h):
+            continue
+        texto = " ".join((h.get("motivo_descarte") or "").split())
+        sin_tildes = "".join(c for c in unicodedata.normalize("NFD", texto.casefold())
+                             if not unicodedata.combining(c))
+        clave = sin_tildes.rstrip(" .,;:!?¡¿")
+        if clave in grupos:
+            grupos[clave][1] += 1
+        else:
+            grupos[clave] = [texto or SIN_ESCRIBIR, 1]
+    return sorted(((t, n) for t, n in grupos.values()), key=lambda f: -f[1])
 
 
 def partes_del_motivo(oferta: dict) -> tuple[str, str]:
@@ -1090,6 +1158,7 @@ def estadisticas(nombre_perfil: str, desde: str = "todo") -> dict:
         "sistema_total": sacadas,
         "sistema_solapadas": sum(sistema.values()) - sacadas,
         "motivos": dict(motivos),
+        "escritos": escritos_a_mano(descartadas),
         "por_fuente": dict(por_fuente.most_common()),
         "ingles": pena_de_ingles(nombre_perfil, desde),
         "max_age_days": filtros.get("max_age_days"),
@@ -1475,6 +1544,37 @@ def descartadas_en(nombre_perfil: str, periodo: str = PERIODO_POR_DEFECTO) -> di
         "motivos": filas,
         "desde": desde.isoformat() if desde else "",
     }
+
+
+#: Cuántos días muestra el gráfico de Cómo viene funcionando. Dos semanas: con
+#: una sola, un fin de semana tranquilo parece una rotura.
+DIAS_DE_ENTRADAS = 14
+
+
+def entradas_por_dia(nombre_perfil: str, dias: int = DIAS_DE_ENTRADAS) -> list[dict]:
+    """Cuántas ofertas nuevas entraron cada día, de la más vieja a hoy.
+
+    Es el gráfico de Cómo viene funcionando, y contesta la pregunta de esa
+    sección mejor que la tabla de la última búsqueda: una búsqueda en cero puede
+    ser un mal día, varios días seguidos en cero es que algo dejó de andar.
+
+    **Sale del historial y no del registro.** El registro rota a mano y lo
+    comparten todos los perfiles y los tests: el 13/9/2026 tenía una sola
+    corrida real y media docena de corridas de juguete del perfil "test". El
+    historial es por perfil, es el archivo durable, y `found_at` es exactamente
+    cuándo entró cada oferta.
+
+    Los días sin nada van igual, con valor cero: acá el cero es el dato.
+    """
+    hoy = date.today()
+    arranque = hoy - timedelta(days=dias - 1)
+    cuantas: Counter = Counter()
+    for h in State(nombre_perfil).load_history():
+        dia = _dia_local(h.get("found_at"))
+        if dia is not None and arranque <= dia <= hoy:
+            cuantas[dia] += 1
+    return [{"etiqueta": f"{d.day}/{d.month}", "cuantas": cuantas[d]}
+            for d in (arranque + timedelta(days=i) for i in range(dias))]
 
 
 # --- qué te están pidiendo -------------------------------------------------

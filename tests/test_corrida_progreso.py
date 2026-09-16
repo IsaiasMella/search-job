@@ -51,6 +51,28 @@ def test_dice_en_que_fuente_esta_buscando(registro):
     assert estado["perfil"] == "isaias"
 
 
+def test_la_etapa_es_un_identificador_y_no_la_oracion(registro):
+    """La oración cambia con la fuente y con el número de ofertas; el
+    identificador no cambia nunca. Es lo que le permite al panel saber qué
+    tramo ya pasó sin tener que adivinarlo del texto."""
+    registro("--- Fuente: Getonbrd ---")
+    assert corrida.progreso()["etapa"] == "fuentes"
+
+    registro("Total recolectado: 125 oferta(s)")
+    assert corrida.progreso()["etapa"] == "revisando"
+
+    registro("Puntuando 78 oferta(s) con LLM (min_score=60)...")
+    assert corrida.progreso()["etapa"] == "puntuando"
+
+    registro("Filtros: 40 pasaron")
+    assert corrida.progreso()["etapa"] == "filtrando"
+
+
+def test_recien_arrancada_la_etapa_es_arranque(registro):
+    """Todavía no empezó ningún tramo: el panel los dibuja todos por delante."""
+    assert corrida.progreso()["etapa"] == "arranque"
+
+
 def test_la_fuente_que_termina_no_borra_el_cartel(registro):
     """Entre que una fuente cierra y la próxima abre pasan milisegundos. Poner
     'esperando' ahí es un parpadeo, no información."""
@@ -184,3 +206,138 @@ def test_el_aviso_nunca_recarga_solo():
     html = _cartel(nuevas=4, cambio=True)
     assert 'onclick="location.reload()"' in html
     assert "hx-trigger" in html                  # el reloj sigue, pero sólo pregunta
+
+
+# --- el panel grande de arriba del contenido --------------------------------
+#
+# El cartel del pie dice lo mismo en dos renglones de texto chico, y ese era el
+# problema: al costado del campo visual y en cuerpo 12, arrancar una búsqueda y
+# que no pasara nada visible se sentía igual que apretar un botón roto.
+
+def _panel(**paso):
+    from vacantia.ui import render
+
+    return render.panel_de_busqueda({"corriendo": True, **paso})
+
+
+def test_el_panel_marca_los_tramos_cumplidos_el_actual_y_los_que_faltan():
+    """Los tres estados tienen que verse distintos, o la fila de tramos no dice
+    nada más que "hay cuatro etapas"."""
+    html = _panel(paso="Puntuando contra tu CV", etapa="puntuando")
+    tramos = html.split('<ol class="tramos">')[1].split("</ol>")[0]
+
+    # Portales y Revisión ya pasaron, Puntaje es el de ahora, Filtros falta.
+    assert tramos.count('class="hecho"') == 2
+    assert tramos.count('class="activo"') == 1
+    assert tramos.count('class="pendiente"') == 1
+    assert tramos.index("Portales") < tramos.index("Puntaje") < tramos.index("Filtros")
+
+
+def test_los_tramos_salen_de_las_etapas_del_motor():
+    """Y no de una lista escrita en `render`. Si mañana el motor gana o pierde
+    una etapa, se toca en un solo lado."""
+    html = _panel(paso="Arrancando la búsqueda", etapa="arranque")
+    for _, nombre in corrida.ETAPAS:
+        assert f"<span>{nombre}</span>" in html
+
+
+def test_recien_arrancada_ningun_tramo_esta_cumplido():
+    html = _panel(paso="Arrancando la búsqueda", etapa="arranque")
+    assert 'class="hecho"' not in html
+    assert html.count('class="pendiente"') == len(corrida.ETAPAS)
+
+
+def test_sin_total_la_barra_va_sin_porcentaje():
+    """Durante las fuentes no se sabe cuántas ofertas van a entrar. Una barra
+    clavada en 40% durante dos minutos es peor que una que no promete nada."""
+    html = _panel(paso="Buscando en Getonbrd", etapa="fuentes", perfil="ana")
+    assert "indefinida" in html
+    assert "aria-valuenow" not in html
+    assert "Perfil ana" in html
+
+
+def test_durante_el_puntaje_la_barra_se_llena_de_verdad():
+    """Es la única etapa donde el total se sabe con exactitud."""
+    html = _panel(paso="Puntuando contra tu CV", etapa="puntuando",
+                  hechas=39, total=78)
+    assert "indefinida" not in html
+    assert 'aria-valuenow="39"' in html and 'aria-valuemax="78"' in html
+    assert "width: 50%" in html
+    assert "39 de 78" in html
+
+
+def test_un_lote_reintentado_no_desborda_la_barra():
+    """`hechas` viene topeado desde `progreso`, pero si algún día no lo
+    estuviera, la barra igual no se pasa del ancho del contenedor."""
+    html = _panel(paso="Puntuando contra tu CV", etapa="puntuando",
+                  hechas=90, total=78)
+    assert "width: 100%" in html
+
+
+def test_sin_corrida_el_panel_vuelve_vacio_de_verdad():
+    """Vacío, no escondido con una clase. Es el único elemento de la pantalla
+    que tiene que poder *desaparecer* solo cuando la búsqueda termina, y el CSS
+    lo saca del layout con `:empty`. El contenedor tiene que quedar igual: si
+    volviera vacío del todo, el reemplazo no tendría a qué apuntar y el panel
+    quedaría clavado hasta que alguien recargue."""
+    from vacantia.ui import render
+
+    vacio = render.panel_de_busqueda({"corriendo": False})
+    assert vacio == '<div class="buscando" id="buscando"></div>'
+
+
+def test_el_tiempo_se_dice_en_minutos_y_no_con_el_segundero_corriendo():
+    """El segundero al lado de una barra que no avanza es lo que hace que cinco
+    minutos se sientan veinte. Lo que el número contesta es si arrancó recién o
+    hace un rato."""
+    from vacantia.ui.render import _cuanto_hace
+
+    assert _cuanto_hace(0) == "recién arrancó"
+    assert _cuanto_hace(59) == "recién arrancó"
+    assert _cuanto_hace(60) == "hace 1 minuto"
+    assert _cuanto_hace(84) == "hace 1 minuto"
+    assert _cuanto_hace(200) == "hace 3 minutos"
+
+
+def test_un_solo_pedido_actualiza_el_cartel_y_el_panel():
+    """Los dos viven en lugares distintos de la pantalla y se actualizan con la
+    misma respuesta: el cartel al pie de la barra lateral por el camino normal,
+    y el panel de arriba del contenido marcado para pisar al que ya está."""
+    html = _cartel(paso={"corriendo": True, "paso": "Puntuando contra tu CV",
+                         "etapa": "puntuando"})
+    panel = html.split('<div class="buscando"')[1]
+    assert 'hx-swap-oob="true"' in panel.split(">")[0]
+
+
+def test_al_terminar_la_respuesta_trae_el_panel_vacio():
+    """Es lo que lo hace desaparecer en el mismo pedido en que la búsqueda
+    termina, sin que nadie recargue."""
+    html = _cartel(paso={"corriendo": False})
+    assert '<div class="buscando" id="buscando" hx-swap-oob="true"></div>' in html
+
+
+def test_la_pagina_no_deja_dos_elementos_con_el_mismo_id():
+    """El panel lo pone `pagina()` adentro de `main`; el cartel del pie, en el
+    armado inicial, no lo manda. Con dos `id="buscando"`, htmx pisa el que no
+    es."""
+    from vacantia.ui import render
+
+    paso = {"corriendo": True, "paso": "Buscando en Getonbrd", "etapa": "fuentes"}
+    estado = {"ultima": "hace 6 horas", "proxima": "hoy 23:59", "ventana": 7,
+              "paso": paso, "marca": "m", "pendientes": 3}
+    html = render.pagina("Trabajos", "<h1>Trabajos</h1>", "ana", ["ana"],
+                         "trabajos", estado)
+    assert html.count('id="buscando"') == 1
+    # Y va adentro del contenido, no de la barra lateral: es lo que lo pone
+    # adelante del campo visual, que es todo el punto del panel.
+    assert '<main id="contenido"><div class="buscando"' in html
+
+
+def test_la_pagina_sin_busqueda_igual_deja_el_hueco():
+    """Vacío no se ve ni ocupa, pero tiene que existir: es el lugar donde el
+    cartel del pie va a ir a poner el panel cuando la búsqueda arranque."""
+    from vacantia.ui import render
+
+    html = render.pagina("Trabajos", "<h1>Trabajos</h1>", "ana", ["ana"],
+                         "trabajos", None)
+    assert '<div class="buscando" id="buscando"></div>' in html

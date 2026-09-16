@@ -94,18 +94,62 @@ GRUPOS_DE_FUENTES = (
 )
 
 
-def _campo(nombre, etiqueta, valor, tipo="text", ayuda="", mas="", **extra) -> str:
+def _campo(nombre, etiqueta, valor, tipo="text", ayuda="", mas="", ayuda_html="",
+           **extra) -> str:
     """Un campo con su rótulo. `mas` es la explicación larga: va en el signo de
-    pregunta, y `ayuda` es la línea corta que se lee siempre."""
+    pregunta, y `ayuda` es la línea corta que se lee siempre.
+
+    `ayuda_html` es la misma línea corta pero con un link adentro, y va tal
+    cual: quien la arma escapa lo que venga de afuera. Existe por las claves,
+    donde "Sin cargar" sin decir dónde se consigue era un callejón sin salida.
+    """
     attrs = " ".join(f'{k}="{esc(v)}"' for k, v in extra.items())
     rotulo = f'<label for="{nombre}">{esc(etiqueta)}</label>'
     if mas:
         rotulo = _rotulo_con_ayuda(rotulo, mas)
+    linea = (f'<p class="ayuda">{ayuda_html}</p>' if ayuda_html
+             else f'<p class="ayuda">{esc(ayuda)}</p>' if ayuda else "")
     return f"""<div class="campo">
   {rotulo}
   <input type="{tipo}" id="{nombre}" name="{nombre}" value="{esc(valor)}" {attrs}>
-  {f'<p class="ayuda">{esc(ayuda)}</p>' if ayuda else ''}
+  {linea}
 </div>"""
+
+
+def _enlace(texto: str, url: str) -> str:
+    """Un link a otro sitio, en pestaña nueva: la pantalla queda donde estaba,
+    con lo que ya se había escrito en el formulario."""
+    return (f'<a href="{esc(url)}" target="_blank" rel="noopener noreferrer">'
+            f'{esc(texto)}</a>')
+
+
+#: Dónde se consigue cada clave. Las direcciones son las mismas de `.env.example`,
+#: salvo la de Gemini, que va directo a la página de claves de AI Studio.
+DONDE_SE_SACA = {
+    "TELEGRAM_TOKEN": ("@BotFather", "https://t.me/BotFather"),
+    "GEMINI_API_KEY": ("Google AI Studio", "https://aistudio.google.com/apikey"),
+    "TINYFISH_API_KEY": ("TinyFish", "https://agent.tinyfish.ai"),
+    "OPENROUTER_API_KEY": ("OpenRouter", "https://openrouter.ai/keys"),
+}
+
+#: El paso a paso de las que no son "entrá, creala y copiala".
+COMO_SE_SACA = {
+    "TELEGRAM_TOKEN": (
+        "Es la clave del bot que te manda los avisos. En Telegram, abrí @BotFather, "
+        "mandale /newbot y elegí un nombre y un usuario que termine en bot. Te "
+        "contesta con el token: un número, dos puntos y un montón de letras. Eso "
+        "va acá."),
+}
+
+
+def _ayuda_de_clave(clave: str, valor: str) -> str:
+    """"Sin cargar. Conseguila en Google AI Studio", con el link."""
+    texto, url = DONDE_SE_SACA.get(clave, ("", ""))
+    if valor:
+        donde = f" Se saca en {_enlace(texto, url)}." if url else ""
+        return f"Cargada: {esc(data.enmascarar(valor))}.{donde}"
+    donde = f" Conseguila en {_enlace(texto, url)}." if url else ""
+    return f"Sin cargar.{donde}"
 
 
 def _area(nombre, etiqueta, valor, filas=8, ayuda="", placeholder="", mas="",
@@ -418,11 +462,17 @@ def render_configuracion(nombre: str, perfil: dict,
 
     claves = "".join(
         _campo(clave, clave, "", tipo="password",
-               ayuda=(f"Cargada: {data.enmascarar(env.get(clave, ''))}"
-                      if env.get(clave) else "Sin cargar"),
+               ayuda_html=_ayuda_de_clave(clave, env.get(clave, "")),
+               mas=COMO_SE_SACA.get(clave, ""),
                placeholder="dejar vacío para no cambiarla", autocomplete="off")
         for clave in data.CLAVES_ENV
     )
+
+    # El número de chat es lo que nadie sabe de dónde sale. @userinfobot lo
+    # contesta en un mensaje; el camino oficial (getUpdates con el token en la
+    # dirección) está en el README, pero pide armar una URL a mano.
+    chat_ayuda = ("Vacío usa el chat compartido de esta computadora. Tu número te "
+                  f"lo da {_enlace('@userinfobot', 'https://t.me/userinfobot')}.")
 
     return f"""{avisos(mensajes)}
 <h1>Configuración de {esc(nombre)}</h1>
@@ -432,8 +482,11 @@ def render_configuracion(nombre: str, perfil: dict,
 <h2>Cómo me avisa</h2>
 <div class="grilla">
   {_campo("chat_id", "Mi chat de Telegram", data.chat_id_de(perfil),
-          ayuda="Vacío usa el chat compartido de esta computadora.",
-          mas="Es tuyo, no de la computadora: cada persona recibe sólo lo suyo. Si "
+          ayuda_html=chat_ayuda,
+          mas="Primero mandale cualquier mensaje a tu bot: un bot no puede escribirle "
+              "a alguien que nunca le habló. Después abrí @userinfobot en Telegram y "
+              "tocá Iniciar: te contesta con tu Id, que es un número. Ese número va "
+              "acá. Es tuyo, no de la computadora: cada persona recibe sólo lo suyo. Si "
               "en esta máquina busca trabajo más de una persona, cada una pone su "
               "chat acá.")}
   {_campo("min_score", "Puntaje mínimo para avisarme", perfil.get("min_score", 60),

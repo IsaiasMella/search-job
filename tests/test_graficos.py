@@ -65,6 +65,81 @@ def test_las_barras_van_de_mayor_a_menor_y_con_el_valor_al_lado():
     assert 'title="50 ofertas, 59% de 85"' in html
 
 
+def test_con_total_la_barra_entera_es_el_total_y_dice_que_parte_es():
+    """"Piden inglés 51" no decía de cuántas.
+
+    Medidas contra la fila más grande, la de arriba salía siempre llena: 9 que
+    no son ofertas se dibujaba igual sobre 60 descartes que sobre 200, y en un
+    caso es muchísimo y en el otro no es nada.
+    """
+    html = barras([("Piden inglés", 51), ("No es una oferta", 9)], total=84)
+    assert "--ancho:60.7%" in html                  # 51 de 84, no la barra llena
+    assert "--ancho:10.7%" in html
+    assert '<span class="barra-valor">51</span><span class="barra-parte">61%</span>' in html
+    assert '<span class="barra-parte">11%</span>' in html
+    assert 'class="barras con-parte"' in html
+    # Una que existe nunca dice 0%, y el "<" va escapado.
+    assert '<span class="barra-parte">&lt;1%</span>' in barras([("Rara", 1)], total=300)
+    # Sin total sigue como antes: la más grande llena el riel y no hay parte.
+    sin_total = barras([("a", 5), ("b", 3)])
+    assert "barra-parte" not in sin_total and "--ancho:100.0%" in sin_total
+
+
+def test_que_te_piden_y_de_donde_vienen_se_miden_contra_el_total(sitio):
+    """"Python 161, AWS 45" no decía de cuántas.
+
+    Sobre 200 ofertas AWS es algo que hay que aprender; sobre 1000, un bueno de
+    tener. Las habilidades se miden contra las ofertas analizadas y los
+    portales contra todas las que entraron, y cada panel dice cuántas son.
+    """
+    base, tmp = sitio
+    _con_historial(tmp, [
+        {"url": f"https://e/{i}", "title": f"Oferta {i}", "aplicado": None,
+         "score": 70, "found_at": HOY_ISO,
+         "source": "linkedin" if i < 3 else "indeed",
+         "stack": "Python, AWS" if i == 0 else "Python"}
+        for i in range(4)
+    ])
+
+    _, html, _ = get(base, "/estadisticas?perfil=test")
+    assert '<span class="numero">4</span><span class="que">ofertas analizadas</span>' in html
+    assert '<span class="numero">4</span><span class="que">ofertas que entraron</span>' in html
+    assert '<span class="barra-parte">100%</span>' in html     # Python, 4 de 4
+    assert '<span class="barra-parte">75%</span>' in html      # linkedin, 3 de 4
+    assert '<span class="barra-parte">25%</span>' in html      # AWS e indeed
+
+
+def test_las_tarjetas_suman_el_total_y_cada_bloque_dice_contra_cuantas():
+    """"¿230 qué?"
+
+    Arriba se veían 10 aplicadas, 84 descartadas y 4 archivadas, y al lado "230
+    en total": faltaban las 132 que sacó el filtro, y la suma no cerraba. Y
+    abajo "219 ofertas analizadas" era una frase suelta entre la explicación y
+    el gráfico. Ahora cada bloque lleva su total en grande del otro lado del
+    título, y dice de dónde sale cuando no es obvio.
+    """
+    from vacantia.ui import render
+
+    e = {"sin_marcar": 0, "aplicadas": 10, "descartadas": 84, "archivadas": 4,
+         "sistema_total": 132, "total": 230, "ingles": {},
+         "sistema": {"idioma": 132}, "motivos": {"ingles": 84},
+         "por_fuente": {"linkedin": 230}, "max_age_days": 7}
+    habilidades = {"filas": [("Python", 161)], "ofertas": 219, "sin_datos": 11}
+    html = render.estadisticas("ana", e, "todo", [], habilidades=habilidades)
+
+    assert "las sacó el filtro" in html
+    assert "0 + 10 + 84 + 4 + 132 = 230" in html
+    assert html.count('class="panel-cabeza"') == 5     # foco y los cuatro paneles
+    assert ('<span class="numero">219</span><span class="que">ofertas analizadas</span>'
+            '<span class="de-donde">de las 230 que entraron</span>') in html
+    assert '<span class="numero">132</span><span class="que">sacó el filtro</span>' in html
+    assert "La barra entera" not in html               # el renglón viejo se fue
+
+    # Si la cuenta no cierra, no se escribe: una suma que no da es peor.
+    assert "0 + 10 + 84" not in render.estadisticas("ana", {**e, "total": 231},
+                                                    "todo", [])
+
+
 def test_una_barra_en_cero_no_se_dibuja():
     """Una fila sin datos ocupa un renglón para no decir nada."""
     assert barras([("Nada", 0)]) == ""
@@ -226,6 +301,82 @@ def test_en_descarte_el_cartel_dice_por_que_y_no_cuantas(sitio):
     assert "Último mes" in html
 
 
+def test_metricas_muestra_lo_que_escribiste_a_mano(sitio):
+    """La barra "Escrito a mano" sola dice cuántas, no qué.
+
+    Isaías sospechaba que se colaban posteos de LinkedIn que no son ofertas y no
+    tenía cómo confirmarlo sin leer las frases. Van en barras, como el gráfico de
+    motivos de arriba, aunque sean dos. Las que dicen lo mismo con otra
+    mayúscula o un punto de más se cuentan juntas; las que salieron de la lista
+    no aparecen, porque ya tienen su barra y se contarían dos veces.
+    """
+    ahora = datetime.now().astimezone().isoformat()
+    base, tmp = sitio
+
+    def descarte(i, **motivo):
+        return {"url": f"https://e/{i}", "title": f"Oferta {i}", "aplicado": False,
+                "fecha_feedback": ahora, "found_at": HOY_ISO, **motivo}
+
+    _con_historial(tmp, [
+        descarte(1, motivo_descarte="Es un puesto Jr y yo solo busco SR"),
+        descarte(2, motivo_descarte="es un puesto jr y yo solo busco  SR."),
+        descarte(3, motivo_descarte="ES UN PUESTO JR Y YO SOLO BUSCO SR"),
+        descarte(4, motivo_descarte="pide .NET"),
+        descarte(5, motivo_clave="ingles", motivo_descarte="y encima pide viajar"),
+        # Escrita a mano, pero ya tiene su lugar en la lista.
+        descarte(6, motivo_descarte="No era una oferta"),
+    ])
+
+    filas = data.estadisticas("test")["escritos"]
+    assert [n for _, n in filas] == [3, 1]
+    assert filas[1] == ("pide .NET", 1)
+    textos = " ".join(texto for texto, _ in filas)
+    assert "viajar" not in textos and "oferta" not in textos
+
+    _, html, _ = get(base, "/estadisticas?perfil=test")
+    assert "Lo que escribiste a mano" in html
+    assert '<span class="barra-nombre">pide .NET</span>' in html
+    assert "viajar" not in html
+
+    # Todo se mide contra los 6 descartes, y el panel lo dice. Las frases a mano
+    # también: las 3 del Jr son la mitad de los descartes, no 3 de 4 escritas.
+    assert '<span class="numero">6</span><span class="que">descartaste</span>' in html
+    assert '<span class="barra-parte">67%</span>' in html   # Escrito a mano, 4 de 6
+    assert '<span class="barra-parte">17%</span>' in html   # Piden inglés, 1 de 6
+    assert '<span class="barra-parte">50%</span>' in html   # el Jr, 3 de 6
+    assert '<span class="barra-parte">75%</span>' not in html
+
+
+def test_como_viene_funcionando_muestra_las_ofertas_nuevas_por_dia(sitio):
+    """Una búsqueda en cero puede ser un mal día; varios días seguidos en cero
+    es que algo dejó de andar, y eso la tabla de la última búsqueda no lo dice.
+
+    Sale del historial y no del registro, que comparten todos los perfiles y
+    los tests. Los días sin nada van igual, porque acá el cero es el dato.
+    """
+    base, tmp = sitio
+    ahora = datetime.now().astimezone()
+
+    def entro(url, cuando):
+        return {"url": url, "title": url, "aplicado": None,
+                "found_at": cuando.astimezone(timezone.utc).isoformat()}
+
+    _con_historial(tmp, [entro(f"hoy{i}", ahora) for i in range(3)] + [
+        entro("ayer", ahora - timedelta(days=1)),
+        entro("vieja", ahora - timedelta(days=40)),
+    ])
+
+    dias = data.entradas_por_dia("test")
+    assert len(dias) == data.DIAS_DE_ENTRADAS
+    assert [d["cuantas"] for d in dias[-2:]] == [1, 3]
+    assert sum(d["cuantas"] for d in dias) == 4        # la de hace 40 días no entra
+    hoy = ahora.date()
+    assert dias[-1]["etiqueta"] == f"{hoy.day}/{hoy.month}"
+
+    _, html, _ = get(base, "/estadisticas?perfil=test")
+    assert "Ofertas nuevas por día" in html
+
+
 def test_sin_postulaciones_dice_como_empezar(sitio):
     """Un cero gigante sin explicación se lee como un reproche."""
     base, tmp = sitio
@@ -284,6 +435,8 @@ def test_sin_ofertas_puntuadas_no_dibuja_un_grafico_vacio(sitio):
     _, html, _ = get(base, "/estadisticas?perfil=test")
     assert "Todavía no hay ofertas puntuadas" in html
     assert 'class="columnas"' not in html
+    # Tampoco el de ofertas nuevas por día: dos semanas en cero se dicen.
+    assert "No entró ninguna oferta nueva en las últimas dos semanas" in html
 
 
 # --- los tokens nuevos ------------------------------------------------------

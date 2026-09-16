@@ -73,6 +73,15 @@ ICONOS = {
     "filtradas": _icono('<path d="M3 5h18l-7 8v6l-4 2v-8Z"/>'),
     "mas": _icono('<circle cx="5" cy="12" r=".6"/><circle cx="12" cy="12" r=".6"/>'
                   '<circle cx="19" cy="12" r=".6"/>'),
+    # El anillo del panel de "Buscando trabajo". Es un círculo entero más un
+    # arco encima: el CSS gira sólo el arco, así que aun con el movimiento
+    # apagado queda un anillo completo y no un gajo suelto que parece un error
+    # de dibujo.
+    "buscando": _icono('<circle class="aro" cx="12" cy="12" r="9"/>'
+                       '<path class="arco" d="M21 12a9 9 0 0 0-9-9"/>'),
+    # El tilde de un tramo cumplido. Sin círculo alrededor: al lado del punto
+    # de los tramos que faltan, el tilde solo ya dice "éste pasó".
+    "tilde-tramo": _icono('<path d="M4 12.5 9 17.5 20 6.5"/>'),
 }
 
 #: **El JavaScript de la pantalla vive en `static/app.js`, no acá**, y htmx en
@@ -173,8 +182,130 @@ LATIDO_BUSCANDO = "2s"
 LATIDO_QUIETO = "15s"
 
 
+def _cuanto_hace(segundos: int) -> str:
+    """Los segundos que lleva la búsqueda, dichos como los diría una persona.
+
+    Redondea a minutos enteros arriba del minuto: el segundero corriendo al lado
+    de una barra que no avanza es lo que hace que cinco minutos se sientan
+    veinte. Lo que el número tiene que contestar es "¿esto arrancó recién o hace
+    un rato?", y para eso "3 minutos" alcanza.
+    """
+    if segundos < 60:
+        return "recién arrancó"
+    minutos = segundos // 60
+    return "hace 1 minuto" if minutos == 1 else f"hace {minutos} minutos"
+
+
+def _tramos(etapa: str) -> str:
+    """La fila de tramos del panel: cuáles ya pasaron, en cuál está, cuáles no.
+
+    Sale de `corrida.ETAPAS`, que es el orden del pipeline del motor, y **no de
+    una lista escrita acá**: si mañana el motor gana o pierde una etapa, se toca
+    en un solo lado y el panel la dibuja sola.
+    """
+    from vacantia.ui.corrida import ETAPAS
+
+    orden = [clave for clave, _ in ETAPAS]
+    # `arranque` es antes del primer tramo (-1) y `cierre` después del último.
+    if etapa == "cierre":
+        actual = len(orden)
+    elif etapa in orden:
+        actual = orden.index(etapa)
+    else:
+        actual = -1
+
+    piezas = []
+    for i, (clave, nombre) in enumerate(ETAPAS):
+        if i < actual:
+            estado, marca_ = "hecho", ICONOS["tilde-tramo"]
+        elif i == actual:
+            estado, marca_ = "activo", '<span class="punto" aria-hidden="true"></span>'
+        else:
+            estado, marca_ = "pendiente", '<span class="punto" aria-hidden="true"></span>'
+        piezas.append(f'<li class="{estado}">{marca_}<span>{esc(nombre)}</span></li>')
+    return f'<ol class="tramos">{"".join(piezas)}</ol>'
+
+
+def _barra(paso: dict) -> str:
+    """La barra del panel. Se llena de verdad sólo durante el puntaje.
+
+    En las demás etapas no se sabe cuánto falta -- no se sabe cuántas fuentes
+    van a contestar ni cuántas ofertas van a entrar -- así que la barra va sin
+    porcentaje: dice "esto sigue andando", que es lo único cierto. Un porcentaje
+    inventado que se clava en 40% durante dos minutos es peor que no tener
+    ninguno.
+    """
+    total, hechas = int(paso.get("total") or 0), int(paso.get("hechas") or 0)
+    if not total:
+        return ('<div class="barra indefinida" role="progressbar"'
+                ' aria-label="Buscando"><span></span></div>')
+    porcentaje = min(100, round(hechas * 100 / total))
+    return (f'<div class="barra" role="progressbar" aria-valuemin="0"'
+            f' aria-valuemax="{total}" aria-valuenow="{hechas}"'
+            f' aria-label="Ofertas puntuadas">'
+            f'<span style="width: {porcentaje}%"></span></div>')
+
+
+def panel_de_busqueda(paso: dict, oob: bool = False) -> str:
+    """El panel grande de "Buscando trabajo", arriba del contenido.
+
+    El cartel del pie de la barra lateral dice lo mismo en dos renglones de
+    texto chico, y ese es justamente el problema que vino a resolver esto: al
+    costado del campo visual y en cuerpo 12, arrancar una búsqueda y que no
+    pasara nada visible se sentía igual que apretar un botón roto. El panel es
+    lo que contesta "¿está haciendo algo?" de un vistazo y desde lejos.
+
+    Los dos siguen existiendo y no es redundancia: el panel es el estado de
+    *esta* búsqueda mientras dura, y el cartel del pie es el botón que la
+    arranca y el lugar fijo donde vive el estado del sistema.
+
+    **Vuelve siempre el contenedor, incluso vacío.** Es el único elemento de la
+    pantalla que tiene que poder *desaparecer* solo cuando la búsqueda termina,
+    y para que el reemplazo lo alcance el contenedor tiene que estar ahí. Si
+    volviera `""` como el aviso de novedades, el panel quedaría clavado hasta
+    que alguien recargue.
+
+    Con `oob`, vuelve marcado para pisar al panel que ya está en la página
+    aunque el pedido lo haya hecho el cartel de la barra lateral, que es otro
+    elemento: así un solo pedido cada dos segundos actualiza los dos.
+
+    **El `role="status"` lo lleva el cartel del pie y no éste.** Los dos dicen
+    la misma oración y los dos se reemplazan cada dos segundos: con la etiqueta
+    puesta en los dos, un lector de pantalla canta "Puntuando contra tu CV" dos
+    veces cada dos segundos durante toda la búsqueda.
+    """
+    fuera = ' hx-swap-oob="true"' if oob else ""
+    abre = f'<div class="buscando" id="buscando"{fuera}>'
+    if not paso.get("corriendo"):
+        return f"{abre}</div>"
+
+    # El segundo renglón: durante el puntaje, cuántas lleva de cuántas, que es
+    # el único momento en que se sabe el total de verdad. Fuera de ahí, de qué
+    # perfil se trata, que con `--all` va cambiando y es lo que explica por qué
+    # la búsqueda tarda el triple que de costumbre.
+    if paso.get("total"):
+        detalle = f'{paso["hechas"]} de {paso["total"]}'
+    elif paso.get("perfil"):
+        detalle = f'Perfil {paso["perfil"]}'
+    else:
+        detalle = ""
+
+    return f"""{abre}
+  <div class="cabecera">
+    {ICONOS["buscando"]}
+    <h2>Buscando trabajo</h2>
+    <span class="hace">{esc(_cuanto_hace(int(paso.get("segundos") or 0)))}</span>
+  </div>
+  <p class="que">{esc(paso.get("paso", ""))}</p>
+  <div class="avance">{_barra(paso)}<span class="detalle">{esc(detalle)}</span></div>
+  {_tramos(paso.get("etapa", ""))}
+  <p class="tranquilo">Seguí usando la pantalla: cuando entren ofertas nuevas, te avisa acá.</p>
+</div>"""
+
+
 def corrida_estado(perfil: str, paso: dict, marca: str, pendientes: int,
-                   nuevas: int = 0, cambio: bool = False) -> str:
+                   nuevas: int = 0, cambio: bool = False,
+                   con_panel: bool = True) -> str:
     """El cartel del pie de la barra lateral: el botón, o en qué anda la búsqueda.
 
     Es el único pedazo de la pantalla que se actualiza solo. Se pide cada tantos
@@ -191,6 +322,12 @@ def corrida_estado(perfil: str, paso: dict, marca: str, pendientes: int,
     aviso de novedades marcado para reemplazar al de la página. **No recarga
     sola a propósito**: si alguien está escribiendo el motivo de un descarte,
     una recarga se lo borra. Avisa, y decide la persona.
+
+    Con la misma respuesta viaja el panel grande de arriba del contenido. Es un
+    solo pedido cada dos segundos que actualiza los tres lugares: el cartel del
+    pie, el panel de arriba y el aviso de novedades. `con_panel=False` es para
+    el armado inicial de la página, donde el panel lo pone `pagina()` en su
+    lugar y mandarlo dos veces dejaría dos elementos con el mismo id.
     """
     destino = (f"/corrida?{urlencode({'perfil': perfil, 'marca': marca, 'pend': pendientes})}")
     latido = LATIDO_BUSCANDO if paso.get("corriendo") else LATIDO_QUIETO
@@ -208,7 +345,7 @@ def corrida_estado(perfil: str, paso: dict, marca: str, pendientes: int,
             segunda = f'Perfil {paso["perfil"]}'
         detalle = f'<p class="detalle">{esc(segunda)}</p>' if segunda else ""
         return (f'{abre}<p class="que" role="status">{esc(paso.get("paso", ""))}</p>'
-                f'{detalle}</div>')
+                f'{detalle}</div>{panel_de_busqueda(paso, oob=True) if con_panel else ""}')
 
     boton = f"""<form method="post" action="/buscar" hx-post="/buscar"
       hx-target="#corrida" hx-swap="outerHTML">
@@ -217,7 +354,10 @@ def corrida_estado(perfil: str, paso: dict, marca: str, pendientes: int,
   <input type="hidden" name="pend" value="{esc(pendientes)}">
   <button type="submit">Buscar ahora</button>
 </form>"""
-    return f"{abre}{boton}</div>{_aviso_novedades(nuevas, cambio)}"
+    # Sin corrida, el panel vuelve vacío igual: es lo que lo hace desaparecer
+    # de la pantalla en el mismo pedido en que la búsqueda termina.
+    panel = panel_de_busqueda(paso, oob=True) if con_panel else ""
+    return f"{abre}{boton}</div>{panel}{_aviso_novedades(nuevas, cambio)}"
 
 
 def _aviso_novedades(cuantas: int, cambio: bool) -> str:
@@ -283,13 +423,23 @@ def _estado_del_sistema(perfil: str, estado: dict | None) -> str:
     # ahora" se leen juntos o no se leen.
     cartel = corrida_estado(perfil, estado.get("paso") or {},
                             estado.get("marca") or "",
-                            int(estado.get("pendientes") or 0))
+                            int(estado.get("pendientes") or 0),
+                            con_panel=False)
     return f'<div class="estado"><p>{linea}</p>{cubre}{cartel}</div>' 
 
 
 def pagina(titulo: str, cuerpo: str, perfil: str, perfiles: list[str], tab: str,
            estado: dict | None = None) -> str:
-    """El shell: barra lateral a la izquierda, una sola columna a la derecha."""
+    """El shell: barra lateral a la izquierda, una sola columna a la derecha.
+
+    Arriba del contenido va el panel de "Buscando trabajo", que arranca vacío si
+    no hay ninguna búsqueda en curso. Vacío ocupa cero y no se ve; existe
+    siempre porque es el lugar donde el cartel del pie lo va a ir a pisar cuando
+    la búsqueda arranque, y para pisarlo tiene que estar.
+
+    Va acá y no adentro de cada pantalla: la búsqueda se puede arrancar desde
+    cualquiera, y quedarse mirando Métricas mientras corre es exactamente el
+    momento en el que hace falta ver que está corriendo."""
     opciones = "".join(
         f'<option value="{esc(p)}"{" selected" if p == perfil else ""}>{esc(p)}</option>'
         for p in perfiles
@@ -330,7 +480,7 @@ def pagina(titulo: str, cuerpo: str, perfil: str, perfiles: list[str], tab: str,
   {_estado_del_sistema(perfil, estado)}
   <nav class="al-pie" aria-label="Configuración">{link(*SECCION_AL_PIE)}</nav>
 </aside>
-<main id="contenido">{cuerpo}</main>
+<main id="contenido">{panel_de_busqueda((estado or {}).get("paso") or {})}{cuerpo}</main>
 <!-- El aviso de que entraron ofertas. Nace escondido y en TODAS las pantallas,
      no sólo en Trabajos: el cartel de la corrida lo pisa con `hx-swap-oob`
      cuando la búsqueda termina, y para pisarlo tiene que existir. Si sólo
@@ -424,8 +574,8 @@ def _select_de_motivos() -> str:
     """El desplegable de por qué no apliqué.
 
     Con 60 descartes se vio en qué se convierte un campo de texto obligatorio:
-    46 veces la misma frase escrita a mano. Los cuatro motivos salen de lo que
-    de verdad se escribió, no de lo que uno imagina que se va a escribir.
+    46 veces la misma frase escrita a mano. Los motivos salen de lo que de
+    verdad se escribió, no de lo que uno imagina que se va a escribir.
 
     Al lado queda el campo de texto, **opcional**: con cualquiera de los dos
     alcanza para descartar. No hay una opción "Otro motivo" en la lista a
@@ -1682,6 +1832,64 @@ def _tabla(encabezados: tuple[str, str], filas: list[tuple[str, int]]) -> str:
             f'<tbody>{cuerpo}</tbody></table>')
 
 
+#: Cuántas frases escritas a mano van en el gráfico. Arriba quedan las que se
+#: repiten, que son las que dicen algo; de ahí para abajo suelen ser de a una.
+ESCRITOS_A_LA_VISTA = 10
+
+
+def _cabecera(titulo: str, explica: str, total: int | None = None, que: str = "",
+              de_donde: str = "") -> str:
+    """Título y para qué sirve a la izquierda; el total, en grande, del otro lado.
+
+    Las barras se medían contra la más larga, así que la de arriba salía
+    siempre llena y "51" no decía de cuántas: 161 avisos que piden Python es
+    casi todo sobre 200 y un "bueno de tener" sobre 1000. Primero el total se
+    escribió como una frase más ("De las 219 ofertas analizadas. La barra
+    entera son las 219.") y se perdía entre la explicación y el gráfico. En
+    grande y del otro lado se lee antes que las barras, que es lo que
+    corresponde: sin saber contra cuántas se mide, ninguna se entiende.
+
+    `de_donde` es para cuando el total no es obvio: 219 analizadas son "de las
+    230 que entraron", y sin decirlo parecía un número salido de la nada.
+    """
+    texto = " ".join(explica.split())
+    lado = ""
+    if total:
+        extra = f'<span class="de-donde">{esc(de_donde)}</span>' if de_donde else ""
+        lado = (f'<div class="panel-total"><span class="numero">{total}</span>'
+                f'<span class="que">{esc(que)}</span>{extra}</div>')
+    return (f'<div class="panel-cabeza"><div><h2>{esc(titulo)}</h2>'
+            f'<p class="explica">{texto}</p></div>{lado}</div>')
+
+
+def _escritos_a_mano(filas: list[tuple[str, int]], total: int | None = None) -> str:
+    """Qué dice la barra "Escrito a mano", frase por frase.
+
+    Sin esto, saber qué había adentro era abrir Descarté y leer tarjeta por
+    tarjeta, o sea no saberlo.
+
+    Va en barras como el gráfico de motivos de arriba, y **siempre en barras**,
+    aunque sean dos frases: `_desglose` las pasaba a tabla con menos de tres, y
+    son dos bloques del mismo panel que tienen que leerse igual. Las que no
+    entran en el gráfico van en una tabla plegada, para que una lista de sesenta
+    frases no empuje el resto de Métricas fuera de la pantalla.
+
+    Se miden contra el mismo `total` que los motivos, todos los descartes, y
+    no contra la suma de lo escrito: "2 de 4 escritas a mano" parece la mitad
+    de algo, y de 84 descartes es casi nada.
+    """
+    from vacantia.ui.graficos import barras
+
+    if not filas:
+        return ""
+    visibles, resto = filas[:ESCRITOS_A_LA_VISTA], filas[ESCRITOS_A_LA_VISTA:]
+    plegadas = (f'<details class="como"><summary>Ver {len(resto)} más</summary>'
+                f'{_tabla(("Lo que escribiste", "Veces"), resto)}</details>'
+                if resto else "")
+    return (f'<p class="explica">Lo que escribiste a mano, de lo más repetido a lo '
+            f'menos:</p>{barras(visibles, "veces", total=total)}{plegadas}')
+
+
 #: Cómo se lee cada motivo del sistema en la pantalla.
 def _solapadas(e: dict) -> str:
     """Aviso de que las filas suman más que las ofertas.
@@ -1706,13 +1914,18 @@ _MOTIVOS_SISTEMA = {
 }
 
 
-def _desglose(encabezados: tuple[str, str], filas: list[tuple[str, int]]) -> str:
+def _desglose(encabezados: tuple[str, str], filas: list[tuple[str, int]],
+              total: int | None = None) -> str:
     """Un desglose, como gráfico o como tabla según cuántas filas tenga.
 
     El gráfico se gana el lugar cuando hay varias magnitudes que comparar de un
     vistazo. Con dos filas no hay comparación, hay dos números, y para dos
     números la tabla ocupa menos y se lee más rápido. El corte está en
     `graficos.MINIMO_PARA_GRAFICAR`.
+
+    **Con `total` va siempre en barras**, medidas contra ese total. Ahí la
+    pregunta ya no es cuál es más grande sino qué parte del total es cada una,
+    y eso la tabla no lo muestra aunque haya una sola fila.
 
     **La tabla no desaparece nunca**: cuando hay gráfico va debajo, plegada.
     Un gráfico no da el valor exacto ni se puede copiar, y a veces lo que se
@@ -1721,9 +1934,15 @@ def _desglose(encabezados: tuple[str, str], filas: list[tuple[str, int]]) -> str
     from vacantia.ui.graficos import barras, vale_un_grafico
 
     tabla = _tabla(encabezados, filas)
-    if not vale_un_grafico(filas):
+    if total:
+        grafico = barras(filas, encabezados[1].lower(), total=total)
+    elif vale_un_grafico(filas):
+        grafico = barras(filas, encabezados[1].lower())
+    else:
         return tabla
-    return f"""{barras(filas, encabezados[1].lower())}
+    if not grafico:
+        return tabla
+    return f"""{grafico}
 <details class="como"><summary>Ver los números</summary>{tabla}</details>"""
 
 
@@ -1838,6 +2057,24 @@ def _como_viene_funcionando(perfil: str, salud: dict | None) -> str:
   Si siempre aparece la misma, algo hay que mirar.</p>
 </details>"""
 
+    # Primero el gráfico: contesta de un vistazo la pregunta de toda la sección.
+    # Una búsqueda en cero puede ser un mal día; varios días seguidos en cero
+    # es que algo dejó de andar, y la tabla de la última búsqueda no lo dice.
+    #
+    # Con las dos semanas enteras en cero no va el gráfico: catorce columnas
+    # grises son un gráfico vacío, y la frase avisa más fuerte que el dibujo.
+    entradas = ""
+    if salud.get("entradas"):
+        from vacantia.ui.graficos import columnas
+
+        if any(d.get("cuantas") for d in salud["entradas"]):
+            entradas = ('<p class="explica">Ofertas nuevas por día, en las últimas '
+                        'dos semanas. Un día en cero puede pasar; varios seguidos, '
+                        'es que algo dejó de andar.</p>' + columnas(salud["entradas"]))
+        else:
+            entradas = ('<p>No entró ninguna oferta nueva en las últimas dos '
+                        'semanas.</p>')
+
     # Va en su propia sección al pie y **no como un panel más**: no es un dato
     # sobre tu búsqueda de trabajo, es el estado de la máquina. Mezclarlo con
     # los desgloses obliga a leer "cuántas ofertas piden inglés" y "cuándo corre
@@ -1847,6 +2084,7 @@ def _como_viene_funcionando(perfil: str, salud: dict | None) -> str:
   <p class="explica">El estado del programa, no de tu búsqueda. Mirá acá cuando
   algo no cierre: si hace días que no entra nada, la respuesta suele estar
   abajo.</p>
+  {entradas}
   {programado}
   {encontro}
   {aviso}
@@ -1871,6 +2109,12 @@ def _habilidades(h: dict | None) -> str:
 
     Cuando quedan ofertas sin analizar se dice cuántas. Sin eso, un gráfico
     flaco se lee como "no piden nada" en vez de "todavía no lo miré todo".
+
+    **Cada barra se mide contra las ofertas analizadas**, no contra la habilidad
+    más pedida. "Python 161, AWS 45" no decía si AWS era algo que hay que
+    aprender o un "bueno de tener": con el total al lado se ve que es 18% de
+    245. Las que no pasaron por el analizador no entran en el total, porque no
+    tienen nada que pedir.
     """
     from vacantia.ui.graficos import barras
 
@@ -1883,11 +2127,13 @@ def _habilidades(h: dict | None) -> str:
         una = "oferta todavía no pasó" if cuantas == 1 else "ofertas todavía no pasaron"
         pie = (f'<p class="pie-grafico">{cuantas} {una} por el analizador y no '
                f'suman acá. Entran solas en la próxima búsqueda.</p>')
-    return f"""{barras(h["filas"], "ofertas")}
+    analizadas = h.get("ofertas") or 0
+    return f"""{barras(h["filas"], "ofertas", total=analizadas or None)}
 {pie}"""
 
 
-def _panel(titulo: str, explica: str, cuerpo: str) -> str:
+def _panel(titulo: str, explica: str, cuerpo: str, total: int | None = None,
+           que: str = "", de_donde: str = "") -> str:
     """Un bloque de Métricas: título, para qué sirve, y el gráfico.
 
     Métricas era una columna larguísima de secciones apiladas, con el gráfico de
@@ -1906,10 +2152,8 @@ def _panel(titulo: str, explica: str, cuerpo: str) -> str:
     """
     if not cuerpo.strip():
         return ""
-    texto = " ".join(explica.split())
     return f"""<section class="panel">
-  <h2>{esc(titulo)}</h2>
-  <p class="explica">{texto}</p>
+  {_cabecera(titulo, explica, total, que, de_donde)}
   {cuerpo}
 </section>"""
 
@@ -1927,13 +2171,32 @@ def estadisticas(perfil: str, e: dict, desde: str, mensajes,
     ingles = e.get("ingles") or {}
     sistema = e.get("sistema") or {}
 
+    # Las tarjetas tienen que sumar el total, y no sumaban: faltaban las que
+    # sacó el filtro, que eran 132 de 230. Se veía 10 + 84 + 4 y abajo "230 en
+    # total", y la pregunta obvia era "¿230 qué?".
+    partes = (e["sin_marcar"], e["aplicadas"], e["descartadas"], e["archivadas"],
+              e.get("sistema_total") or 0)
     tarjetas = (
         _dato(e["sin_marcar"], "sin mirar", destacado=True)
         + _dato(e["aplicadas"], "aplicaste")
         + _dato(e["descartadas"], "descartaste")
         + _dato(e["archivadas"], "archivadas")
-        + _dato(e["total"], "en total")
+        + _dato(partes[4], "las sacó el filtro")
+        + _dato(e["total"], "ofertas en total")
     )
+    # La cuenta va escrita sólo si cierra. Una oferta archivada que además está
+    # marcada contaría en dos tarjetas, y una suma que no da es peor que ninguna.
+    suma = ""
+    if e["total"] and sum(partes) == e["total"]:
+        cuenta = " + ".join(str(p) for p in partes)
+        suma = (f'<p class="explica">Cada oferta que entró está en una sola de '
+                f'estas tarjetas: {cuenta} = {e["total"]}.</p>')
+
+    analizadas = (habilidades or {}).get("ofertas") or 0
+    sin_analizar = (habilidades or {}).get("sin_datos") or 0
+    de_donde_analizadas = (f"de las {analizadas + sin_analizar} que entraron"
+                           if sin_analizar else "")
+    puntuadas = sum(t.get("cuantas") or 0 for t in (puntajes or []))
 
     motivos_filas = []
     from vacantia.ui.data import MOTIVOS
@@ -1954,17 +2217,19 @@ def estadisticas(perfil: str, e: dict, desde: str, mensajes,
     # cuál mirar primero, que es lo que la hacía confusa: todo pesaba igual.
     pedido = _habilidades(habilidades)
     foco = f"""<section class="foco">
-  <h2>Qué te están pidiendo</h2>
-  <p class="explica">Las habilidades, herramientas y certificaciones que nombran
-  los avisos que entraron, y en cuántos aparece cada una. <b>Es lo único de esta
-  pantalla que dice qué hacer mañana</b>: lo que está arriba y no tenés es lo que
-  más te está costando entrevistas.</p>
+  {_cabecera("Qué te están pidiendo",
+             '''Las habilidades, herramientas y certificaciones que nombran los
+             avisos, y en qué parte de ellos aparece cada una. <b>Es lo único de
+             esta pantalla que dice qué hacer mañana</b>: lo que está arriba y no
+             tenés es lo que más te está costando entrevistas.''',
+             analizadas, "ofertas analizadas", de_donde_analizadas)}
   {pedido}
 </section>""" if pedido else ""
 
     return f"""{avisos(mensajes)}
 <h1>Métricas</h1>
 <div class="tarjetas">{tarjetas}</div>
+{suma}
 
 {foco}
 
@@ -1974,26 +2239,35 @@ def estadisticas(perfil: str, e: dict, desde: str, mensajes,
         '''Cuántas ofertas hay en cada tramo de puntaje, sobre todo lo que se
         buscó alguna vez. Una montaña pegada al cero significa que las búsquedas
         están mal apuntadas; una repartida significa que el problema es otro.''',
-        _grafico_de_puntajes(puntajes))}
+        _grafico_de_puntajes(puntajes),
+        puntuadas, "ofertas puntuadas", "desde siempre" if desde != "todo" else "")}
 
 {_panel("Por qué descartaste vos",
-        '''Los motivos que elegiste al marcar <b>No apliqué</b>. Es lo único que
-        el sistema puede aprender de vos: si la mayoría cae en un mismo motivo,
-        ahí hay un filtro que conviene apretar en Mi perfil.''',
-        _desglose(("Motivo", "Ofertas"), motivos_filas))}
+        '''Los motivos que elegiste al marcar <b>No apliqué</b>, medidos contra
+        todas las que descartaste. Es lo único que el sistema puede aprender de
+        vos: si la mayoría cae en un mismo motivo, ahí hay un filtro que conviene
+        apretar en Mi perfil. Abajo, lo que escribiste a mano cuando ninguno de
+        la lista servía.''',
+        _desglose(("Motivo", "Ofertas"), motivos_filas,
+                  total=e.get("descartadas") or 0)
+        + _escritos_a_mano(e.get("escritos") or [], e.get("descartadas") or 0),
+        e.get("descartadas") or 0, "descartaste")}
 
 {_panel("Lo que descartó el sistema, sin preguntarte",
         '''Son las que no llegan a <b>Sin marcar</b> porque ya hay un veredicto:
         no las borra nadie y vuelven solas si cambiás el filtro que las sacó.''',
         _solapadas(e)
         + _desglose(("Motivo", "Ofertas"), sistema_filas)
-        + _cuesta_el_ingles(perfil, ingles))}
+        + _cuesta_el_ingles(perfil, ingles),
+        e.get("sistema_total") or 0, "sacó el filtro")}
 
 {_panel("De dónde vienen",
-        f'''Qué portal trajo cada oferta. Ventana de búsqueda: los últimos
+        f'''Qué portal trajo cada oferta, medido contra todas las que entraron.
+        Ventana de búsqueda: los últimos
         {esc(ventana if ventana is not None else "?")} días, que se cambia en
         Configuración.''',
-        _desglose(("Portal", "Ofertas"), fuentes))}
+        _desglose(("Portal", "Ofertas"), fuentes, total=e.get("total") or 0),
+        e.get("total") or 0, "ofertas que entraron")}
 </div>
 
 {_como_viene_funcionando(perfil, salud)}"""

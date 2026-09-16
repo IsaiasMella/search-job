@@ -88,10 +88,41 @@ haya que recargar nada:
     Buscando en Getonbrd  →  Buscando en LinkedIn Jobs  →  Revisando 103 ofertas
     →  Puntuando contra tu CV, 22 de 24  →  vuelve el botón
 
-No hay barra de porcentaje y es a propósito: no se sabe de antemano cuántas
-fuentes van a contestar ni cuántas ofertas van a entrar, así que cualquier
-porcentaje sería inventado. Durante el puntaje sí se sabe el total, y ahí sí van
-los números.
+### El panel de Buscando trabajo
+
+Apretás *Buscar ahora* y arriba del contenido aparece un panel grande, en
+cualquier pantalla en la que estés:
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  ◜◝  Buscando trabajo                         hace 1 minuto  │
+    │                                                              │
+    │  Puntuando contra tu CV                                      │
+    │  ███████████████████░░░░░░░░░░░░░░░░░░░░░░░░░     39 de 78   │
+    │                                                              │
+    │  ✓ Portales   ✓ Revisión   ● Puntaje   ○ Filtros             │
+    │                                                              │
+    │  Seguí usando la pantalla: cuando entren ofertas nuevas,     │
+    │  te avisa acá.                                               │
+    └──────────────────────────────────────────────────────────────┘
+
+Los cuatro tramos son las etapas por las que pasa cada búsqueda, en orden: pedir
+los avisos a cada portal, sacar los repetidos y los que no vienen al caso,
+puntuarlos contra tu CV y aplicar tus filtros. El tilde es lo que ya pasó, el
+punto lleno es donde está ahora.
+
+**El panel se va solo cuando la búsqueda termina.** No hay que recargar ni
+cerrar nada; si entraron ofertas nuevas, el aviso de abajo a la derecha te lo
+dice y vos decidís cuándo mirar.
+
+**La barra se llena de verdad sólo durante el puntaje**, que es la única etapa
+donde se sabe el total. En las otras recorre de punta a punta sin prometer
+cuánto falta: no se sabe de antemano cuántas fuentes van a contestar ni cuántas
+ofertas van a entrar, así que cualquier porcentaje sería inventado, y una barra
+clavada en 40% durante dos minutos es peor que una que no promete nada.
+
+**Podés seguir usando la pantalla mientras busca.** La búsqueda corre en un
+proceso aparte: marcá ofertas, mirá Métricas o armá una URL de LinkedIn, que no
+se interrumpe.
 
 ### Trabajos
 
@@ -265,13 +296,23 @@ guardadas*.
 
 La pantalla cuenta tres cosas, en el orden en que sirven.
 
-**Arriba, los números**: sin mirar, aplicaste, descartaste, archivadas y el total.
+**Arriba, los números**: sin mirar, aplicaste, descartaste, archivadas, las que
+sacó el filtro y el total. **Suman el total**, y debajo está la cuenta escrita
+(*0 + 10 + 84 + 4 + 132 = 230*): cada oferta que entró está en una sola tarjeta.
+
+**Cada bloque tiene su total en grande**, del otro lado del título: *219 ofertas
+analizadas*, *84 descartaste*, *230 ofertas que entraron*. Es contra ese número
+que se miden las barras. Cuando no es obvio de dónde sale, lo dice abajo: las 219
+analizadas son *de las 230 que entraron*, porque 11 todavía no pasaron por el
+analizador.
 
 **Después, Qué te están pidiendo.** Las habilidades, herramientas y
 certificaciones que nombran los avisos que entraron, y en cuántos aparece cada
 una. Es el único bloque de la pantalla con superficie propia, y la tiene porque
 es el único accionable: los demás describen lo que pasó, éste dice qué conviene
-ir a aprender.
+ir a aprender. Arriba dice **sobre cuántas ofertas analizadas** se cuenta, y al
+lado de cada habilidad va qué parte son: *Python 161 · 66%* es imprescindible,
+*AWS 45 · 18%* es un bueno de tener.
 
 **No cuesta ninguna llamada extra al modelo.** Ya le mandábamos el aviso entero
 para puntuarlo y ya nos devolvía qué pide; estaba guardado en cada oferta desde
@@ -302,12 +343,19 @@ un gráfico flaco no se lea como "no piden nada".
   repartida significa que el problema es otro. Los tramos verdes son los que
   pasan el puntaje mínimo, o sea de ahí para arriba te avisa por Telegram.
 - **Por qué descartaste vos**: los motivos que elegiste al marcar *No apliqué*.
+  Arriba dice cuántas descartaste en el período, y **la barra entera son todas
+  esas**: al lado de cada motivo va la cantidad y qué parte del total es
+  (*51 · 61%*). Así se ve si 9 es mucho o poco.
+  **Escrito a mano** son los descartes en los que escribiste el motivo en vez de
+  elegirlo de la lista. Debajo están esas frases en barras, con cuántas veces
+  pusiste cada una. Si una se repite mucho, es candidata a entrar en la lista.
 - **Lo que descartó el sistema, sin preguntarte**: lo que ni llegó a la lista.
   Acá está **cuántas ofertas se pierden por no saber inglés** y cuánto puntuaba
   la mejor, con el link para cambiar tu nivel declarado al lado. Vive acá y no
   arriba de la lista de trabajos a propósito: un número que no podés accionar,
   leído todos los días antes de la primera oferta, es un reproche.
-- **De dónde vienen**: qué portal trajo cada oferta.
+- **De dónde vienen**: qué portal trajo cada oferta, con qué parte del total
+  trajo cada uno.
 
 Los desgloses van en barras cuando hay tres o más cosas que comparar, y en tabla
 cuando son dos: para dos números la tabla ocupa menos y se lee más rápido. Cuando
@@ -321,7 +369,9 @@ primero.
 
 Y al pie, aparte de todo lo demás, **Cómo viene funcionando**: si está programado
 y cuándo vuelve, cuánto tardó la última corrida y qué encontró, cuándo fue el
-último aviso por Telegram, y las últimas quejas del registro. Está separado
+último aviso por Telegram, y las últimas quejas del registro. Arriba de todo va un
+gráfico con las ofertas nuevas de cada día de las últimas dos semanas: un día en
+cero puede pasar, pero varios seguidos quieren decir que algo dejó de andar. Está separado
 porque es otra clase de cosa: **el estado del programa, no el de tu búsqueda.**
 Ahí no hay ningún botón, a propósito: Métricas es una pantalla de lectura.
 
@@ -365,7 +415,10 @@ Lo que se carga una vez y no se vuelve a mirar, en tres partes:
   Al lado de *Páginas de empleo de las empresas que sigo* y de *Perfiles de
   reclutadores* dice cuántas tenés cargadas, con el link para cargarlas. Si
   prendés Bumeran y Zonajobs juntos, avisa que te van a llegar duplicados.
-- **Claves:** las de la computadora, compartidas entre todos los perfiles.
+- **Claves:** las de la computadora, compartidas entre todos los perfiles. Abajo
+  de cada una dice si está cargada y tiene **el link a la página donde se
+  consigue**: @BotFather, Google AI Studio, TinyFish y OpenRouter. El token del bot
+  tiene el paso a paso en el signo de pregunta.
 
 **Cada pantalla guarda sólo lo suyo.** Guardar Configuración no toca tus CV ni
 tus palabras, y guardar Mi perfil no apaga ninguna fuente.
@@ -904,7 +957,10 @@ comparten, pero el `chat_id` se guarda dentro de cada perfil: si en una misma PC
 buscan dos personas, cada una recibe sólo sus ofertas. Vacío = usa el
 `TELEGRAM_CHAT_ID` compartido del `.env`.
 
-Para cargarlo: que la persona le escriba a su bot, abrí
+Para cargarlo, lo más rápido: que la persona le mande un mensaje a su bot, y
+después le escriba a [@userinfobot](https://t.me/userinfobot), que le contesta con
+su Id. Ese número va en *Mi chat de Telegram*. El camino oficial, sin bots de
+terceros: que la persona le escriba a su bot, abrí
 `https://api.telegram.org/bot<TOKEN>/getUpdates`, buscá `"chat":{"id":...}` y
 pegá el número en la pantalla, en *Mi Telegram*.
 
@@ -968,6 +1024,7 @@ vacantia/
 │   │   ├── shell.css      el marco: barra lateral y estado del sistema
 │   │   ├── controles.css  botones y campos
 │   │   ├── piezas.css     los componentes
+│   │   ├── buscando.css   el panel de "Buscando trabajo"
 │   │   ├── graficos.css   las barras de Métricas
 │   │   └── linkedin.css   el constructor de URLs
 │   ├── static/

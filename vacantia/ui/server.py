@@ -342,7 +342,8 @@ class Handler(BaseHTTPRequestHandler):
             desde = "todo"
         cuerpo = render.estadisticas(perfil, data.estadisticas(perfil, desde),
                                      desde, _mensajes(params),
-                                     salud=corrida.salud(),
+                                     salud={**corrida.salud(),
+                                            "entradas": data.entradas_por_dia(perfil)},
                                      puntajes=data.distribucion_de_puntajes(perfil),
                                      habilidades=data.habilidades_pedidas(perfil, desde))
         self._pagina("Métricas", cuerpo, perfil, "estadisticas")

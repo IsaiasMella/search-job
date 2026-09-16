@@ -98,8 +98,11 @@ def test_sin_filtros_no_se_descarta_nada():
 # --- el desplegable de motivos ----------------------------------------------
 
 def test_el_catalogo_tiene_los_motivos_que_de_verdad_se_usaban():
+    """Los tres del medio salieron de Métricas el 13/9/2026: 16 descartes
+    escritos a mano de siete formas distintas."""
     claves = [c for c, _, _ in data.MOTIVOS]
-    assert claves == ["ingles", "presencial", "especial"]
+    assert claves == ["ingles", "presencial", "no_es_oferta", "no_mi_puesto",
+                      "tecnologias", "especial"]
 
 
 def test_no_hay_una_opcion_otro_motivo_en_la_lista():
@@ -116,7 +119,18 @@ def test_no_hay_una_opcion_otro_motivo_en_la_lista():
     ("Necesita Inglés avanzado", "ingles"),
     ("era presencial en Buenos Aires", "presencial"),
     ("-", "especial"),
+    # Las redacciones reales del 13/9/2026, con el error de tipeo incluido.
+    ("No es una oferta laboral", "no_es_oferta"),
+    ("No era una oferta", "no_es_oferta"),
+    ("no era un empleo", "no_es_oferta"),
+    ("No era mi puesto", "no_mi_puesto"),
+    ("No rea mi puesto", "no_mi_puesto"),
+    ("No es mi puesto", "no_mi_puesto"),
+    ("No trabajo con esas tecnologias", "tecnologias"),
+    ("Pide tecnologias con las que no trabajo", "tecnologias"),
+    ("Me pide tecnologías con las que no trabajo", "tecnologias"),
     ("Java no está en mi stack", ""),      # éste sí dice algo del puesto
+    ("Es un puesto Jr y yo solo busco SR", ""),
     ("", ""),
 ])
 def test_los_motivos_viejos_escritos_a_mano_se_reconocen(escrito, esperado):
@@ -151,8 +165,11 @@ def test_lo_que_se_lee_en_la_tarjeta_ya_descartada(o, esperado):
 def test_los_motivos_que_no_ensenian_estan_marcados():
     """"Piden inglés" y "es presencial" son restricciones que los filtros ya
     aplican solos: meterlas al prompt como ejemplos negativos sería enseñarle
-    dos veces lo mismo y por el lado impreciso. El caso especial lo pidió él."""
-    assert data.MOTIVOS_QUE_NO_ENSENIAN == {c for c, _, _ in data.MOTIVOS}
+    dos veces lo mismo y por el lado impreciso. El caso especial lo pidió él.
+
+    Los otros tres sí enseñan: dicen qué no te sirve, y "no es una oferta" es
+    justo lo que el puntaje tendría que aprender a mandar al cero."""
+    assert data.MOTIVOS_QUE_NO_ENSENIAN == {"ingles", "presencial", "especial"}
     # Lo que se escribe a mano SÍ enseña: es el descarte que dice algo del
     # puesto, y por eso queda fuera del desplegable y sin clave.
     assert data.clave_de_motivo(oferta(motivo_descarte="Pide .NET")) == ""

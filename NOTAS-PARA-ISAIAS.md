@@ -1,10 +1,10 @@
 # Notas para Isaías
 
-**581 tests pasan.**
+**611 tests pasan.**
 
 ```
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest tests -q      →  581 passed
+.venv\Scripts\python.exe -m pytest tests -q      →  611 passed
 ```
 
 Andando todo: los 3 portales argentinos, Indeed, Get on Board, LinkedIn Jobs,
@@ -1889,6 +1889,261 @@ tildes de fuentes desparramados.
 Cambiar Inter por otra fuente, agregar grano o ruido al fondo y animaciones de
 entrada. `DESIGN.md` fija Inter y prohíbe lo otro: manda el sistema de la app.
 
+## 2.35. Qué escribiste a mano, en Métricas
+
+En *Por qué descartaste vos*, la barra **Escrito a mano** junta los descartes en
+los que escribiste el motivo en vez de elegirlo de la lista. Decía cuántos eran,
+pero no qué decían, y ahí es donde se ve algo como "se están colando posteos de
+LinkedIn que no son ofertas".
+
+Ahora, debajo del gráfico de motivos, hay otro gráfico de barras con **lo que
+escribiste a mano**: cada frase con cuántas veces la pusiste, de la más repetida a
+la menos. Se ven las 10 primeras y el resto queda en *Ver N más*. Respeta el
+período elegido arriba en Métricas.
+
+### Tres motivos nuevos en el desplegable
+
+Apenas se vieron las frases, quedó claro que la mayoría eran tres ideas escritas
+de siete formas:
+
+| En el desplegable | Lo habías escrito |
+|---|---|
+| **No es una oferta de trabajo** | "No es una oferta laboral" (5), "No era una oferta" (4) |
+| **No era mi puesto** | "No era mi puesto" (3), "No rea mi puesto" (1) |
+| **Pide tecnologías con las que no trabajo** | "No trabajo con esas tecnologias", "Pide tecnologias con las que no trabajo", "Me pide tecnologias con las que no trabajo" (1 cada una) |
+
+**Lo que ya habías escrito se reconoce solo** y pasa a su barra, como pasó con el
+inglés. También entran "no era un empleo" y "No es mi puesto", que es como lo
+escribió papá tres veces. Quedan a mano "Es un puesto Jr y yo solo busco SR" y
+"Java no está en mi stack".
+
+### Cómo viene funcionando, con gráfico
+
+Arriba de todo en esa sección hay columnas con **las ofertas nuevas de cada día,
+de las últimas dos semanas**. Un día en cero puede pasar; varios seguidos es que
+algo dejó de andar. La tabla de la última búsqueda sigue abajo. Si las dos
+semanas están enteras en cero no dibuja nada: lo dice con una frase, que avisa más
+fuerte que catorce columnas grises.
+
+### Decisiones que conviene no deshacer
+
+- **Se agrupa sin mirar mayúsculas, tildes, espacios de más ni el punto final.**
+  Más que eso no se interpreta: dos frases distintas que dicen lo mismo quedan en
+  dos filas. Cuando una idea se repite, su lugar es el desplegable.
+- **Los patrones que reconocen lo viejo son angostos** ("no es una oferta" y no
+  "no es"): una frase mal clasificada desaparece de las frases a mano y ya no se ve.
+- **Las que elegiste de la lista no aparecen** entre las frases, aunque además
+  hayas escrito algo: ya tienen su barra y se contarían dos veces.
+- **Los tres motivos nuevos sí enseñan**, a diferencia de inglés, presencial y
+  caso especial: el día que el puntaje aprenda de los descartes, "no es una
+  oferta" es justo lo que tiene que mandar al cero.
+- **El gráfico de días sale del historial del perfil, no del registro.** El
+  registro lo comparten todos los perfiles y los tests: hoy tenía una sola
+  búsqueda real y varias de mentira del perfil "test".
+- **Las frases a mano van siempre en barras**, aunque sean dos. Los otros
+  desgloses pasan a tabla con menos de tres filas; éste no, para que se lea igual
+  que el gráfico de motivos que tiene arriba.
+
+## 2.36. De cuántas: las barras de descartes, contra el total
+
+Veías *Piden inglés 51* y *No es una oferta de trabajo 9*, pero no de cuántas. La
+barra más larga salía siempre llena porque cada gráfico se medía contra su propia
+fila más grande. Así, 9 se dibujaba igual si habías descartado 60 que si habías
+descartado 200, y en un caso es muchísimo y en el otro no es nada.
+
+### Qué cambió
+
+- **Arriba del gráfico dice el total:** *De las 84 que descartaste. La barra
+  entera son las 84.* Respeta el período elegido en Métricas.
+- **Cada barra se llena en proporción a ese total**, y al lado del número va qué
+  parte es: *51 · 61%*, *9 · 11%*.
+- **Las frases escritas a mano se miden contra el mismo total**, no contra la suma
+  de lo escrito. "2 de 4 escritas a mano" parece la mitad de algo, y de 84
+  descartes es casi nada.
+- **Con uno o dos motivos también va en barras.** Los otros desgloses pasan a
+  tabla con pocas filas, pero acá la pregunta es qué parte del total es, y la
+  tabla no lo muestra.
+
+### Decisiones que conviene no deshacer
+
+- **Una que existe nunca dice 0%**: dice *<1%*. Un 0% al lado de un 1 se lee como
+  un error de cuentas.
+- **Sólo este panel usa el total.** *Lo que descartó el sistema* no puede: una
+  oferta cae por idioma y por lugar a la vez, las filas suman más que las
+  ofertas, y los porcentajes darían más de 100.
+- **La pestaña Descarté sigue igual**, midiendo contra la barra más larga. Ahí el
+  total ya está escrito en grande arriba del gráfico.
+
+## 2.37. De cuántas, en todo Métricas; y dónde se consigue cada clave
+
+### Qué te están pidiendo y De dónde vienen
+
+Tenían el mismo problema que los descartes: *Python 161* y *Amazon Web Services
+45* no decían de cuántas, así que no se sabía si AWS había que aprenderlo o era
+un bueno de tener.
+
+- **Qué te están pidiendo** dice *De las N ofertas analizadas* y mide cada barra
+  contra ese total. Las que todavía no pasaron por el analizador no cuentan en
+  el total, porque no tienen nada que pedir, y siguen avisadas al pie.
+- **De dónde vienen** dice *De las N ofertas que entraron* y lo mismo por portal.
+- Los tres paneles lo decían con el mismo renglón. En la 2.38 ese renglón pasó a
+  ser el número grande de la cabecera.
+- **Un aviso puede pedir varias cosas**, así que en *Qué te están pidiendo* los
+  porcentajes no suman 100 y no tienen por qué. Cada uno contesta "en qué parte
+  de los avisos aparece esto".
+
+### Configuración: los links de las claves
+
+- **Abajo de cada clave** dice *Sin cargar. Conseguila en…* o *Cargada: ab…yz.
+  Se saca en…*, con el link: @BotFather, Google AI Studio, TinyFish y OpenRouter.
+  Abren en otra pestaña para no perder lo escrito en el formulario.
+- **El token de Telegram** tiene el paso a paso en el signo de pregunta: abrí
+  @BotFather, `/newbot`, un nombre y un usuario que termine en *bot*.
+- **Mi chat de Telegram** tiene el link a @userinfobot, que te contesta tu Id en
+  un mensaje. El signo de pregunta avisa que antes hay que escribirle al bot
+  propio: un bot no puede mandarle mensajes a alguien que nunca le habló.
+
+### Decisiones que conviene no deshacer
+
+- **@userinfobot es un bot de terceros.** Lo único que hace es decirte tu número,
+  pero si preferís no usarlo, el camino oficial con `getUpdates` sigue en el
+  README.
+- **Las direcciones salen de `.env.example`**, salvo la de Gemini, que va directo
+  a la página de claves de AI Studio. Si algún sitio cambia de dirección, están
+  todas juntas en `DONDE_SE_SACA`, en `formulario.py`.
+
+## 2.38. Métricas: los números que no cerraban
+
+Dos cosas no se entendían.
+
+**Arriba, "¿230 qué?"** Se veían 10 aplicadas, 84 descartadas, 4 archivadas y
+"230 en total", y la suma no daba. Faltaban **las 132 que sacó el filtro**, que no
+tenían tarjeta. Con tu historial del 13/9/2026 queda:
+
+| sin mirar | aplicaste | descartaste | archivadas | las sacó el filtro | ofertas en total |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 10 | 84 | 4 | 132 | 230 |
+
+Debajo va la cuenta escrita: *Cada oferta que entró está en una sola de estas
+tarjetas: 0 + 10 + 84 + 4 + 132 = 230.*
+
+**En los bloques, "¿219 de dónde?"** El total iba como una frase más ("De las 219
+ofertas analizadas. La barra entera son las 219.") y se perdía entre la
+explicación y el gráfico. Ahora cada bloque tiene una cabecera con dos lados:
+
+- **A la izquierda:** el título y la explicación.
+- **A la derecha, en grande:** el total contra el que se miden las barras, y qué
+  es. En pantalla angosta baja abajo del título.
+
+| Bloque | El número de la derecha |
+|---|---|
+| Qué te están pidiendo | **219** ofertas analizadas, *de las 230 que entraron* |
+| Qué tan bien te encajan | **230** ofertas puntuadas |
+| Por qué descartaste vos | **84** descartaste |
+| Lo que descartó el sistema | **132** sacó el filtro |
+| De dónde vienen | **230** ofertas que entraron |
+
+Las 219 son las de esas 230 que ya pasaron por el analizador de habilidades. Las
+otras 11 entran solas en la próxima búsqueda, y el pie del gráfico lo sigue
+diciendo.
+
+### Decisiones que conviene no deshacer
+
+- **La cuenta de arriba se escribe sólo si cierra.** Una oferta archivada que
+  además está marcada contaría en dos tarjetas, y una suma que no da es peor que
+  ninguna.
+- **Qué tan bien te encajan cuenta desde siempre**, no el período elegido.
+  Cuando elegís otro período, abajo del número dice *desde siempre*, para que no
+  parezca que no coincide con el resto.
+- **Un solo lugar arma la cabecera** (`_cabecera` en `render.py`), y lo usan el
+  bloque destacado y los cuatro paneles. **Si agregás un bloque a Métricas, pasale
+  el total**: sin él la cabecera queda sin número y vuelve la pregunta de "¿de
+  cuántas?".
+
+
+## 2.39. El panel de "Buscando trabajo"
+
+Apretabas **Buscar ahora** y no pasaba nada visible. Pasaba, en realidad: al pie
+de la barra lateral el texto cambiaba de *Buscar ahora* a *Buscando en
+Getonbrd*. Pero eso es cuerpo 12, gris, al costado de lo que estás mirando. Tus
+palabras: *"ese texto ahí no es muy visual que digamos"*. Arrancar una búsqueda
+que tarda tres minutos y que la pantalla no te devuelva nada se siente igual que
+apretar un botón roto, y terminás apretándolo de nuevo.
+
+Ahora, arriba del contenido y en cualquier pantalla donde estés:
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  ◜◝  Buscando trabajo                         hace 1 minuto  │
+    │                                                              │
+    │  Puntuando contra tu CV                                      │
+    │  ███████████████████░░░░░░░░░░░░░░░░░░░░░░░░░     39 de 78   │
+    │                                                              │
+    │  ✓ Portales   ✓ Revisión   ● Puntaje   ○ Filtros             │
+    │                                                              │
+    │  Seguí usando la pantalla: cuando entren ofertas nuevas,     │
+    │  te avisa acá.                                               │
+    └──────────────────────────────────────────────────────────────┘
+
+Los cuatro tramos son las etapas del motor, en orden. El tilde es lo que ya
+pasó, el punto lleno es dónde está ahora. Cuando la búsqueda termina, el panel
+desaparece solo.
+
+El cartel chico del pie sigue donde estaba, y no es repetido: **el panel es el
+estado de esta búsqueda mientras dura, y el pie es el botón que la arranca**,
+al lado del "última búsqueda hace 6 horas" que le da sentido.
+
+### Decisiones que conviene no deshacer
+
+- **El panel va adelante; el cartel del pie, quieto.** `DESIGN.md` dice que nada
+  parpadea ni se actualiza solo, y para el cartel del pie eso sigue siendo
+  correcto: vive al costado del campo visual, y algo que se mueve ahí te obliga
+  a mirarlo cada vez que trabajás. El panel está adelante, en la columna que ya
+  estás mirando, y dura lo que dura la búsqueda y ni un segundo más. Si alguna
+  vez querés mover el panel a la barra lateral, ese es el motivo para no
+  hacerlo.
+
+- **Un solo pedido cada dos segundos actualiza los tres lugares:** el cartel del
+  pie, el panel de arriba y el aviso de "entraron ofertas nuevas". El pedido lo
+  hace el cartel del pie, y los otros dos vuelven en la misma respuesta marcados
+  con `hx-swap-oob`. Si agregás un cuarto lugar, colgalo de ahí y no de un reloj
+  nuevo.
+
+- **El panel vuelve siempre, aunque vacío.** Es el único pedazo de la pantalla
+  que tiene que poder *desaparecer* solo, y para que el reemplazo lo alcance el
+  contenedor tiene que estar ahí. Si volviera nada, quedaría clavado hasta que
+  alguien recargue. El CSS lo saca del layout con `:empty`.
+
+- **La barra no inventa un porcentaje.** Se llena de verdad sólo durante el
+  puntaje, que es la única etapa donde se sabe el total. En las demás recorre de
+  punta a punta sin prometer cuánto falta.
+
+- **El resplandor de la barra nunca se va de la barra.** La primera versión era
+  un bloque que entraba por la izquierda y salía por la derecha, y medio ciclo
+  la barra quedaba vacía: en una barra de mil píxeles eso se veía como una
+  astilla en un rincón, o sea igual a una barra rota.
+
+- **El tiempo va en minutos enteros, no en segundos.** El segundero corriendo al
+  lado de una barra que no avanza es lo que hace que cinco minutos se sientan
+  veinte.
+
+- **Los tramos salen de `corrida.ETAPAS`**, que es el orden del pipeline del
+  motor, y no de una lista escrita en `render.py`. Si el motor gana o pierde una
+  etapa, se toca en un solo lado.
+
+- **La etapa es un identificador aparte de la oración.** La oración cambia con
+  la fuente y con el número de ofertas (*Buscando en Getonbrd*, *Revisando 125
+  ofertas*); el identificador (`fuentes`, `revisando`, `puntuando`, `filtrando`)
+  no cambia nunca. Es lo que le permite al panel saber qué tramo ya pasó sin
+  adivinarlo del texto.
+
+- **El `role="status"` lo lleva el cartel del pie y no el panel.** Los dos dicen
+  la misma oración y los dos se reemplazan cada dos segundos: con la etiqueta en
+  los dos, un lector de pantalla canta *"Puntuando contra tu CV"* dos veces cada
+  dos segundos durante toda la búsqueda.
+
+**Dónde está:** `panel_de_busqueda()` en `vacantia/ui/render.py`, los estilos en
+`vacantia/ui/css/buscando.css`, y las etapas en `vacantia/ui/corrida.py`.
+
 
 ---
 
@@ -2047,6 +2302,7 @@ vacantia/
 │   │   ├── shell.css      el marco: barra lateral y estado del sistema
 │   │   ├── controles.css  botones y campos
 │   │   ├── piezas.css     los componentes
+│   │   ├── buscando.css   el panel de "Buscando trabajo"
 │   │   ├── graficos.css   las barras de Métricas
 │   │   └── linkedin.css   el constructor de URLs
 │   ├── static/
